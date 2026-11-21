@@ -1,0 +1,15 @@
+# User guide
+
+1. From Overview, create a blank experiment or open one of the five templates.
+2. Choose Circle or Rectangle and drag to size it. Drag Ground horizontally or draw a ramp between two endpoints. The Draw tool recognizes a horizontal boundary, incline, steep line segment, or a convex polygon made of 3–8 corners. Confirm the suggestion or choose a different type before creating it.
+3. With Select active, drag a body to move it or drag empty canvas to pan. Right-click a body or spring to highlight it and show the delete action. On touch screens, press and hold the target. For keyboard access, select a target and press Shift+F10 on the canvas. Rotate by 15° with R or enter a rotation in the inspector.
+4. To connect a spring, choose Spring and click an attachment point on each of two bodies. At least one must be dynamic. Use **初始位移** to set the initial anchor separation relative to the rest length. The inspector moves one dynamic endpoint along the line between the anchors. Adjust local anchor coordinates in the inspector.
+5. Use the Object tab for mass, density, geometry and initial velocity. Use Environment for gravity, collisions, and the four adjustable bounds. Press Enter or leave a numeric field to apply an edit. An invalid value shows a field or scene error.
+6. Run, pause, single-step, or reset. Reset rebuilds the initial scene so the run can be repeated. Wheel to zoom around the pointer or use the bottom buttons. Drag empty canvas in Select, middle-drag, or hold Space and drag to pan.
+7. Turn on vectors and trails from Display options. Use Clear trail to clear the visual trace while retaining chart samples. To apply a constant force, enter X and Y in the inspector and choose **Apply constant force**. Set both components to zero to stop applying it. Reset clears run-time forces.
+8. Pause a run and choose **Set baseline**. Edit an initial parameter, run again, and open **Compare**. The lavender line in the viewport is the baseline path. The comparison includes final speed and both velocity components. The projectile template includes an ideal reference and pre-impact RMS trajectory error.
+9. Choose a dynamic body in Data analysis. Switch tabs or toggle series in the chart legend. Drag the handle above the data panel to resize it, or focus the handle and press the up and down arrows. Export CSV to get the retained samples for all dynamic bodies.
+10. Choose **历史回放** after stepping or running. Scrub the timeline or use its Play control, then choose **保存回放** to keep the recording with the experiment in this browser. Exit replay to edit or run the scene again. Saving another recording replaces the saved recording for that experiment.
+11. Edit the title at the top of the workspace or add notes in the inspector. Save the experiment and reopen it from Library. Library also supports rename, duplicate, and delete. Export scene JSON from the workspace title menu. Use Import scene in the library to validate and open a copy from another browser.
+
+On a phone, scroll the tool strip horizontally, use the zoom buttons, and find Parameters below the charts.

@@ -1,0 +1,11 @@
+# Physics models
+
+World coordinates use X right and Y up. Distances are in meters, mass in kilograms, and time in seconds. Canvas coordinates convert through the camera, with 80 px/m as the nominal original scale and smaller initial scales used to fit compact viewports.
+
+- **Gravity.** Planck applies uniform downward gravity. The default is 9.81 m/s². The ideal reference is x = x₀ + vₓt and y = y₀ + vᵧt − gt²/2. For a circular projectile over a level floor, reference impact occurs when its center reaches floor height plus radius. Finite-step integration introduces a measurable trajectory error.
+- **Rigid bodies.** The engine solves normal collisions and approximate Coulomb contact friction. The two fixtures contribute to mixed friction and restitution. The inspector density is mass per unit area in kg/m². There is no model of separately calibrated static and kinetic coefficients.
+- **Springs.** Planck distance joints use local anchors, rest length, damping ratio, and frequency. UI stiffness is mapped to frequency through f = √(k / μ) / (2π), with reduced translational mass μ. Off-center anchors and body rotation couple translation and rotation. Frequencies at or above 30 Hz are rejected at the 60 Hz integration rate.
+- **Acceleration and force.** Reported acceleration is a fixed-step finite difference of linear velocity. Collisions can produce large instantaneous estimates. The overlay draws gravity, explicitly applied constant forces, and the joint's reported spring reaction. Contact impulses are omitted from the force overlay.
+- **Energy.** Translational and rotational kinetic energy use the center-of-mass inertia. Gravitational energy uses Y = 0 as the datum. Spring energy uses ½kΔL² and is allocated among the joint's dynamic endpoints to avoid double-counting. Per-body tracked energy can change via contact, joint exchange, damping, friction, external work, and integration error.
+
+Samples are recorded every four fixed steps (15 Hz). Replay records each body's angle with its pose and retains the exact terminal step when the run ends between sample times. This can miss extrema and fast collision events. Graphs and comparisons use recorded data. Simulation time and units appear in CSV column names.

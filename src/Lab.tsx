@@ -1,0 +1,246 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Pause, Play, Plus, RotateCcw, Save, StepForward, X } from 'lucide-react'
+import { decodeExperiment, type Camera, type Experiment } from './model'
+import { Physics } from './physics'
+import { Tools, Viewport, type Tool } from './Viewport'
+import { Inspector } from './Inspector'
+import { AnalysisPanel, type Baseline } from './AnalysisPanel'
+import { defaultDisplay } from './render'
+import { loadReplay, saveExperiment, saveReplay } from './repository'
+import { ReplayControls } from './ReplayControls'
+import type { Replay } from './replay'
+import { templates } from './templates'
+import { downloadText } from './download'
+import { appUrl } from './routes'
+
+const fit=(camera:Camera)=>({...camera,scale:Math.min(camera.scale,Math.max(25,(window.innerWidth-(window.innerWidth>1000?450:80))/10.6))})
+const errorText=(e:unknown)=>e instanceof Error&&'issues' in e?(e.issues as {message:string}[]).map(x=>x.message).join(' · '):e instanceof Error?e.message:'操作未完成，请重试。'
+
+export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:boolean}) {
+  const [scene,setScene]=useState(initial)
+  const [camera,setCamera]=useState(()=>initiallySaved?initial.camera:fit(initial.camera))
+  const [engine,setEngine]=useState(()=>new Physics(initial))
+  const [selected,select]=useState(initial.bodies.find(b=>b.type==='dynamic')?.id??'')
+  const [tool,setTool]=useState<Tool>('select')
+  const [display,setDisplay]=useState(defaultDisplay)
+  const [running,setRunning]=useState(false)
+  const [time,showTime]=useState(0)
+  const [baseline,setBaseline]=useState<Baseline>()
+  const [recentReplay,setRecentReplay]=useState<Replay>()
+  const [savedReplay,setSavedReplay]=useState<Replay>()
+  const [replay,setReplay]=useState<Replay>()
+  const [replayIndex,setReplayIndex]=useState(0)
+  const replayTracks=useMemo(()=>replay?new Map(replay.tracks):undefined,[replay])
+  const liveCamera=useRef(camera)
+  const [trailSince,setTrailSince]=useState(0)
+  const [notice,setNotice]=useState('')
+  const [error,setError]=useState('')
+  const [saved,setSaved]=useState(initiallySaved)
+  const [saving,setSaving]=useState(false)
+  const [help,setHelp]=useState(false)
+  const [title,setTitle]=useState(initial.title)
+  const [menu,setMenu]=useState(false)
+  const [mobileInspector,setMobileInspector]=useState(true)
+  const current=useRef(scene)
+  const activeEngine=useRef(engine)
+  const busy=useRef(false)
+
+  useEffect(()=>{
+    if(!initiallySaved)return
+    let active=true
+    void loadReplay(initial.id).then(value=>{if(active)setSavedReplay(value)})
+      .catch(e=>{if(active)setError(errorText(e))})
+    return ()=>{active=false}
+  },[initial.id,initiallySaved])
+
+  function reset(source=current.current) {
+    try {
+      const next=new Physics(source)
+      const previous=activeEngine.current.captureReplay({...current.current,camera})
+      if(previous)setRecentReplay(previous)
+      activeEngine.current=next;setEngine(next);setRunning(false);showTime(0);setTrailSince(0)
+      return true
+    } catch(e) {setError(errorText(e));return false}
+  }
+  function change(patch:Partial<Experiment>) {
+    if(replay)return false
+    try {
+      const previous=current.current
+      const next=decodeExperiment({...previous,...patch})
+      const mechanics=patch.bodies||patch.joints||(patch.environment&&(
+        previous.environment.gravity!==next.environment.gravity||
+        previous.environment.collisions!==next.environment.collisions||
+        previous.environment.boundaries!==next.environment.boundaries||
+        previous.environment.worldBounds!==patch.environment.worldBounds))
+      if(mechanics) {
+        if(!reset(next))return false
+        if(engine.time>0)setNotice('参数已更新，模拟已回到初始状态。')
+      }
+      current.current=next;setScene(next);setSaved(false);setError('')
+      if(patch.camera)setCamera(fit(next.camera))
+      return true
+    } catch(e){setError(errorText(e));return false}
+  }
+  function remove(id:string) {
+    if(!id)return
+    const existing=current.current
+    if(change({bodies:existing.bodies.filter(b=>b.id!==id),joints:existing.joints.filter(j=>j.id!==id&&j.a!==id&&j.b!==id)})) {
+      if(selected===id||!existing.joints.filter(j=>j.a===id||j.b===id).every(j=>j.id!==selected))select('')
+    }
+  }
+  useEffect(()=>{
+    if(!running)return
+    let frame=0,last:number|undefined,lastUI=0
+    function tick(now:number) {
+      try {
+        if(last!==undefined)engine.advance((now-last)/1000,current.current.environment.speed)
+        last=now
+        if(now-lastUI>80) {showTime(engine.time);lastUI=now}
+        frame=requestAnimationFrame(tick)
+      }catch(e){setRunning(false);setError(errorText(e))}
+    }
+    frame=requestAnimationFrame(tick)
+    return ()=>{cancelAnimationFrame(frame);engine.discardRemainder()}
+  },[running,engine])
+  useEffect(()=>{
+    if(!notice)return
+    const timer=setTimeout(()=>setNotice(''),3800)
+    return ()=>clearTimeout(timer)
+  },[notice])
+  useEffect(()=>{
+    function shortcuts(e:KeyboardEvent) {
+      if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,button,[contenteditable]'))return
+      if(replay) {
+        if(e.key==='Escape')closeReplay()
+        return
+      }
+      if(e.key==='Delete')remove(selected)
+      if(e.key.toLowerCase()==='r'&&!e.repeat) {
+        const b=current.current.bodies.find(body=>body.id===selected)
+        if(b)change({bodies:current.current.bodies.map(body=>body.id===selected?{...body,angle:body.angle+Math.PI/12}:body)})
+      }
+      if(e.key==='Escape'){setTool('select');setHelp(false);setMenu(false)}
+    }
+    window.addEventListener('keydown',shortcuts)
+    return ()=>window.removeEventListener('keydown',shortcuts)
+  })
+  function setSavedAddress(id:string) {
+    const url=new URL(location.href)
+    url.search='';url.searchParams.set('id',id);history.replaceState(null,'',url)
+  }
+
+  function openReplay(recording?:Replay) {
+    const result=recording??activeEngine.current.captureReplay({...current.current,camera})??recentReplay??savedReplay
+    if(!result)return
+    liveCamera.current=camera
+    setRunning(false)
+    setReplayIndex(0)
+    setCamera(fit(result.scene.camera))
+    setReplay(result)
+    setMenu(false)
+  }
+
+  function closeReplay() {
+    setReplay(undefined)
+    setCamera(liveCamera.current)
+  }
+
+  async function saveRecording(recording:Replay) {
+    const snapshot=current.current
+    try {
+      const created=await saveReplay({...snapshot,camera:liveCamera.current},recording)
+      if(created) {
+        setSaved(current.current===snapshot)
+        setSavedAddress(snapshot.id)
+      }
+      setSavedReplay(recording)
+      setNotice('回放已保存。')
+      setError('')
+    } catch(e) {setError(errorText(e))}
+  }
+
+  async function save() {
+    if(busy.current)return
+    busy.current=true;setSaving(true)
+    const snapshot=current.current
+    try {
+      await saveExperiment({...snapshot,camera})
+      setSaved(current.current===snapshot)
+      setSavedAddress(snapshot.id)
+      setNotice('实验已保存到实验库。');setError('')
+    }catch(e){setError(errorText(e))}
+    finally {busy.current=false;setSaving(false)}
+  }
+  function exportScene() {
+    downloadText(current.current.title,'json','application/json',JSON.stringify({...current.current,camera},null,2))
+  }
+  function toggleRun() {
+    setRunning(!running)
+    showTime(engine.time)
+  }
+  function step() {
+    setRunning(false)
+    try {activeEngine.current.step();showTime(activeEngine.current.time)}
+    catch(e){setError(errorText(e))}
+  }
+  const live=engine.bodies.get(selected)
+  const isReplay=Boolean(replay)
+  const replayTime=replay?.tracks[0][1][replayIndex].time
+  const hasReplay=Boolean(recentReplay||savedReplay||(time>0&&engine.samples.size))
+  const velocity=live?.getLinearVelocity()
+  const status=isReplay?'回放中':running?'运行中':time>0?'已暂停':'就绪'
+  return <main className="lab">
+    <div className="lab-top">
+      <div className="lab-identity">
+        <a className="icon back" href={appUrl('/')} aria-label="返回首页"><ArrowLeft size={17}/></a>
+        <div className="lab-name"><div className="crumb">实验台</div><input aria-label="实验标题" maxLength={100} value={title} disabled={isReplay} onChange={e=>setTitle(e.target.value)}
+          onBlur={()=>{if(title!==scene.title&&!change({title}))setTitle(scene.title)}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></div>
+        <button className="icon" aria-label="打开实验菜单" aria-expanded={menu} onClick={()=>setMenu(!menu)}><ChevronDown size={16}/></button>
+        {menu&&<div className="experiment-menu"><a href={appUrl('/lab?new=1')}><Plus size={15}/> 空白实验</a><a href={appUrl('/experiments')}><FolderOpen size={15}/> 打开实验库</a><button onClick={()=>{exportScene();setMenu(false)}}><Download size={15}/> 导出场景 JSON</button>{savedReplay&&<button disabled={isReplay} onClick={()=>openReplay(savedReplay)}><History size={15}/> 打开已保存的回放</button>}<div>实验模板</div>{templates.map(t=><a key={t.id} href={appUrl('/lab?template='+t.id)}>{t.title}</a>)}</div>}
+      </div>
+      <div className="run-buttons">
+        <button className="button primary run" disabled={isReplay} onClick={toggleRun}>{running?<Pause size={16} fill="currentColor"/>:<Play size={16} fill="currentColor"/>}{running?'暂停':'运行'}</button>
+        <button className="icon framed" aria-label="单步运行" title="单步运行（1/60 s）" disabled={isReplay} onClick={step}><StepForward size={18}/></button>
+        <button className="icon framed" aria-label="重置模拟" title="重置模拟" disabled={isReplay} onClick={()=>reset()}><RotateCcw size={16}/></button>
+        <button className="icon framed" aria-label="历史回放" title="历史回放" disabled={!hasReplay||isReplay} onClick={()=>openReplay()}><History size={17}/></button>
+        <label className="speed"><Gauge size={15}/><select aria-label="播放速度" disabled={isReplay} value={scene.environment.speed} onChange={e=>change({environment:{...scene.environment,speed:+e.target.value}})}>
+          {Array.from(new Set([0.25,0.5,1,2,4,scene.environment.speed])).sort((a,b)=>a-b).map(v=><option key={v} value={v}>{v}×</option>)}
+        </select></label>
+      </div>
+      <div className="lab-actions">
+        <button className="icon" aria-label="实验台帮助" title="实验台帮助" onClick={()=>setHelp(!help)}><CircleHelp size={19}/></button>
+        <button className="button save" disabled={saving||isReplay} aria-label={saving?'正在保存实验':saved?'已保存':'保存实验'} onClick={()=>void save()}>{saved?<Check size={16}/>:<Save size={16}/>}<span>{saving?'保存中…':saved?'已保存':'保存实验'}</span></button>
+      </div>
+    </div>
+    {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
+      <p>选择形状工具，在网格中拖动即可创建物体。在选择工具中，左键拖物体可移动，拖空白处可平移。右键点击或在触屏上长按目标，即可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除。滚动滚轮或使用缩放按钮调整视图。</p>
+      <p>在两个物体上分别选择连接点，即可添加弹簧。绘制线段或依次点击多边形顶点，查看识别结果后确认，也可改选类型。</p>
+      <p>接触摩擦由引擎近似计算。力矢量显示外力、重力和弹簧力，接触冲量不在其中。斜抛理论轨迹采用恒定重力、忽略空气阻力。</p>
+    </section>}
+    {error&&<div className="lab-message error-banner" role="alert">{error}<button className="icon" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={15}/></button></div>}
+    {notice&&<div className="lab-message toast" role="status"><Check size={16}/>{notice}</div>}
+    <div className="workbench">
+      <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}/>
+      <div className="work-center">
+        <Viewport scene={replay?.scene??scene} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
+          replay={replayTracks?{tracks:replayTracks,index:replayIndex}:undefined}
+          display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}/>
+        {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)}/>}
+        <div className="status-bar">
+          <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>
+          <span><Clock3 size={13}/><time aria-label="模拟时间">{(replayTime??time).toFixed(3)} s</time></span>
+          <span className="status-steps">固定步长 · 60 Hz</span>
+          {velocity&&!isReplay&&<span className="live-speed">|v| {Math.hypot(velocity.x,velocity.y).toFixed(2)} m/s</span>}
+          <button className="text-button trail-clear" disabled={isReplay} onClick={()=>setTrailSince(engine.time+0.000001)}>清除轨迹</button>
+        </div>
+        <AnalysisPanel scene={replay?.scene??scene} results={replayTracks??engine.samples} selected={selected} select={select} baseline={isReplay?undefined:baseline} setBaseline={setBaseline} replay={isReplay}/>
+      </div>
+      <button className="button mobile-inspector" onClick={()=>setMobileInspector(!mobileInspector)} aria-expanded={mobileInspector}>参数 <ChevronDown size={15}/></button>
+      <div className={mobileInspector?'inspector-wrap':'inspector-wrap hide-mobile'}>
+        <fieldset className="inspector-lock" disabled={isReplay}>
+        <Inspector scene={scene} selected={selected} select={select} change={change} force={(id,x,y)=>{try {engine.setForce(id,{x,y});setNotice('已更新本次运行的外力。')}catch(e){setError(errorText(e))}}}/>
+        </fieldset>
+      </div>
+    </div>
+  </main>
+}
