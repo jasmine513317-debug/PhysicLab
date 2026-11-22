@@ -14,11 +14,13 @@ export interface Replay {
   version:1
   scene:Experiment
   tracks:Track[]
+  externalForceApplied?:true
 }
 const replaySchema = z.object({
   version:z.literal(1),
   scene:experimentSchema,
   tracks:z.array(z.tuple([z.string(),z.array(sampleSchema).min(2).max(REPLAY_SAMPLE_LIMIT)])).min(1).max(100),
+  externalForceApplied:z.literal(true).optional(),
 })
 
 export function decodeReplay(value:unknown):Replay {

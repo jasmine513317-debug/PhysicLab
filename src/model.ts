@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TRACK_VERTEX_LIMIT, trackError } from './track'
 
 z.config(z.locales.zhCN())
 
@@ -11,6 +12,12 @@ const geometry = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('circle'), radius: positive }),
   z.object({ kind: z.literal('rectangle'), width: positive, height: positive }),
   z.object({ kind: z.literal('surface'), width: positive, height: positive }),
+  z.object({ kind:z.literal('track'), vertices:z.array(pointSchema).min(2).max(TRACK_VERTEX_LIMIT), closed:z.boolean() })
+    .superRefine(({vertices,closed},ctx)=>{
+      if(vertices.length>TRACK_VERTEX_LIMIT)return
+      const message=trackError(vertices,closed)
+      if(message)ctx.addIssue({code:'custom',message})
+    }),
   z.object({ kind: z.literal('polygon'), vertices: z.array(pointSchema).min(3).max(8) }).refine(
     ({vertices}) => isConvexPolygon(vertices),'请绘制由 3 至 8 个不同顶点组成的简单凸多边形。',
   ),
@@ -34,7 +41,7 @@ export const bodySchema = z.object({
   mass: z.number().min(0.001).max(100000), friction: z.number().min(0).max(10),
   restitution: z.number().min(0).max(1), geometry,
   color: z.enum(['mint','blue','amber','slate']),
-}).refine(b => b.geometry.kind !== 'surface' || b.type === 'static', '表面必须设为静态。')
+}).refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
 export const springSchema = z.object({
   id, a: id, b: id, anchorA: pointSchema, anchorB: pointSchema,
   stiffness: z.number().min(0.01).max(100000), damping: z.number().min(0).max(5), restLength: positive,
@@ -57,12 +64,15 @@ export const environmentSchema = z.object({
 })
 export const cameraSchema = z.object({ x: finite, y: finite, scale: z.number().min(5).max(400) })
 export const experimentSchema = z.object({
-  id, version: z.literal(1), title: z.string().trim().min(1).max(100), description: z.string(),
+  id, version: z.union([z.literal(1),z.literal(2)]), title: z.string().trim().min(1).max(100), description: z.string(),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), notes: z.string().max(10000),
   kind: z.enum(['custom','projectile','spring','collision','friction','fall']),
   environment: environmentSchema, camera: cameraSchema,
   bodies: z.array(bodySchema).max(100), joints: z.array(springSchema).max(200),
 }).superRefine((scene, ctx) => {
+  if(scene.version===1&&scene.bodies.some(body=>body.geometry.kind==='track')) {
+    ctx.addIssue({code:'custom',message:'曲线轨道需要使用版本 2 的实验文件。'})
+  }
   const bodies = new Map(scene.bodies.map(body => [body.id, body]))
   if (bodies.size !== scene.bodies.length || new Set(scene.joints.map(j => j.id)).size !== scene.joints.length) {
     ctx.addIssue({code:'custom', message:'物体和弹簧各自的标识必须唯一。'})
@@ -87,6 +97,7 @@ export function springFrequency(k: number, a: BodyConfig, b: BodyConfig) {
 }
 
 export function area(g: BodyConfig['geometry']) {
+  if (g.kind === 'track') return 0
   if (g.kind === 'circle') return Math.PI * g.radius ** 2
   if (g.kind !== 'polygon') return g.width * g.height
   return Math.abs(g.vertices.reduce((sum,a,i) => {
@@ -95,9 +106,10 @@ export function area(g: BodyConfig['geometry']) {
   },0))/2
 }
 export function body(name: string, geometry: BodyConfig['geometry'], x: number, y: number, values: Partial<BodyConfig> = {}): BodyConfig {
+  const fixed=geometry.kind==='surface'||geometry.kind==='track'
   return {
-    id: crypto.randomUUID(), name, geometry, type: geometry.kind === 'surface' ? 'static' : 'dynamic',
-    color: geometry.kind === 'surface' ? 'slate' : 'mint', position:{x,y}, angle:0,
+    id: crypto.randomUUID(), name, geometry, type: fixed ? 'static' : 'dynamic',
+    color: fixed ? 'slate' : 'mint', position:{x,y}, angle:0,
     velocity:{x:0,y:0}, angularVelocity:0, mass:1, friction:0.3, restitution:0.35, ...values,
   }
 }

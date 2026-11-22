@@ -2,7 +2,7 @@ const base=import.meta.env.BASE_URL
 
 export function appUrl(path:string) {
   const relative=path.replace(/^\//,'')
-  return base+(base==='/'?relative:relative.replace(/^(lab|experiments)(?=\?|$)/,'$1/'))
+  return base+(base==='/'?relative:relative.replace(/^(lab|experiments|geometry)(?=\?|$)/,'$1/'))
 }
 
 export function appPath(pathname:string) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Pause, Play, Plus, RotateCcw, Save, StepForward, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Pause, Play, Plus, Redo2, RotateCcw, Save, StepForward, Undo2, X } from 'lucide-react'
 import { decodeExperiment, type Camera, type Experiment } from './model'
 import { Physics } from './physics'
 import { Tools, Viewport, type Tool } from './Viewport'
@@ -10,13 +10,18 @@ import { loadReplay, saveExperiment, saveReplay } from './repository'
 import { ReplayControls } from './ReplayControls'
 import type { Replay } from './replay'
 import { templates } from './templates'
+import { extensionUrl } from './extended-experiments'
 import { downloadText } from './download'
+import { encodeBackup } from './backup'
 import { appUrl } from './routes'
 
 const fit=(camera:Camera)=>({...camera,scale:Math.min(camera.scale,Math.max(25,(window.innerWidth-(window.innerWidth>1000?450:80))/10.6))})
 const errorText=(e:unknown)=>e instanceof Error&&'issues' in e?(e.issues as {message:string}[]).map(x=>x.message).join(' · '):e instanceof Error?e.message:'操作未完成，请重试。'
 
-export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:boolean}) {
+type Edit={before:Partial<Experiment>;after:Partial<Experiment>}
+type Props={initial:Experiment;initiallySaved:boolean;active:boolean;updateSavedAddress:(id:string)=>void}
+
+export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [scene,setScene]=useState(initial)
   const [camera,setCamera]=useState(()=>initiallySaved?initial.camera:fit(initial.camera))
   const [engine,setEngine]=useState(()=>new Physics(initial))
@@ -44,14 +49,15 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
   const current=useRef(scene)
   const activeEngine=useRef(engine)
   const busy=useRef(false)
+  const edits=useRef<{undo:Edit[];redo:Edit[]}>({undo:[],redo:[]})
 
   useEffect(()=>{
     if(!initiallySaved)return
     let active=true
-    void loadReplay(initial.id).then(value=>{if(active)setSavedReplay(value)})
+    void loadReplay(initial.id,initial.version).then(value=>{if(active)setSavedReplay(value)})
       .catch(e=>{if(active)setError(errorText(e))})
     return ()=>{active=false}
-  },[initial.id,initiallySaved])
+  },[initial.id,initial.version,initiallySaved])
 
   function reset(source=current.current) {
     try {
@@ -62,24 +68,43 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
       return true
     } catch(e) {setError(errorText(e));return false}
   }
-  function change(patch:Partial<Experiment>) {
+  function change(patch:Partial<Experiment>,record=true) {
     if(replay)return false
     try {
       const previous=current.current
       const next=decodeExperiment({...previous,...patch})
+      const a=previous.environment.worldBounds,b=next.environment.worldBounds
       const mechanics=patch.bodies||patch.joints||(patch.environment&&(
         previous.environment.gravity!==next.environment.gravity||
         previous.environment.collisions!==next.environment.collisions||
         previous.environment.boundaries!==next.environment.boundaries||
-        previous.environment.worldBounds!==patch.environment.worldBounds))
+        a?.minX!==b?.minX||a?.minY!==b?.minY||a?.maxX!==b?.maxX||a?.maxY!==b?.maxY))
       if(mechanics) {
         if(!reset(next))return false
         if(engine.time>0)setNotice('参数已更新，模拟已回到初始状态。')
       }
+      if(record) {
+        const keys=Object.keys(patch) as (keyof Experiment)[]
+        const before=Object.fromEntries(keys.map(key=>[key,previous[key]]))
+        const after=Object.fromEntries(keys.map(key=>[key,next[key]]))
+        edits.current.undo.push({before,after})
+        if(edits.current.undo.length>100)edits.current.undo.shift()
+        edits.current.redo=[]
+      }
       current.current=next;setScene(next);setSaved(false);setError('')
       if(patch.camera)setCamera(fit(next.camera))
+      if(patch.title!==undefined)setTitle(next.title)
       return true
     } catch(e){setError(errorText(e));return false}
+  }
+  function applyEdit(direction:'undo'|'redo') {
+    const {undo,redo}=edits.current
+    const [from,to]=direction==='undo'?[undo,redo]:[redo,undo]
+    const edit=from.at(-1)
+    if(!edit||!change(direction==='undo'?edit.before:edit.after,false))return
+    from.pop();to.push(edit)
+    const scene=current.current
+    if(!scene.bodies.some(body=>body.id===selected)&&!scene.joints.some(joint=>joint.id===selected))select('')
   }
   function remove(id:string) {
     if(!id)return
@@ -89,6 +114,10 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
     }
   }
   useEffect(()=>{
+    if(!active) {
+      if(running){setRunning(false);showTime(engine.time)}
+      return
+    }
     if(!running)return
     let frame=0,last:number|undefined,lastUI=0
     function tick(now:number) {
@@ -101,19 +130,29 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
     }
     frame=requestAnimationFrame(tick)
     return ()=>{cancelAnimationFrame(frame);engine.discardRemainder()}
-  },[running,engine])
+  },[active,running,engine])
   useEffect(()=>{
     if(!notice)return
     const timer=setTimeout(()=>setNotice(''),3800)
     return ()=>clearTimeout(timer)
   },[notice])
   useEffect(()=>{
+    if(!active)return
     function shortcuts(e:KeyboardEvent) {
       if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,button,[contenteditable]'))return
       if(replay) {
         if(e.key==='Escape')closeReplay()
         return
       }
+      if(e.ctrlKey||e.metaKey) {
+        const key=e.key.toLowerCase()
+        if(!e.altKey&&(key==='z'||key==='y')) {
+          e.preventDefault()
+          applyEdit(key==='y'||e.shiftKey?'redo':'undo')
+        }
+        return
+      }
+      if(e.altKey)return
       if(e.key==='Delete')remove(selected)
       // Space stays reserved for drag-to-pan in the viewport.
       if(e.key.toLowerCase()==='p'&&!e.repeat){e.preventDefault();toggleRun();return}
@@ -128,10 +167,6 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
     window.addEventListener('keydown',shortcuts)
     return ()=>window.removeEventListener('keydown',shortcuts)
   })
-  function setSavedAddress(id:string) {
-    const url=new URL(location.href)
-    url.search='';url.searchParams.set('id',id);history.replaceState(null,'',url)
-  }
 
   function openReplay(recording?:Replay) {
     const result=recording??activeEngine.current.captureReplay({...current.current,camera})??recentReplay??savedReplay
@@ -155,7 +190,7 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
       const created=await saveReplay({...snapshot,camera:liveCamera.current},recording)
       if(created) {
         setSaved(current.current===snapshot)
-        setSavedAddress(snapshot.id)
+        updateSavedAddress(snapshot.id)
       }
       setSavedReplay(recording)
       setNotice('回放已保存。')
@@ -170,13 +205,21 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
     try {
       await saveExperiment({...snapshot,camera})
       setSaved(current.current===snapshot)
-      setSavedAddress(snapshot.id)
+      updateSavedAddress(snapshot.id)
       setNotice('实验已保存到实验库。');setError('')
     }catch(e){setError(errorText(e))}
     finally {busy.current=false;setSaving(false)}
   }
   function exportScene() {
-    downloadText(current.current.title,'json','application/json',JSON.stringify({...current.current,camera},null,2))
+    downloadText(current.current.title,'json','application/json',JSON.stringify({...current.current,camera:replay?liveCamera.current:camera},null,2))
+  }
+  async function exportBackup() {
+    const scene={...current.current,camera:replay?liveCamera.current:camera}
+    try {
+      const fallback=replay??savedReplay??activeEngine.current.captureReplay(scene)??recentReplay
+      const recording=replay??savedReplay??(initiallySaved?await loadReplay(scene.id,scene.version):undefined)??fallback
+      downloadText(scene.title+'-备份','json','application/json',encodeBackup(scene,recording))
+    } catch(e){setError(errorText(e))}
   }
   function toggleRun() {
     setRunning(!running)
@@ -192,7 +235,7 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
   const replayTime=replay?.tracks[0][1][replayIndex].time
   const hasReplay=Boolean(recentReplay||savedReplay||(time>0&&engine.samples.size))
   const velocity=live?.getLinearVelocity()
-  const status=isReplay?'回放中':running?'运行中':time>0?'已暂停':'就绪'
+  const status=isReplay?'回放中':running?'运行中':time>0?'已暂停':'编辑模式'
   return <main className="lab">
     <div className="lab-top">
       <div className="lab-identity">
@@ -200,7 +243,15 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
         <div className="lab-name"><div className="crumb">实验台</div><input aria-label="实验标题" maxLength={100} value={title} disabled={isReplay} onChange={e=>setTitle(e.target.value)}
           onBlur={()=>{if(title!==scene.title&&!change({title}))setTitle(scene.title)}} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}}/></div>
         <button className="icon" aria-label="打开实验菜单" aria-expanded={menu} onClick={()=>setMenu(!menu)}><ChevronDown size={16}/></button>
-        {menu&&<div className="experiment-menu"><a href={appUrl('/lab?new=1')}><Plus size={15}/> 空白实验</a><a href={appUrl('/experiments')}><FolderOpen size={15}/> 打开实验库</a><button onClick={()=>{exportScene();setMenu(false)}}><Download size={15}/> 导出场景 JSON</button>{savedReplay&&<button disabled={isReplay} onClick={()=>openReplay(savedReplay)}><History size={15}/> 打开已保存的回放</button>}<div>实验模板</div>{templates.map(t=><a key={t.id} href={appUrl('/lab?template='+t.id)}>{t.title}</a>)}</div>}
+        {menu&&<div className="experiment-menu">
+          <a href={appUrl('/lab?new=1')}><Plus size={15}/> 空白实验</a><a href={appUrl('/experiments')}><FolderOpen size={15}/> 打开实验库</a>
+          <button onClick={()=>{exportScene();setMenu(false)}}><Download size={15}/> 导出场景 JSON</button>
+          <button onClick={()=>{void exportBackup();setMenu(false)}}><Download size={15}/> 导出实验备份</button>
+          {savedReplay&&<button disabled={isReplay} onClick={()=>openReplay(savedReplay)}><History size={15}/> 打开已保存的回放</button>}
+          <div>实验模板</div>{templates.map(t=><a key={t.id} href={appUrl('/lab?template='+t.id)}>{t.title}</a>)}
+          <a href={extensionUrl('pendulum')}>单摆</a>
+          <a href={extensionUrl('double-pendulum')}>双摆与混沌</a>
+        </div>}
       </div>
       <div className="run-buttons">
         <button className="button primary run" disabled={isReplay} aria-keyshortcuts="P" onClick={toggleRun}>{running?<Pause size={16} fill="currentColor"/>:<Play size={16} fill="currentColor"/>}{running?'暂停':'运行'}</button>
@@ -212,6 +263,10 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
         </select></label>
       </div>
       <div className="lab-actions">
+        <div className="edit-actions" aria-label="编辑历史" role="group">
+          <button className="icon" aria-label="撤销" title="撤销 (Ctrl/⌘+Z)" aria-keyshortcuts="Control+Z Meta+Z" disabled={isReplay||!edits.current.undo.length} onClick={()=>applyEdit('undo')}><Undo2 size={17}/></button>
+          <button className="icon" aria-label="重做" title="重做 (Ctrl/⌘+Shift+Z)" aria-keyshortcuts="Control+Y Control+Shift+Z Meta+Shift+Z" disabled={isReplay||!edits.current.redo.length} onClick={()=>applyEdit('redo')}><Redo2 size={17}/></button>
+        </div>
         <button className="icon" aria-label="实验台帮助" title="实验台帮助" onClick={()=>setHelp(!help)}><CircleHelp size={19}/></button>
         <button className="button save" disabled={saving||isReplay} aria-label={saving?'正在保存实验':saved?'已保存':'保存实验'} onClick={()=>void save()}>{saved?<Check size={16}/>:<Save size={16}/>}<span>{saving?'保存中…':saved?'已保存':'保存实验'}</span></button>
       </div>
@@ -229,9 +284,9 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
       <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}/>
       <div className="work-center">
         <Viewport scene={replay?.scene??scene} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
-          replay={replayTracks?{tracks:replayTracks,index:replayIndex}:undefined}
+          replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}
           display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}/>
-        {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)}/>}
+        {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>
           <span><Clock3 size={13}/><time aria-label="模拟时间">{(replayTime??time).toFixed(3)} s</time></span>
@@ -239,7 +294,9 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
           {velocity&&!isReplay&&<span className="live-speed">|v| {Math.hypot(velocity.x,velocity.y).toFixed(2)} m/s</span>}
           <button className="text-button trail-clear" disabled={isReplay} onClick={()=>setTrailSince(engine.time+0.000001)}>清除轨迹</button>
         </div>
-        <AnalysisPanel scene={replay?.scene??scene} results={replayTracks??engine.samples} selected={selected} select={select} baseline={isReplay?undefined:baseline} setBaseline={setBaseline} replay={isReplay}/>
+        <AnalysisPanel scene={replay?.scene??scene} results={replayTracks??engine.samples} selected={selected} select={select}
+          baseline={isReplay?undefined:baseline} setBaseline={setBaseline} replay={isReplay}
+          externalForceApplied={replay?replay.externalForceApplied:engine.externalForceApplied}/>
       </div>
       <button className="button mobile-inspector" onClick={()=>setMobileInspector(!mobileInspector)} aria-expanded={mobileInspector}>参数 <ChevronDown size={15}/></button>
       <div className={mobileInspector?'inspector-wrap':'inspector-wrap hide-mobile'}>

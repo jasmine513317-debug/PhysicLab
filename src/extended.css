@@ -1,0 +1,6 @@
+.extended-viewport {height:clamp(220px,35vh,400px)}
+.extended-chart {height:185px;min-width:0}
+.extended-lab button[aria-pressed=true] {border-color:var(--text);color:var(--text)}
+.extended-body {border:1px solid var(--line);border-radius:6px}
+.extended-body summary {padding:10px;cursor:pointer;font-size:12px;color:var(--soft)}
+.extended-body>div {padding:0 10px 10px}

@@ -6,6 +6,7 @@ import { defaultDisplay, drawScene, type Display, type Overlay, type ReplayView 
 import type { Sample } from './analysis'
 import type { Physics } from './physics'
 import { classifyDrawing, drawingLabels, type DrawingKind } from './drawing'
+import { segmentDistance } from './track'
 
 const displayLabels = {velocity:'速度矢量',acceleration:'加速度矢量',forces:'力矢量',trails:'运动轨迹',reference:'理论轨迹'} as const
 
@@ -38,6 +39,10 @@ function local(point:Point,position:Point,angle:number) {
 function contains(b:BodyConfig,p:Point,position:Point,angle:number,tolerance:number) {
   const q=local(p,position,angle),g=b.geometry
   if (g.kind==='circle') return Math.hypot(q.x,q.y)<=g.radius+tolerance
+  if (g.kind==='track') return g.vertices.some((p,i)=>{
+    const next=g.vertices[i+1]??(g.closed?g.vertices[0]:undefined)
+    return next!==undefined&&segmentDistance(q,p,next)<=tolerance
+  })
   if (g.kind!=='polygon') return Math.abs(q.x)<=g.width/2+tolerance&&Math.abs(q.y)<=g.height/2+tolerance
   let inside=false
   g.vertices.forEach((v,i)=>{

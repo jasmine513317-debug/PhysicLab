@@ -8,9 +8,10 @@ interface Props {
   seek:(index:number)=>void
   close:()=>void
   save:()=>Promise<void>
+  active:boolean
 }
 
-export function ReplayControls({replay,index,seek,close,save}:Props) {
+export function ReplayControls({replay,index,seek,close,save,active}:Props) {
   const samples=replay.tracks[0][1]
   const last=samples.length-1
   const [playing,setPlaying]=useState(false)
@@ -18,6 +19,7 @@ export function ReplayControls({replay,index,seek,close,save}:Props) {
   const start=useRef(index)
 
   useEffect(()=>{
+    if(!active) {setPlaying(false);return}
     if(!playing)return
     const first=start.current
     let frame=0
@@ -33,7 +35,7 @@ export function ReplayControls({replay,index,seek,close,save}:Props) {
     }
     frame=requestAnimationFrame(tick)
     return ()=>cancelAnimationFrame(frame)
-  },[last,playing,samples,seek])
+  },[active,last,playing,samples,seek])
 
   async function saveRecording() {
     setSaving(true)

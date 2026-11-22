@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { body, decodeExperiment, emptyExperiment } from '../src/model'
 import { Physics } from '../src/physics'
-import { flightTime, projectile, energies, toCsv } from '../src/analysis'
+import { ballisticReference, flightTime, projectile, projectileRmse, energies, momentumSamples, momentumCsv, toCsv } from '../src/analysis'
+import { decodeReplay } from '../src/replay'
 import { screenPoint, worldPoint, zoomAt } from '../src/coordinates'
 import { instantiate } from '../src/templates'
 
 const advance=(engine:Physics,steps:number)=>{ for(let i=0;i<steps;i++)engine.step() }
+
+it('reports projectile error only with at least two samples in the reference interval',()=>{
+  const scene=instantiate('projectile'), shot=scene.bodies[0]
+  const engine=new Physics(scene)
+  advance(engine,12)
+  const samples=engine.samples.get(shot.id)!
+  const compare=(data:typeof samples)=>projectileRmse(data,shot.position,shot.velocity,scene.environment.gravity,0.15)
+  expect(compare(samples)).toBeGreaterThan(0)
+  expect(compare(samples.filter(sample=>sample.time>=0.13))).toBeUndefined()
+  expect(compare(samples.filter(sample=>sample.time>0.15))).toBeUndefined()
+})
 
 describe('Planck SI reference cases',()=>{
   it('matches a one-second free fall from 10 m within 0.085 m',()=>{
@@ -15,6 +27,14 @@ describe('Planck SI reference cases',()=>{
     const live=lab.bodies.get(scene.bodies[0].id)!
     expect(Math.abs(live.getPosition().y-5.095)).toBeLessThan(0.085)
     expect(live.getLinearVelocity().y).toBeCloseTo(-9.81,8)
+    const ball=scene.bodies[0]
+    const samples=lab.samples.get(ball.id)!
+    const reference=ballisticReference(scene,ball,samples)!
+    expect(reference.values).toMatchObject({'Vertical position':'5.095 m','Vertical velocity':'-9.810 m/s'})
+    expect(reference.last?.time).toBe(1)
+    expect(reference.rmse).toBeLessThan(.085)
+    expect(ballisticReference({...scene,bodies:[...scene.bodies,body('Obstacle',{kind:'surface',width:1,height:.2},0,6)]},ball,samples)).toBeUndefined()
+    expect(ballisticReference({...scene,environment:{...scene.environment,collisions:false}},ball,samples)?.values['Flight time']).toBeUndefined()
   })
   it('validates the ideal 10 m/s, 45-degree projectile trajectory, apex, range, and flight time',()=>{
     const scene=emptyExperiment()
@@ -68,6 +88,40 @@ describe('Planck SI reference cases',()=>{
     expect(b-a).toBeCloseTo(4*coefficient,5)
     expect((a*a+b*b)/2).toBeCloseTo(4*(1+coefficient*coefficient),5)
   })
+  it('sums signed momentum and kinetic energy from aligned unequal-mass collision tracks',()=>{
+    const scene=instantiate('collision')
+    scene.bodies=scene.bodies.map((body,index)=>({...body,mass:2+index,restitution:0,velocity:{...body.velocity,y:-0.7}}))
+    const lab=new Physics(scene)
+    advance(lab,91)
+    const replay=decodeReplay(lab.captureReplay(scene))
+    const results=new Map(replay.tracks)
+    const system=momentumSamples(scene.bodies,results,undefined,3)
+    expect(system).toHaveLength(3)
+    expect(system.at(-1)?.time).toBe(91/60)
+    for(const sample of system) {
+      expect(sample.px).toBeCloseTo(8,8)
+      expect(sample.py).toBeCloseTo(-3.5,8)
+    }
+    expect(system[0].kinetic-system.at(-1)!.kinetic).toBeCloseTo(9.6,7)
+    const individual=momentumSamples(scene.bodies,results,scene.bodies[0].id)
+    expect(individual.at(-1)?.px).toBeCloseTo(3.2,7)
+    expect(momentumCsv(individual)).toContain('0.000000,8.000000,-1.400000,16.490000')
+  })
+  it.each([[0,0],[0.4,0.1]])('matches sliding acceleration along an incline with friction %s and %s',(blockFriction,rampFriction)=>{
+    const scene=emptyExperiment(), angle=-0.36, tangent={x:Math.cos(angle),y:Math.sin(angle)}
+    const initialSpeed=1.2, contactHeight=.412
+    const block=body('Block',{kind:'rectangle',width:0.8,height:0.4},-tangent.y*contactHeight,tangent.x*contactHeight,
+      {angle,friction:blockFriction,restitution:0,velocity:{x:initialSpeed*tangent.x,y:initialSpeed*tangent.y}})
+    scene.bodies=[block,body('Ramp',{kind:'surface',width:24,height:.4},0,0,{angle,friction:rampFriction,restitution:0})]
+    const lab=new Physics(scene)
+    advance(lab,60)
+    const live=lab.bodies.get(block.id)!, velocity=live.getLinearVelocity(), position=live.getPosition()
+    const acceleration=scene.environment.gravity*(-tangent.y-Math.sqrt(blockFriction*rampFriction)*tangent.x)
+    const tangentVelocity=velocity.x*tangent.x+velocity.y*tangent.y
+    const distance=(position.x-block.position.x)*tangent.x+(position.y-block.position.y)*tangent.y
+    expect(Math.abs(tangentVelocity-(initialSpeed+acceleration))).toBeLessThan(.08)
+    expect(Math.abs(distance-(initialSpeed+acceleration/2))).toBeLessThan(.08)
+  })
   it('opposes sliding and increases deceleration with contact friction',()=>{
     function slide(friction:number){
       const scene=emptyExperiment()
@@ -104,6 +158,7 @@ describe('Planck SI reference cases',()=>{
     const lab=new Physics(scene),b=scene.bodies[0]
     lab.setForce(b.id,{x:2,y:0})
     lab.step()
+    expect(decodeReplay(lab.captureReplay(scene)).externalForceApplied).toBe(true)
     expect(lab.acceleration.get(b.id)?.x).toBeCloseTo(2,8)
     expect(lab.forceVectors(b.id).find(v=>v.name==='外力')?.vector.x).toBe(2)
     advance(lab,90)
@@ -148,7 +203,7 @@ describe('timestep, units and scene validation',()=>{
     const run=new Physics(s)
     advance(run,21)
     expect(new Physics(s).bodies.get(s.bodies[0].id)!.getPosition().x).toBe(s.bodies[0].position.x)
-    expect(()=>decodeExperiment({...s,version:2})).toThrow()
+    expect(()=>decodeExperiment({...s,version:3})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],mass:-1}]})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],restitution:1.2}]})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],velocity:{x:NaN,y:1}}]})).toThrow()

@@ -6,12 +6,13 @@ export const templates = [
   {id:'spring', title:'弹簧振子', topic:'振动', description:'测量连接弹簧的物体的振动周期。', tint:'amber'},
   {id:'friction', title:'斜面摩擦', topic:'动力学', description:'改变摩擦系数，观察滑块在斜面上的运动。', tint:'blue'},
   {id:'fall', title:'自由落体', topic:'重力', description:'测量恒定重力下位移和速度的变化。', tint:'mint'},
+  {id:'track', title:'曲线轨道', topic:'接触运动', description:'让小球滚过曲线，观察接触与速度变化。', tint:'slate'},
 ] as const
 export type TemplateId = typeof templates[number]['id']
 
 export function instantiate(id: TemplateId): Experiment {
   const info = templates.find(t => t.id === id)!
-  const scene = {...emptyExperiment(), kind:id, title:info.title, description:info.description}
+  const scene:Experiment = {...emptyExperiment(), kind:id==='track'?'custom':id, title:info.title, description:info.description}
   const floor = body('地面', {kind:'surface',width:22,height:0.32}, 0, -0.16, {restitution:0})
   switch (id) {
     case 'projectile':
@@ -47,6 +48,19 @@ export function instantiate(id: TemplateId): Experiment {
       scene.camera = {x:0,y:5,scale:45}
       scene.bodies = [body('下落小球',{kind:'circle',radius:0.35},0,10,{restitution:0}),floor]
       break
+    case 'track': {
+      const vertices=Array.from({length:25},(_,index)=>{
+        const x=(index-12)*0.4
+        return {x,y:0.085*x*x}
+      })
+      scene.version=2
+      scene.camera={x:0,y:1.3,scale:65}
+      scene.bodies=[
+        body('小球',{kind:'circle',radius:.24},-3,1.16,{friction:.25,restitution:0}),
+        body('抛物线轨道',{kind:'track',vertices,closed:false},0,0,{friction:.25,restitution:0}),
+      ]
+      break
+    }
   }
   return scene
 }

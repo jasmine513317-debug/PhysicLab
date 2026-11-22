@@ -4,7 +4,7 @@ test('opens a real template, records data, compares runs, exports CSV and manage
   const errors:string[]=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'搭建，设定。 开始模拟。'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:/设计你的\s*物理实验/,level:1})).toBeVisible()
   await page.getByRole('link',{name:'打开斜抛运动实验'}).click()
   await expect(page.getByRole('textbox',{name:'实验标题'})).toHaveValue('斜抛运动')
   const mass=page.getByRole('spinbutton',{name:'质量',exact:true})
@@ -132,6 +132,73 @@ test('exports a scene file, imports an independent copy, and rejects invalid JSO
   await picker.setInputFiles(await file.path())
   await expect(page.getByRole('article').getByRole('heading',{name:'弹簧振子',exact:true})).toBeVisible()
   await picker.setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from('{"version":2}')})
-  await expect(page.getByRole('alert')).toContainText('有效的 PhysicLab 版本 1 实验文件')
+  await expect(page.getByRole('alert')).toContainText('有效的 PhysicLab 版本 1 或版本 2 实验文件')
   await expect(page.getByRole('article').getByRole('heading',{name:'弹簧振子',exact:true})).toHaveCount(1)
+})
+
+test('exports a complete backup and imports its historical recording',async({page})=>{
+  await page.goto('/lab?template=collision')
+  for(let i=0;i<6;i++)await page.getByRole('button',{name:'单步运行'}).click()
+  await page.getByRole('button',{name:'历史回放'}).click()
+  await page.getByRole('button',{name:'退出回放'}).click()
+  await page.getByRole('button',{name:'打开实验菜单'}).click()
+  const download=page.waitForEvent('download')
+  await page.getByRole('button',{name:'导出实验备份'}).click()
+  const file=await download
+  expect(file.suggestedFilename()).toBe('弹性碰撞-备份.json')
+  await page.goto('/experiments')
+  await page.getByLabel('导入实验 JSON').setInputFiles(await file.path())
+  await page.getByRole('article').filter({has:page.getByRole('heading',{name:'弹性碰撞',exact:true})}).getByRole('link',{name:'打开',exact:true}).click()
+  await page.getByRole('button',{name:'历史回放'}).click()
+  await page.getByRole('slider',{name:'回放时间轴'}).press('End')
+  await expect(page.getByRole('region',{name:'历史回放'}).getByLabel('回放时间',{exact:true})).toHaveText('0.100 s')
+})
+
+test('opens a valid saved scene when the library also contains an unreadable record',async({page})=>{
+  await page.goto('/lab?template=fall')
+  await page.getByRole('button',{name:'保存实验'}).click()
+  await expect(page.getByRole('button',{name:'已保存'})).toBeVisible()
+  await page.evaluate(()=>new Promise<void>((resolve,reject)=>{
+    const request=indexedDB.open('physiclab',2)
+    request.onerror=()=>reject(request.error)
+    request.onsuccess=()=>{
+      const db=request.result
+      const tx=db.transaction('experiments','readwrite')
+      tx.objectStore('experiments').add({id:'unsupported-format',version:99})
+      tx.oncomplete=()=>{db.close();resolve()}
+      tx.onabort=()=>{db.close();reject(tx.error)}
+    }
+  }))
+  await page.goto('/experiments')
+  await expect(page.getByRole('status')).toContainText('1 条记录无法打开')
+  const download=page.waitForEvent('download')
+  await page.getByRole('button',{name:'导出原始记录'}).click()
+  expect((await download).suggestedFilename()).toBe('无法打开的实验.json')
+  await page.getByRole('link',{name:'预览：自由落体'}).click()
+  await expect(page.getByLabel('实验标题')).toHaveValue('自由落体')
+})
+
+test('switches domains without losing a mechanics draft and restores edit history',async({page})=>{
+  await page.goto('/')
+  await page.getByRole('region',{name:'实验领域'}).getByRole('link',{name:/电磁学/}).click()
+  await expect(page.getByRole('heading',{name:'电磁学',exact:true})).toBeVisible()
+  await expect(page.getByLabel('电场画布')).toBeVisible()
+  const domains=page.getByRole('navigation',{name:'实验领域'})
+  await domains.getByRole('link',{name:'经典力学'}).click()
+  const title=page.getByLabel('实验标题')
+  await title.fill('保留的力学草稿')
+  await title.press('Enter')
+  await page.getByRole('button',{name:'撤销',exact:true}).click()
+  await expect(title).toHaveValue('斜抛运动')
+  await page.getByRole('button',{name:'重做',exact:true}).click()
+  await expect(title).toHaveValue('保留的力学草稿')
+  await page.getByRole('button',{name:'运行',exact:true}).click()
+  await domains.getByRole('link',{name:'天体物理'}).click()
+  await expect(page.getByRole('heading',{name:'天体物理',exact:true})).toBeVisible()
+  await expect(page.getByLabel('轨道画布')).toBeVisible()
+  await expect(page.getByRole('button',{name:'运行',exact:true})).toHaveCount(0)
+  await page.goBack()
+  await expect(title).toHaveValue('保留的力学草稿')
+  await expect(page.getByRole('button',{name:'运行',exact:true})).toBeEnabled()
+  await expect(domains.getByRole('link',{name:'经典力学'})).toHaveAttribute('aria-current','page')
 })

@@ -1,16 +1,16 @@
 import { rotate, screenPoint, worldPoint, type View } from './coordinates'
-import { flightTime, projectile, type Sample } from './analysis'
+import { ballisticDuration, projectile, type Sample } from './analysis'
 import { DEFAULT_WORLD_BOUNDS, type BodyConfig, type Camera, type Experiment, type Point } from './model'
 import type { Physics } from './physics'
 import type { RecordedSample } from './replay'
 
 const palette = {
-  mint:['#60c8f3','#b3edff'], blue:['#8796f2','#c0c9ff'],
-  amber:['#e8ac62','#ffe0a6'], slate:['#344258','#617594'],
+  mint:['#d2d2d0','#f5f5f2'], blue:['#899bbd','#b9c9ef'],
+  amber:['#947650','#f2c38b'], slate:['#303035','#717178'],
 }
 export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number}
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
-export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number}
+export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
 export type Overlay = {points:Point[]; color?:string}
 
 function path(ctx:CanvasRenderingContext2D, points:Point[], color:string, dash:number[]=[]) {
@@ -44,6 +44,14 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
   ctx.save()
   ctx.translate(center.x,center.y)
   ctx.rotate(-angle)
+  if(g.kind==='track') {
+    const vertices=g.vertices.map(p=>({x:p.x*scale,y:-p.y*scale}))
+    if(g.closed)vertices.push(vertices[0])
+    ctx.lineWidth=selected?3:2
+    path(ctx,vertices,selected?'#f5f5f2':'#a8a8b0',dash===undefined?[]:[8,6])
+    ctx.restore()
+    return
+  }
   ctx.beginPath()
   if (g.kind==='circle') ctx.arc(0,0,g.radius*scale,0,Math.PI*2)
   else if (g.kind==='polygon') {
@@ -54,7 +62,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
   if(!simple) {
     const gradient=ctx.createLinearGradient(0,-18,0,27)
     gradient.addColorStop(0,fill)
-    gradient.addColorStop(1,b.color==='slate'?'#141e2f':fill+'7d')
+    gradient.addColorStop(1,b.color==='slate'?'#1a1a1e':fill+'7d')
     ctx.fillStyle=gradient
   }
   ctx.strokeStyle=stroke
@@ -67,11 +75,11 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     for (let x=-halfWidth-halfHeight*2;x<halfWidth;x+=12) {
       ctx.moveTo(x,halfHeight);ctx.lineTo(x+halfHeight*2,-halfHeight)
     }
-    ctx.strokeStyle='#8196b755';ctx.stroke();ctx.restore()
+    ctx.strokeStyle='#adadb855';ctx.stroke();ctx.restore()
   }
   if (selected) {
     const radius=g.kind==='circle'?g.radius*scale:0
-    ctx.strokeStyle=dash===undefined?'#80b4d3':'#bdeaff'
+    ctx.strokeStyle='#f5f5f2'
     ctx.lineWidth=dash===undefined?1:2
     ctx.setLineDash(dash===undefined?[4,4]:[8,6])
     ctx.lineDashOffset=dash??0
@@ -100,15 +108,15 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
   const spacing=major*camera.scale
   if (display.grid) {
     // Minor divisions are subdued to keep the scale and scene geometry readable.
-    for (const [step,color] of [[spacing/4,'#172338'],[spacing,'#253651']] as const) {
+    for (const [step,color] of [[spacing/4,'#1b1b1f'],[spacing,'#29292e']] as const) {
       ctx.beginPath()
       for (let x=origin.x%step;x<width;x+=step) {ctx.moveTo(Math.floor(x)+.5,0);ctx.lineTo(Math.floor(x)+.5,height)}
       for (let y=origin.y%step;y<height;y+=step) {ctx.moveTo(0,Math.floor(y)+.5);ctx.lineTo(width,Math.floor(y)+.5)}
       ctx.strokeStyle=color;ctx.stroke()
     }
-    path(ctx,[{x:0,y:origin.y},{x:width,y:origin.y}],'#415a7c')
-    path(ctx,[{x:origin.x,y:0},{x:origin.x,y:height}],'#415a7c')
-    ctx.fillStyle='#7d94b2'
+    path(ctx,[{x:0,y:origin.y},{x:width,y:origin.y}],'#515159')
+    path(ctx,[{x:origin.x,y:0},{x:origin.x,y:height}],'#515159')
+    ctx.fillStyle='#a6a6a6'
     if (!diagram) {
       for(let x=origin.x%spacing;x<width;x+=spacing) {
         const i=Math.round((x-origin.x)/spacing)
@@ -127,28 +135,29 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     ctx.strokeStyle='#bc985f';ctx.setLineDash([5,4]);ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);ctx.setLineDash([])
   }
   const projectileBody=scene.bodies.find(b=>b.type==='dynamic')
-  if (scene.kind==='projectile' && display.reference && projectileBody) {
+  const referenceDuration=display.reference&&projectileBody&&!physics?.externalForceApplied&&!replay?.externalForceApplied
+    ?ballisticDuration(scene,projectileBody):undefined
+  if (projectileBody&&referenceDuration!==undefined&&referenceDuration>0) {
     const b=projectileBody
-    const ground=scene.bodies.find(body=>body.geometry.kind==='surface' && body.angle===0)
     const g=scene.environment.gravity
-    const landing=ground && ground.geometry.kind==='surface' && scene.environment.collisions
-      ? ground.position.y+ground.geometry.height/2+(b.geometry.kind==='circle'?b.geometry.radius:0) : 0
-    const duration=Math.min(12,flightTime(b.position.y-landing,b.velocity.y,g))
+    const duration=Math.min(12,referenceDuration)
     const pts=Array.from({length:61},(_,i)=>p(projectile(b.position,b.velocity,g,duration*i/60)))
     ctx.lineWidth=1.6
-    path(ctx,pts,'#74c3eea8',[4,6])
+    path(ctx,pts,'#a6bfff',[4,6])
     const apex=g>0?b.velocity.y/g:-1
     if (apex>0 && apex<duration) {
       const peak=p(projectile(b.position,b.velocity,g,apex))
-      ctx.beginPath();ctx.arc(peak.x,peak.y,4,0,2*Math.PI);ctx.fillStyle='#96dbff';ctx.fill()
+      ctx.beginPath();ctx.arc(peak.x,peak.y,4,0,2*Math.PI);ctx.fillStyle='#a6bfff';ctx.fill()
       ctx.fillText('最高点',peak.x+10,peak.y-10)
     }
-    const end=pts.at(-1)!
-    ctx.beginPath();ctx.arc(end.x,end.y,4,0,2*Math.PI);ctx.strokeStyle='#96dbff';ctx.stroke()
+    if(duration===referenceDuration) {
+      const end=pts.at(-1)!
+      ctx.beginPath();ctx.arc(end.x,end.y,4,0,2*Math.PI);ctx.strokeStyle='#a6bfff';ctx.stroke()
+    }
   }
   if(baseline?.length) {
     ctx.lineWidth=1.5
-    path(ctx,baseline.map(p),'#d4a7f0',[5,4])
+    path(ctx,baseline.map(p),'#d5b8f5',[5,4])
   }
   const tracks=replay?.tracks??physics?.samples
   if(display.trails&&tracks) {
@@ -156,7 +165,7 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       const end=replay?replay.index+1:samples.length
       const trail=samples.slice(Math.max(0,end-450),end).filter(s=>replay||s.time>=(options.trailSince??0))
       ctx.lineWidth=2
-      path(ctx,trail.map(p),id===selected?'#83d8ffba':'#99a9ff96')
+      path(ctx,trail.map(p),id===selected?'#a6bfff':'#a6bfff96')
     }
   }
   const configs=new Map(scene.bodies.map(b=>[b.id,b]))
@@ -183,7 +192,7 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       ctx.save()
       ctx.translate(a.x,a.y)
       ctx.rotate(Math.atan2(b.y-a.y,b.x-a.x))
-      ctx.strokeStyle='#bdeaff';ctx.lineWidth=2;ctx.setLineDash([8,6]);ctx.lineDashOffset=dash??0
+      ctx.strokeStyle='#f5f5f2';ctx.lineWidth=2;ctx.setLineDash([8,6]);ctx.lineDashOffset=dash??0
       ctx.strokeRect(-5,-12,len+10,24)
       ctx.restore()
     }
@@ -199,20 +208,20 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       const factor=scale*display.vectorScale*camera.scale
       arrow(ctx,at,{x:at.x+vector.x*factor,y:at.y-vector.y*factor},color,manyBodies&&b.id!==selected?'':label)
     }
-    if (display.velocity) drawVector(pose?{x:pose.vx,y:pose.vy}:live?.getLinearVelocity()??b.velocity,0.17,'#8de7ff','v')
-    if (display.acceleration) drawVector(pose?{x:pose.ax,y:pose.ay}:physics?.acceleration.get(b.id)??{x:0,y:-scene.environment.gravity},0.09,'#b7a6ff','a')
+    if (display.velocity) drawVector(pose?{x:pose.vx,y:pose.vy}:live?.getLinearVelocity()??b.velocity,0.17,'#a6bfff','v')
+    if (display.acceleration) drawVector(pose?{x:pose.ax,y:pose.ay}:physics?.acceleration.get(b.id)??{x:0,y:-scene.environment.gravity},0.09,'#f2c38b','a')
     if (display.forces && physics) for(const force of physics.forceVectors(b.id)) drawVector(force.vector,0.075,force.color,force.name)
     if (b.id===selected && !diagram) {
-      ctx.fillStyle='#d1e5fa';ctx.fillText(b.name,at.x+22,at.y+31)
+      ctx.fillStyle='#f5f5f2';ctx.fillText(b.name,at.x+22,at.y+31)
     }
   }
-  if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#91d9ff',[5,4])}
+  if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#d2d2d0',[5,4])}
   if (diagram) return
   const scaleLength = Math.min(major,1)*camera.scale
   const x=width-scaleLength-23, y=height-20
   ctx.lineWidth=1
-  path(ctx,[{x,y:y-4},{x,y},{x:x+scaleLength,y},{x:x+scaleLength,y:y-4}],'#8eabcb')
-  ctx.fillStyle='#afc4de';ctx.fillText(Math.min(1,major)+' m',x+5,y-8)
+  path(ctx,[{x,y:y-4},{x,y},{x:x+scaleLength,y},{x:x+scaleLength,y:y-4}],'#a6a6a6')
+  ctx.fillStyle='#d2d2d0';ctx.fillText(Math.min(1,major)+' m',x+5,y-8)
   const lc=worldPoint({x:0,y:0},camera,view)
   if (!Number.isFinite(lc.x)) throw new Error('视图坐标无效。')
 }

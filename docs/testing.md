@@ -1,6 +1,6 @@
 # Scientific and software verification
 
-Run `npm run test` for 26 numerical, unit, load, and repository tests. Run `npm run build` to type-check and bundle. Run `npm run test:e2e` after building for the browser acceptance suite. Set `PLAYWRIGHT_CHANNEL=msedge` to run the Chromium suite in an installed Microsoft Edge instead of a downloaded Playwright Chromium.
+Run `npm run test` for numerical, unit, load, and repository tests. Run `npm run build` to type-check and bundle. Run `npm run test:e2e` after building for the browser acceptance suite. Set `PLAYWRIGHT_CHANNEL=msedge` to run the Chromium suite in an installed Microsoft Edge instead of a downloaded Playwright Chromium.
 
 | Case | Expected result and tolerance |
 | --- | --- |
@@ -9,6 +9,10 @@ Run `npm run test` for 26 numerical, unit, load, and repository tests. Run `npm 
 | Mass–spring | 1 kg, 100 N/m, zero damping. Accept period error within 4% of 2π√(m/k). |
 | Collisions | Equal masses, one initially moving at 4 m/s. Compare total momentum to six decimal places and separation speed and kinetic energy to five for e = 1, 0.5 and 0. |
 | Friction | Accept up to 0.001 m/s drift in the friction-free contact case. With friction, test that a higher coefficient reduces sliding speed. |
+| Incline | For a block already sliding down a 0.36 rad incline, compare the first-second downhill velocity and displacement with the Coulomb sliding solution. Accept 0.08 m/s and 0.08 m errors at zero friction and at mixed friction 0.2. |
+| Momentum analysis | For a 2 kg and 3 kg inelastic collision, verify sampled system momentum is (8, −3.5) kg·m/s in both the X and Y directions and kinetic-energy loss is 9.6 J. Check the final replay sample and CSV output. |
+| Two-body orbit | For a 1 AU ellipse at eccentricity 0.43, bound the relative period and energy errors at 5×10⁻⁵, relative angular-momentum drift at 10⁻¹⁰, and relative equal-time area difference at 10⁻⁶. Verify the measured T²/a³ ratios and stop before radial contact. |
+| Curve tracks | Sample the default Bézier path against its track at 0.04 m tolerance. On a flat or shallow curved track, a falling sphere settles with its center within 0.05 m of its radius above the low point. A moving sphere crosses the curved chain while remaining above the surface. |
 | Stress workload | Step 10, 30, and 50 dynamic bodies for 360 steps in each case with contacts, four springs, and continuous sampling. Verify all per-body sample counts. |
 
 Other checks cover mixed-shape collisions, the collision switch, force tracking, fixed-step scheduling, pixel-to-meter conversion, scene validation, energy accounting, CSV headers, serialization, initial-condition restoration, and IndexedDB transaction behavior. Completion checks cover editable bounds, geometry recognition, spring extension, final velocity components, recorded replay poses, and upgrading a version 1 experiment library.

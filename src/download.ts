@@ -1,4 +1,4 @@
-export function downloadText(title: string, extension: 'csv' | 'json', type: string, content: string) {
+export function downloadText(title: string, extension: 'csv' | 'json' | 'obj', type: string, content: string) {
   const name = title.trim().replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '-').replace(/[. ]+$/g, '')
   const url = URL.createObjectURL(new Blob([content], {type}))
   const link = document.createElement('a')

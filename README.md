@@ -6,14 +6,14 @@ PhysicLab is a browser-based 2D mechanics laboratory. Construct a scene, change 
 
 ## Local development
 
-Use Node.js 22.12 or newer with npm. Run these commands from this directory.
+Use Node.js 24 with npm, matching the GitHub Pages build environment. Run these commands from this directory.
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open the local address printed by Vite. The overview is at `/`, the workspace at `/lab`, and the experiment library at `/experiments`.
+Open the local address printed by Vite. The overview is at `/`, the workspace at `/lab`, Geometry Studio at `/geometry`, and the experiment library at `/experiments`.
 
 ```sh
 npm run test
@@ -33,6 +33,7 @@ The build writes `dist/`. Install Playwright test browsers with `npx playwright 
 | [docs/PRD.md](docs/PRD.md) | Product scope and workflow |
 | [docs/user-guide.md](docs/user-guide.md) | Editing, playback, comparisons, and saving |
 | [docs/architecture.md](docs/architecture.md) | Technical design and architecture diagram |
+| [docs/studio-2.0-phase-0.md](docs/studio-2.0-phase-0.md) | Studio 2.0 project audit, data migration, and rollback plan |
 | [docs/physics-models.md](docs/physics-models.md) | Physical models, units, and assumptions |
 | [docs/testing.md](docs/testing.md) | Validation cases, tolerances, and commands |
 | [docs/deployment.md](docs/deployment.md) | Static hosting instructions |

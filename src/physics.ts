@@ -1,4 +1,4 @@
-import { Box, Circle, DistanceJoint, Polygon, Vec2, World, type Body } from 'planck'
+import { Box, Chain, Circle, DistanceJoint, Polygon, Vec2, World, type Body } from 'planck'
 import { area, decodeExperiment, DEFAULT_WORLD_BOUNDS, springFrequency, type Experiment, type Point } from './model'
 import { energies } from './analysis'
 import { REPLAY_SAMPLE_LIMIT, type RecordedSample, type Replay } from './replay'
@@ -14,6 +14,7 @@ export class Physics {
   private readonly lastVelocity = new Map<string,Point>()
   private ticks = 0
   private accumulator = 0
+  private appliedForceDuringRun = false
   readonly scene: Experiment
 
   constructor(scene: Experiment) {
@@ -29,8 +30,9 @@ export class Physics {
       const g = config.geometry
       const shape = g.kind==='circle' ? new Circle(g.radius)
         : g.kind==='polygon' ? new Polygon(g.vertices)
+        : g.kind==='track' ? new Chain(g.vertices,g.closed)
         : new Box(g.width/2,g.height/2)
-      b.createFixture(shape,{density:config.mass/area(g),friction:config.friction,restitution:config.restitution})
+      b.createFixture(shape,{density:g.kind==='track'?0:config.mass/area(g),friction:config.friction,restitution:config.restitution})
       this.bodies.set(config.id,b)
       if (config.type==='dynamic') {
         this.samples.set(config.id,[])
@@ -61,6 +63,7 @@ export class Physics {
   }
 
   get time() { return this.ticks*this.scene.environment.timeStep }
+  get externalForceApplied() { return this.appliedForceDuringRun }
   discardRemainder() { this.accumulator = 0 }
 
   advance(seconds: number, speed = this.scene.environment.speed) {
@@ -83,7 +86,10 @@ export class Physics {
 
   step() {
     const dt = this.scene.environment.timeStep
-    for (const [id,f] of this.applied) this.bodies.get(id)?.applyForceToCenter(f,true)
+    for (const [id,f] of this.applied) {
+      if(f.x!==0||f.y!==0)this.appliedForceDuringRun=true
+      this.bodies.get(id)?.applyForceToCenter(f,true)
+    }
     this.world.step(dt,8,3)
     this.ticks++
     for (const [id, previous] of this.lastVelocity) {
@@ -121,7 +127,7 @@ export class Physics {
       if(last)history.push(last)
       return [id,history]
     })
-    return {version:1,scene,tracks}
+    return this.externalForceApplied?{version:1,scene,tracks,externalForceApplied:true}:{version:1,scene,tracks}
   }
 
   private collectSamples() {
