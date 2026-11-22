@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { Box, Circle, Globe2, Hexagon, Layers3, SlidersHorizontal, Waves } from 'lucide-react'
-import { area, DEFAULT_WORLD_BOUNDS, type BodyConfig, type Experiment, type Spring } from './model'
+import { area, DEFAULT_WORLD_BOUNDS, GRAVITY_PRESETS, type BodyConfig, type Experiment, type Spring } from './model'
 import { setInitialExtension, springGeometry } from './springs'
 
 function NumberField({label,value,unit,onCommit,min,max,step='any'}:{
@@ -54,6 +54,10 @@ export function Inspector({scene,selected,select,change,force}:Props) {
         <div className="object-title"><span className="object-icon"><Globe2 size={19}/></span><div><strong>环境设置</strong><small>国际单位制 · Y 轴向上</small></div></div>
         <div className="prop-group">
           <h3>模拟设置</h3>
+          <div className="tabs gravity-presets" role="group" aria-label="重力预设">
+            {GRAVITY_PRESETS.map(p=><button key={p.name} type="button" title={p.note} aria-pressed={env.gravity===p.gravity}
+              className={env.gravity===p.gravity?'chosen':''} onClick={()=>world({gravity:p.gravity})}>{p.name} {p.gravity}</button>)}
+          </div>
           <NumberField label="重力加速度" unit="m/s²" min={0} max={100} value={env.gravity} onCommit={gravity=>world({gravity})}/>
           <NumberField label="模拟速度" unit="×" min={0.1} max={4} step={0.1} value={env.speed} onCommit={speed=>world({speed})}/>
           <label className="switch-row">启用场景边界<input type="checkbox" checked={env.boundaries} onChange={e=>world({boundaries:e.target.checked})}/></label>

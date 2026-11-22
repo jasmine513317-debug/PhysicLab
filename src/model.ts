@@ -40,6 +40,13 @@ export const springSchema = z.object({
   stiffness: z.number().min(0.01).max(100000), damping: z.number().min(0).max(5), restLength: positive,
 })
 export const DEFAULT_WORLD_BOUNDS={minX:-11.9,maxX:11.9,minY:-0.9,maxY:18.9}
+// Presets only fill in the gravity field; they are not a separate simulation mode.
+export const GRAVITY_PRESETS=[
+  {name:'地球',gravity:9.81,note:'地表附近的重力加速度'},
+  {name:'月球',gravity:1.62,note:'约为地球的六分之一'},
+  {name:'火星',gravity:3.71,note:'火星表面附近'},
+  {name:'失重',gravity:0,note:'不考虑重力，观察惯性运动'},
+] as const
 const worldBoundsSchema=z.object({minX:finite,maxX:finite,minY:finite,maxY:finite}).refine(
   b=>b.maxX-b.minX>=0.2&&b.maxY-b.minY>=0.2,'边界的最大值必须比最小值至少大 0.2 m。',
 )

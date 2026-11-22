@@ -115,7 +115,11 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
         return
       }
       if(e.key==='Delete')remove(selected)
-      if(e.key.toLowerCase()==='r'&&!e.repeat) {
+      // Space stays reserved for drag-to-pan in the viewport.
+      if(e.key.toLowerCase()==='p'&&!e.repeat){e.preventDefault();toggleRun();return}
+      if(e.key==='.'){e.preventDefault();step();return}
+      if(e.key.toLowerCase()==='r'&&e.shiftKey&&!e.repeat){e.preventDefault();reset();return}
+      if(e.key.toLowerCase()==='r'&&!e.shiftKey&&!e.repeat) {
         const b=current.current.bodies.find(body=>body.id===selected)
         if(b)change({bodies:current.current.bodies.map(body=>body.id===selected?{...body,angle:body.angle+Math.PI/12}:body)})
       }
@@ -199,9 +203,9 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
         {menu&&<div className="experiment-menu"><a href={appUrl('/lab?new=1')}><Plus size={15}/> 空白实验</a><a href={appUrl('/experiments')}><FolderOpen size={15}/> 打开实验库</a><button onClick={()=>{exportScene();setMenu(false)}}><Download size={15}/> 导出场景 JSON</button>{savedReplay&&<button disabled={isReplay} onClick={()=>openReplay(savedReplay)}><History size={15}/> 打开已保存的回放</button>}<div>实验模板</div>{templates.map(t=><a key={t.id} href={appUrl('/lab?template='+t.id)}>{t.title}</a>)}</div>}
       </div>
       <div className="run-buttons">
-        <button className="button primary run" disabled={isReplay} onClick={toggleRun}>{running?<Pause size={16} fill="currentColor"/>:<Play size={16} fill="currentColor"/>}{running?'暂停':'运行'}</button>
-        <button className="icon framed" aria-label="单步运行" title="单步运行（1/60 s）" disabled={isReplay} onClick={step}><StepForward size={18}/></button>
-        <button className="icon framed" aria-label="重置模拟" title="重置模拟" disabled={isReplay} onClick={()=>reset()}><RotateCcw size={16}/></button>
+        <button className="button primary run" disabled={isReplay} aria-keyshortcuts="P" onClick={toggleRun}>{running?<Pause size={16} fill="currentColor"/>:<Play size={16} fill="currentColor"/>}{running?'暂停':'运行'}</button>
+        <button className="icon framed" aria-label="单步运行" title="单步运行（1/60 s，快捷键 .）" aria-keyshortcuts="." disabled={isReplay} onClick={step}><StepForward size={18}/></button>
+        <button className="icon framed" aria-label="重置模拟" title="重置模拟（Shift+R）" aria-keyshortcuts="Shift+R" disabled={isReplay} onClick={()=>reset()}><RotateCcw size={16}/></button>
         <button className="icon framed" aria-label="历史回放" title="历史回放" disabled={!hasReplay||isReplay} onClick={()=>openReplay()}><History size={17}/></button>
         <label className="speed"><Gauge size={15}/><select aria-label="播放速度" disabled={isReplay} value={scene.environment.speed} onChange={e=>change({environment:{...scene.environment,speed:+e.target.value}})}>
           {Array.from(new Set([0.25,0.5,1,2,4,scene.environment.speed])).sort((a,b)=>a-b).map(v=><option key={v} value={v}>{v}×</option>)}
@@ -215,6 +219,8 @@ export function Lab({initial,initiallySaved}:{initial:Experiment;initiallySaved:
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
       <p>选择形状工具，在网格中拖动即可创建物体。在选择工具中，左键拖物体可移动，拖空白处可平移。右键点击或在触屏上长按目标，即可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除。滚动滚轮或使用缩放按钮调整视图。</p>
       <p>在两个物体上分别选择连接点，即可添加弹簧。绘制线段或依次点击多边形顶点，查看识别结果后确认，也可改选类型。</p>
+      <p>播放快捷键：<kbd>P</kbd> 运行或暂停，<kbd>.</kbd> 单步推进 1/60 s，<kbd>Shift</kbd>+<kbd>R</kbd> 重置模拟。焦点在输入框或按钮上时，快捷键不生效。空格仍用于按住拖动平移画布。</p>
+      <p>环境设置中的重力预设可一键切换到地球、月球、火星或失重，用于比较同一场景在不同重力下的运动。修改重力会回到初始状态重新模拟。</p>
       <p>接触摩擦由引擎近似计算。力矢量显示外力、重力和弹簧力，接触冲量不在其中。斜抛理论轨迹采用恒定重力、忽略空气阻力。</p>
     </section>}
     {error&&<div className="lab-message error-banner" role="alert">{error}<button className="icon" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={15}/></button></div>}
