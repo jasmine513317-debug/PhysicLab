@@ -3,6 +3,9 @@ import { ballisticDuration, projectile, type Sample } from './analysis'
 import { DEFAULT_WORLD_BOUNDS, type BodyConfig, type Camera, type Experiment, type Point } from './model'
 import type { Physics } from './physics'
 import type { RecordedSample } from './replay'
+import type { SurfaceSnap } from './surfaceSnap'
+import { resizeHandles } from './resizeBody'
+import { rotationGuide } from './rotationHandle'
 
 const palette = {
   mint:['#d2d2d0','#f5f5f2'], blue:['#899bbd','#b9c9ef'],
@@ -95,10 +98,11 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
 }
 
 export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera, scene:Experiment, display:Display, options:{
-  physics?:Physics; selected?:string; overlay?:Overlay; trailSince?:number; baseline?:Sample[]; diagram?:boolean; replay?:ReplayView; move?:Map<string,Point>; highlight?:string; dash?:number
+  physics?:Physics; selected?:string; overlay?:Overlay; trailSince?:number; baseline?:Sample[]; diagram?:boolean; replay?:ReplayView; move?:Map<string,Point>; snap?:SurfaceSnap; highlight?:string; dash?:number
+  editing?:string; edit?:{body:BodyConfig;scaleAnchor?:(anchor:Point)=>Point}; rotating?:boolean
 }={}) {
   const {width,height}=view
-  const {physics, selected, overlay, baseline, diagram, replay, move, highlight, dash}=options
+  const {physics, selected, overlay, baseline, diagram, replay, move, snap, highlight, dash, edit}=options
   const p=(v:Point)=>screenPoint(v,camera,view)
   ctx.clearRect(0,0,width,height)
   ctx.font=(diagram?'11':'10')+'px "JetBrains Mono Variable", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace'
@@ -173,8 +177,10 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     const config=configs.get(id)!
     const pose=replay?.tracks.get(id)?.[replay.index]
     const live=physics?.bodies.get(id)
-    const at=move?.get(id)??pose??live?.getPosition()??config.position
-    const offset=rotate(local,pose?.angle??live?.getAngle()??config.angle)
+    const snapped=snap?.bodyId===id?snap:undefined
+    const edited=edit?.body.id===id?edit:undefined
+    const at=snapped?.position??edited?.body.position??move?.get(id)??pose??live?.getPosition()??config.position
+    const offset=rotate(edited?.scaleAnchor?.(local)??local,edited?.body.angle??snapped?.angle??pose?.angle??live?.getAngle()??config.angle)
     return {x:at.x+offset.x,y:at.y+offset.y}
   }
   for (const j of scene.joints) {
@@ -201,8 +207,11 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
   for (const b of scene.bodies) {
     const live=physics?.bodies.get(b.id)
     const pose=replay?.tracks.get(b.id)?.[replay.index]
-    const at=p(move?.get(b.id)??pose??live?.getPosition()??b.position)
-    shape(ctx,b,at,pose?.angle??live?.getAngle()??b.angle,camera.scale,b.id===selected,manyBodies&&b.id!==selected,b.id===highlight?dash:undefined)
+    const snapped=snap?.bodyId===b.id?snap:undefined
+    const edited=edit?.body.id===b.id?edit.body:undefined
+    const at=p(snapped?.position??edited?.position??move?.get(b.id)??pose??live?.getPosition()??b.position)
+    const angle=edited?.angle??snapped?.angle??pose?.angle??live?.getAngle()??b.angle
+    shape(ctx,edited??b,at,angle,camera.scale,b.id===selected,manyBodies&&b.id!==selected,b.id===highlight?dash:undefined)
     if (b.type==='static') continue
     function drawVector(vector:Point, scale:number, color:string, label:string) {
       const factor=scale*display.vectorScale*camera.scale
@@ -215,7 +224,44 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       ctx.fillStyle='#f5f5f2';ctx.fillText(b.name,at.x+22,at.y+31)
     }
   }
-  if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#d2d2d0',[5,4])}
+  if (options.editing) {
+    const body=edit?.body??configs.get(options.editing)
+    if(body) {
+      const live=physics?.bodies.get(body.id)
+      const position=snap?.position??edit?.body.position??move?.get(body.id)??live?.getPosition()??body.position
+      const angle=edit?.body.angle??snap?.angle??live?.getAngle()??body.angle
+      const center=p(position)
+      ctx.save()
+      ctx.fillStyle='#cceaff';ctx.strokeStyle='#1f5471';ctx.lineWidth=1.5
+      for(const h of resizeHandles(body.geometry)) {
+        const offset=rotate(h.point,angle)
+        const x=center.x+offset.x*camera.scale-3.5,y=center.y-offset.y*camera.scale-3.5
+        ctx.fillRect(x,y,7,7);ctx.strokeRect(x,y,7,7)
+      }
+      const guide=rotationGuide({...body,position,angle},camera.scale)
+      drawRotationGrip(ctx,p(guide.edge),p(guide.handle),options.rotating?angle:undefined)
+      ctx.restore()
+    }
+  }
+  if (snap) {
+    const [a,b]=snap.contact.map(p)
+    ctx.save()
+    ctx.strokeStyle='#96f2d3'
+    ctx.fillStyle='#96f2d3'
+    ctx.lineWidth=3
+    ctx.lineCap='round'
+    ctx.beginPath()
+    if (Math.hypot(a.x-b.x,a.y-b.y)<4) {
+      ctx.arc(a.x,a.y,3,0,Math.PI*2)
+      ctx.fill()
+    } else {
+      ctx.moveTo(a.x,a.y)
+      ctx.lineTo(b.x,b.y)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+  if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#91d9ff',[5,4])}
   if (diagram) return
   const scaleLength = Math.min(major,1)*camera.scale
   const x=width-scaleLength-23, y=height-20
@@ -224,4 +270,22 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
   ctx.fillStyle='#d2d2d0';ctx.fillText(Math.min(1,major)+' m',x+5,y-8)
   const lc=worldPoint({x:0,y:0},camera,view)
   if (!Number.isFinite(lc.x)) throw new Error('视图坐标无效。')
+}
+
+function drawRotationGrip(ctx:CanvasRenderingContext2D,edge:Point,grip:Point,angle?:number) {
+  const active=angle!==undefined
+  ctx.lineWidth=1.5
+  path(ctx,[edge,grip],active?'#ffd796':'#87c5e9')
+  ctx.beginPath();ctx.arc(grip.x,grip.y,10,0,2*Math.PI)
+  ctx.fillStyle=active?'#ffd796':'#183651';ctx.fill()
+  ctx.strokeStyle=active?'#714f26':'#a6dbf8';ctx.stroke()
+  ctx.beginPath();ctx.arc(grip.x,grip.y,4.3,-1.1,3.95);ctx.stroke()
+  const x=grip.x+4.3*Math.cos(3.95),y=grip.y+4.3*Math.sin(3.95)
+  path(ctx,[{x:x-2,y:y+1},{x,y},{x:x+2.8,y:y+.5}],ctx.strokeStyle)
+  if(active) {
+    const label=(Math.round(angle*180/Math.PI)||0)+'°'
+    ctx.fillStyle='#101b2e'
+    ctx.fillRect(grip.x+13,grip.y-9,ctx.measureText(label).width+8,18)
+    ctx.fillStyle='#ffd796';ctx.fillText(label,grip.x+17,grip.y+3)
+  }
 }

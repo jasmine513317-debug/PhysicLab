@@ -66,16 +66,19 @@ export class Physics {
   get externalForceApplied() { return this.appliedForceDuringRun }
   discardRemainder() { this.accumulator = 0 }
 
-  advance(seconds: number, speed = this.scene.environment.speed) {
+  advance(seconds: number, speed = this.scene.environment.speed, stopTick = Infinity) {
     const dt = this.scene.environment.timeStep
     this.accumulator += Math.min(0.15,Math.max(0,seconds))*speed
     let steps = 0
-    while (this.accumulator+1e-10 >= dt && steps < 8) {
+    while (this.accumulator+1e-10 >= dt && steps < 8 && this.ticks < stopTick) {
       this.step()
       this.accumulator -= dt
       steps++
     }
-    if (steps===8) this.accumulator %= dt
+    if (this.ticks === stopTick) {
+      this.discardRemainder()
+      if (steps > 0 && this.ticks % SAMPLE_EVERY !== 0) this.record()
+    } else if (steps===8) this.accumulator %= dt
     return steps
   }
 

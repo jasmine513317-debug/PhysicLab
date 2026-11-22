@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { Circle, Crosshair, Grid2X2, LocateFixed, Minus, MousePointer2, Plus, Spline, Square, Trash2, Triangle, X, Zap, MoveUpRight, PenLine, Waves, ChevronsUpDown, Orbit } from 'lucide-react'
+import { flushSync } from 'react-dom'
+import { Circle, Crosshair, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, Plus, Spline, Square, Trash2, Triangle, X, Zap, MoveUpRight, PenLine, Waves, ChevronsUpDown, Orbit } from 'lucide-react'
 import { rotate, screenPoint, worldPoint, zoomAt } from './coordinates'
 import { body, type BodyConfig, type Camera, type Experiment, type Point, type Spring } from './model'
 import { defaultDisplay, drawScene, type Display, type Overlay, type ReplayView } from './render'
@@ -7,6 +8,9 @@ import type { Sample } from './analysis'
 import type { Physics } from './physics'
 import { classifyDrawing, drawingLabels, type DrawingKind } from './drawing'
 import { segmentDistance } from './track'
+import { findSurfaceSnap, type SurfaceSnap } from './surfaceSnap'
+import { resizeBody, resizeCursor, resizeHandleAt } from './resizeBody'
+import { pointerBearing, rotationGuide, turnBetween } from './rotationHandle'
 
 const displayLabels = {velocity:'速度矢量',acceleration:'加速度矢量',forces:'力矢量',trails:'运动轨迹',reference:'理论轨迹'} as const
 
@@ -24,7 +28,8 @@ export function Tools({tool,setTool,display,toggle,locked=false}:{locked?:boolea
   </aside>
 }
 
-type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan';positions:Map<string,Point>;moved?:boolean}
+type ResizeHandle = NonNullable<ReturnType<typeof resizeHandleAt>>
+type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan'|'resize'|'rotate';positions:Map<string,Point>;moved?:boolean;body?:BodyConfig;snap?:SurfaceSnap;handle?:ResizeHandle;rotation?:{angle:number;bearing:number}}
 type Target = {id:string;name:string;at:Point;body?:BodyConfig;joint?:Spring}
 type TargetMenu = {target:Target;pixel:Point}
 const interaction: Record<Tool,string> = {
@@ -64,6 +69,7 @@ interface ViewportProps {
   physics:Physics
   resetCamera:()=>void
   tool:Tool
+  setTool:(tool:Tool)=>void
   selected:string
   running:boolean
   pause:()=>void
@@ -73,7 +79,7 @@ interface ViewportProps {
   baseline?:Sample[]
   replay?:ReplayView
   select:(id:string)=>void
-  change:(changes:Partial<Experiment>)=>boolean
+  change:(changes:Partial<Experiment>,freePlacement?:boolean)=>boolean
   remove:(id:string)=>void
   report:(message:string)=>void
 }
@@ -87,6 +93,11 @@ export function Viewport(props:ViewportProps) {
   const hold=useRef<ReturnType<typeof setTimeout>|null>(null)
   const menuRef=useRef<HTMLDivElement>(null)
   const [targetMenu,setTargetMenu]=useState<TargetMenu|null>(null)
+  const [snapLabel,setSnapLabel]=useState<string>()
+  const [editingId,setEditingId]=useState('')
+  const editing=tool==='select' && selected===editingId && !props.running && !props.replay ? editingId : ''
+  const [cursor,setCursor]=useState('')
+  const lastTap=useRef<{id:string;pixel:Point;time:number;single?:()=>void;timer?:ReturnType<typeof setTimeout>}|null>(null)
   const [position,setPosition]=useState<Point>({x:0,y:0})
   const [anchor,setAnchor]=useState<{id:string; local:Point; world:Point}|null>(null)
   const [draft,setDraft]=useState<Point[]>([])
@@ -94,12 +105,32 @@ export function Viewport(props:ViewportProps) {
   const suggestion=classifyDrawing(draft)
   const isReplay=Boolean(props.replay)
   const [displayMenu,setDisplayMenu]=useState(false)
-  const stageState=useRef({anchor,draft,position,closed,targetMenu})
-  stageState.current={anchor,draft,position,closed,targetMenu}
+  const stageState=useRef({anchor,draft,position,closed,targetMenu,editing})
+  stageState.current={anchor,draft,position,closed,targetMenu,editing}
+  useEffect(()=>{
+    if(!editing)setEditingId('')
+    setCursor('')
+  },[editing])
   useEffect(()=>{
     cancelDrag()
     setAnchor(null);setDraft([]);setClosed(false);setTargetMenu(null)
+    return clearTap
   },[tool,physics,isReplay])
+  useEffect(()=>{
+    if(props.running) {clearTap();cancelDrag();setEditingId('')}
+  },[props.running])
+  useEffect(()=>{
+    function flushPlacement(e:PointerEvent) {
+      const tap=lastTap.current
+      if(!tap?.single)return
+      const rect=canvas.current!.getBoundingClientRect()
+      if(e.target===canvas.current && e.button===0 && Math.hypot(e.clientX-rect.left-tap.pixel.x,e.clientY-rect.top-tap.pixel.y)<12)return
+      clearTap()
+      flushSync(tap.single)
+    }
+    window.addEventListener('pointerdown',flushPlacement,true)
+    return ()=>window.removeEventListener('pointerdown',flushPlacement,true)
+  },[])
   useEffect(()=>{
     if(!targetMenu)return
     const dismiss=(e:PointerEvent)=>{
@@ -139,6 +170,7 @@ export function Viewport(props:ViewportProps) {
       let overlay:Overlay|undefined=draft.length?{points:closed?[...draft,draft[0]]:draft}:undefined
       if(anchor) overlay={points:[anchor.world,position],color:'#e8b779'}
       const move=d?.type==='select'&&d.moved?draggedPositions(d,d.now):undefined
+      const edit=d?.body&&d.moved?transformBody(d,d.now):undefined
       if(d && d.type!=='pan' && d.type!=='select') {
         const a=d.from,b=d.now
         if(d.type==='rectangle') overlay={points:[a,{x:b.x,y:a.y},b,{x:a.x,y:b.y},a]}
@@ -150,7 +182,7 @@ export function Viewport(props:ViewportProps) {
       }
       try {
         ctx!.setTransform(dpr,0,0,dpr,0,0)
-        drawScene(ctx!,view,camera,scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,highlight,dash:animate?-(now*.034)%14:0})
+        drawScene(ctx!,view,camera,scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0})
       } catch {
         if(!failed) latest.current.report('无法绘制当前场景。请重置视图或重新加载实验。')
         failed=true
@@ -168,10 +200,17 @@ export function Viewport(props:ViewportProps) {
     const down=(e:KeyboardEvent)=>{
       if(e.target instanceof HTMLElement && e.target.closest('input, textarea, select, button, [contenteditable]')) return
       if(e.code==='Space') {space.current=true;e.preventDefault()}
-      if(e.key==='Escape') {cancelDrag();setDraft([]);setAnchor(null);setClosed(false);setTargetMenu(null)}
+      if(e.key==='Escape') {cancelDrag();clearTap();setEditingId('');setDraft([]);setAnchor(null);setClosed(false);setTargetMenu(null)}
+      if(e.key==='Alt'&&drag.current?.moved&&drag.current.body) {
+        e.preventDefault()
+        updateSnap(drag.current.now,true)
+      }
     }
-    const up=(e:KeyboardEvent)=>{if(e.code==='Space')space.current=false}
-    const blur=()=>{space.current=false}
+    const up=(e:KeyboardEvent)=>{
+      if(e.code==='Space')space.current=false
+      if(e.key==='Alt'&&drag.current?.moved&&drag.current.body)updateSnap(drag.current.now,e.altKey)
+    }
+    const blur=()=>{space.current=false;cancelDrag()}
     el.addEventListener('wheel',wheel,{passive:false})
     window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',blur)
     return ()=>{
@@ -189,7 +228,61 @@ export function Viewport(props:ViewportProps) {
   }
   function cancelDrag() {
     drag.current=null
+    setSnapLabel(undefined)
     cancelHold()
+  }
+  function clearTap() {
+    if(lastTap.current?.timer!==undefined)clearTimeout(lastTap.current.timer)
+    lastTap.current=null
+  }
+  function editBody(id:string) {
+    if(props.running)props.pause()
+    props.setTool('select')
+    select(id)
+    setEditingId(id)
+    setTargetMenu(null)
+  }
+  function tapBody(id:string,pixel:Point,single?:()=>void) {
+    const previous=lastTap.current
+    const now=performance.now()
+    if(previous?.id===id && now-previous.time<400 && Math.hypot(pixel.x-previous.pixel.x,pixel.y-previous.pixel.y)<12) {
+      clearTap()
+      editBody(id)
+      return
+    }
+    clearTap()
+    // Defer a placement on an existing body until we know whether this is a double tap.
+    const timer=single?setTimeout(()=>{lastTap.current=null;single()},400):undefined
+    lastTap.current={id,pixel,time:now,timer,single}
+  }
+  function editingBody() {
+    const b=editing && scene.bodies.find(body=>body.id===editing)
+    if(!b)return
+    const live=physics.bodies.get(b.id)
+    return live?{...b,position:{...live.getPosition()},angle:live.getAngle()}:b
+  }
+  function hitsRotation(body:BodyConfig,point:Point,tolerance:number) {
+    const {handle}=rotationGuide(body,camera.scale)
+    return Math.hypot(point.x-handle.x,point.y-handle.y)*camera.scale<=tolerance
+  }
+  function snapAt(d:Drag, point:Point, bypass:boolean) {
+    const {scene,camera}=latest.current
+    if(bypass||!d.body)return
+    const edit=transformBody(d,point)
+    if(edit) {
+      return findSurfaceSnap(edit.body,edit.body.position,scene.bodies,camera.scale,{overlapOnly:true,keepAngle:true,previousPosition:d.body.position})
+    }
+    if(d.type!=='select')return
+    const start=d.positions.get(d.body.id)
+    if(start)return findSurfaceSnap(d.body,translatedPosition(d,point,start),scene.bodies,camera.scale,
+      {previousPosition:start,overlapOnly:scene.kind!=='custom'})
+  }
+  function updateSnap(point:Point,bypass:boolean) {
+    const d=drag.current
+    if(!d?.body||!d.moved)return
+    const snap=snapAt(d,point,bypass)
+    drag.current={...d,snap}
+    setSnapLabel(snap?snap.surfaceName+(snap.side==='above'?'上表面':'下表面'):undefined)
   }
   function targetById(id:string):Target|undefined {
     const config=scene.bodies.find(b=>b.id===id)
@@ -248,13 +341,31 @@ export function Viewport(props:ViewportProps) {
     const {pixel,world}=points(e)
     const forcedPan=e.button===1||space.current||isReplay
     const type=forcedPan?'pan':tool
+    const edited=type==='select'?editingBody():undefined
+    if(edited&&hitsRotation(edited,world,e.pointerType==='touch'?16:11)) {
+      clearTap()
+      drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'rotate',positions:new Map(),body:edited,
+        rotation:{angle:edited.angle,bearing:pointerBearing(edited.position,world)}}
+      setCursor('grabbing')
+      e.currentTarget.setPointerCapture(e.pointerId)
+      return
+    }
+    const handle=edited&&resizeHandleAt(edited,world,(e.pointerType==='touch'?13:7)/camera.scale)
+    if(edited&&handle) {
+      clearTap()
+      drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'resize',positions:new Map(),body:edited,handle}
+      setCursor(resizeCursor(handle,edited.angle))
+      e.currentTarget.setPointerCapture(e.pointerId)
+      return
+    }
     if(props.running&&type!=='select'&&type!=='pan') {report('请先暂停模拟，再编辑场景。');return}
     if(type==='spring') {
       const hit=hitTarget(world,true)?.body
       if(hit)attachSpring(hit,world)
       return
     }
-    const target=type==='select'?hitTarget(world):undefined
+    const insideEdited=edited&&contains(edited,world,edited.position,edited.angle,0)
+    const target=type==='select'?(insideEdited?targetById(edited!.id):hitTarget(world)):undefined
     if(type==='select')select(target?.id??'')
     const positions=new Map<string,Point>()
     if(target) {
@@ -265,7 +376,8 @@ export function Viewport(props:ViewportProps) {
       }
     }
     drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,
-      type:type==='select'&&!target?'pan':type,positions}
+      type:type==='select'&&!target?'pan':type,positions,
+      body:target?.body?{...target.body,angle:physics.bodies.get(target.id)?.getAngle()??target.body.angle}:undefined}
     e.currentTarget.setPointerCapture(e.pointerId)
     if(target&&e.pointerType==='touch') hold.current=setTimeout(()=>{
       drag.current=null
@@ -277,17 +389,25 @@ export function Viewport(props:ViewportProps) {
     const {pixel,world}=points(e)
     setPosition(world)
     const d=drag.current
+    if(!d && editing) {
+      const body=editingBody()
+      const handle=body&&resizeHandleAt(body,world,7/camera.scale)
+      setCursor(body&&hitsRotation(body,world,11)?'grab':handle&&body?resizeCursor(handle,body.angle):'')
+    }
     if(!d||d.pointer!==e.pointerId)return
     d.now=world
     if(Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5&&!d.moved) {
       d.moved=true
       cancelHold()
+      clearTap()
       if(d.type==='select'&&props.running)props.pause()
     }
+    if(d.rotation&&d.body&&d.moved)d.rotation=rotationAt(d.body,d.rotation,world,d.camera.scale)
     if(d.type==='pan'&&d.moved) setCamera({...d.camera,x:d.camera.x-(pixel.x-d.pixel.x)/d.camera.scale,y:d.camera.y+(pixel.y-d.pixel.y)/d.camera.scale})
+    if(d.type==='select'||d.type==='resize'||d.type==='rotate')updateSnap(world,e.altKey)
   }
-  function add(config:BodyConfig) {
-    if(!change({bodies:[...scene.bodies,config]}))return false
+  function add(config:BodyConfig,freePlacement=false) {
+    if(!change({bodies:[...scene.bodies,config]},freePlacement))return false
     select(config.id)
     return true
   }
@@ -304,28 +424,53 @@ export function Viewport(props:ViewportProps) {
     }
     const {pixel,world:b}=points(e),a=d.from
     const moved=Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5
-    if(d.type==='select') {
+    if(d.type==='resize'||d.type==='rotate') {
+      if(!moved)return
+      const edit=transformBody(d,b)
+      if(!edit)return
+      const snap=snapAt(d,b,e.altKey)
+      const body={...edit.body,position:snap?.position??edit.body.position}
+      const bodies=scene.bodies.map(original=>original.id===body.id?body:original)
+      const scaleAnchor=edit.scaleAnchor
+      if(scaleAnchor) {
+        const joints=scene.joints.map(j=>{
+          if(j.a===body.id)return {...j,anchorA:scaleAnchor(j.anchorA)}
+          if(j.b===body.id)return {...j,anchorB:scaleAnchor(j.anchorB)}
+          return j
+        })
+        change({bodies,joints},e.altKey)
+      } else change({bodies},e.altKey)
+      setCursor('')
+    } else if(d.type==='select') {
       if(moved) {
         const positions=draggedPositions(d,b)
+        const snap=snapAt(d,b,e.altKey)
         change({bodies:scene.bodies.map(body=>{
+          if(snap?.bodyId===body.id)return {...body,position:snap.position,angle:snap.angle}
           const position=positions.get(body.id)
-          return position?{...body,position}:body
-        })})
-      }
+          return position?{...body,position,angle:d.body?.id===body.id?d.body.angle:body.angle}:body
+        })},e.altKey)
+      } else if(d.body)tapBody(d.body.id,pixel)
+      else clearTap()
     } else if(d.type==='circle') {
-      add(body('圆形',{kind:'circle',radius:moved?Math.max(0.08,Math.hypot(b.x-a.x,b.y-a.y)):0.3},a.x,a.y))
+      place(body('圆形',{kind:'circle',radius:moved?Math.max(0.08,Math.hypot(b.x-a.x,b.y-a.y)):0.3},a.x,a.y))
     } else if(d.type==='rectangle') {
-      add(body('矩形',{kind:'rectangle',width:moved?Math.max(0.1,Math.abs(b.x-a.x)):0.8,height:moved?Math.max(0.1,Math.abs(b.y-a.y)):0.6},
+      place(body('矩形',{kind:'rectangle',width:moved?Math.max(0.1,Math.abs(b.x-a.x)):0.8,height:moved?Math.max(0.1,Math.abs(b.y-a.y)):0.6},
         moved?(a.x+b.x)/2:a.x,moved?(a.y+b.y)/2:a.y,{color:'blue'}))
     } else if(d.type==='ground'||d.type==='ramp') {
       const end=moved?b:{x:a.x+3,y:a.y+(d.type==='ramp'?-1.2:0)}
       const result=segment(a,end,d.type==='ground')
-      add({...result,name:d.type==='ramp'?'斜面':'地面'})
+      place({...result,name:d.type==='ramp'?'斜面':'地面'})
     } else if(d.type==='draw') {
       if(moved) {setDraft([a,b]);setClosed(false);return}
       if(closed)return
       if(draft.length>=3&&Math.hypot(a.x-draft[0].x,a.y-draft[0].y)*camera.scale<12) {setClosed(true);return}
       setDraft([...draft,a].slice(0,8))
+    }
+    function place(config:BodyConfig) {
+      const target=!moved&&hitTarget(b,true)
+      if(target)tapBody(target.id,pixel,()=>add(config,e.altKey))
+      else {clearTap();add(config,e.altKey)}
     }
   }
   function confirmDrawing(kind:DrawingKind) {
@@ -346,10 +491,15 @@ export function Viewport(props:ViewportProps) {
     setCamera(zoomAt(camera,view,{x:view.width/2,y:view.height/2},factor))
   }
   return <section className="viewport" aria-label="模拟视图">
-    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':tool}
+    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':tool} style={editing&&cursor?{cursor}:undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={cancelDrag}
       onLostPointerCapture={e=>{if(drag.current?.pointer===e.pointerId)cancelDrag()}}
       onContextMenu={onContext} onKeyDown={e=>{
+        if(e.key==='Enter'&&tool==='select'&&!isReplay&&targetById(selected)?.body) {
+          e.preventDefault()
+          editBody(selected)
+          return
+        }
         if((e.key!=='ContextMenu'&&!(e.shiftKey&&e.key==='F10'))||tool!=='select'||isReplay)return
         const target=targetById(selected)
         if(!target)return
@@ -396,13 +546,33 @@ export function Viewport(props:ViewportProps) {
         </div>
       </>}
     </div>}
-    {!isReplay&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">拖物体移动 <i/> 拖空白平移 <i/> 右键或长按操作</span>}
+    {!isReplay&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">{editing?'拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转':'拖物体移动 · 双击编辑 · 拖空白平移'}</span>}
+    {snapLabel&&<div className="snap-hint" role="status"><Magnet size={14}/> 松手贴合 {snapLabel}</div>}
     {scene.bodies.length===0&&tool==='select'&&<div className="canvas-empty"><Orbit size={25}/><strong>当前场景为空</strong><span>在工具栏中选择一种物体，开始搭建场景。</span></div>}
   </section>
 }
 
+function rotationAt(body:BodyConfig,rotation:{angle:number;bearing:number},point:Point,scale:number) {
+  if(Math.hypot(point.x-body.position.x,point.y-body.position.y)*scale<8)return rotation
+  const bearing=pointerBearing(body.position,point)
+  return {angle:rotation.angle+turnBetween(rotation.bearing,bearing),bearing}
+}
+
+function transformBody(drag:Drag,point:Point):{body:BodyConfig;scaleAnchor?:(anchor:Point)=>Point}|undefined {
+  const {body,handle,rotation}=drag
+  if(!body)return
+  if(handle)return resizeBody(body,handle,drag.from,point)
+  if(rotation) {
+    const angle=rotationAt(body,rotation,point,drag.camera.scale).angle
+    return {body:{...body,angle:Math.abs(angle)>10000?angle%(2*Math.PI):angle}}
+  }
+}
+
+function translatedPosition(drag:Drag,point:Point,start:Point) {
+  return {x:start.x+point.x-drag.from.x,y:start.y+point.y-drag.from.y}
+}
 function draggedPositions(drag:Drag,point:Point) {
-  return new Map([...drag.positions].map(([id,p])=>[id,{x:p.x+point.x-drag.from.x,y:p.y+point.y-drag.from.y}]))
+  return new Map([...drag.positions].map(([id,p])=>[id,translatedPosition(drag,point,p)]))
 }
 
 export function SceneDiagram({scene,scale=1}:{scene:Experiment;scale?:number}) {

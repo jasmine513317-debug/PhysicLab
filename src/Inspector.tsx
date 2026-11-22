@@ -132,7 +132,7 @@ export function Inspector({scene,selected,select,change,force}:Props) {
         {!b&&!j&&<p className="muted empty-inspector">选择物体或弹簧以编辑它的物理参数。</p>}
       </>}
       <div className="prop-group notes"><h3>实验笔记</h3>
-        <textarea key={scene.id} aria-label="实验笔记" defaultValue={scene.notes} maxLength={10000} placeholder="记录你的假设或观察结果…" onBlur={e=>{if(e.target.value!==scene.notes)change({notes:e.target.value})}}/>
+        <textarea key={scene.id+':'+scene.notes} aria-label="实验笔记" defaultValue={scene.notes} maxLength={10000} placeholder="记录你的假设或观察结果…" onBlur={e=>{if(e.target.value!==scene.notes)change({notes:e.target.value})}}/>
       </div>
     </div>
   </aside>

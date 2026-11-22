@@ -1,0 +1,29 @@
+.timed-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+.timed-controls input {
+  width: 76px;
+  height: 30px;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #101b2e;
+  color: var(--text);
+  font: 12px var(--mono);
+}
+.timed-controls small { color: var(--dim); }
+.run-buttons .timer-toggle[aria-expanded=true] { color: var(--accent); border-color: var(--accent); }
+@media (max-width: 420px) {
+  .run-buttons { gap: 4px; }
+  .run-buttons .timer-toggle { padding: 0 6px; }
+  .run-buttons .speed { padding-left: 4px; }
+}

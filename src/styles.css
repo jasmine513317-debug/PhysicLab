@@ -181,6 +181,7 @@ small,.muted {color:var(--dim)}
 .target-menu button {display:flex;align-items:center;gap:7px;min-height:36px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:var(--warning);font-size:12px;font-weight:650;white-space:nowrap}
 .target-menu button:hover,.target-menu button:focus-visible {background:var(--warning-panel);color:var(--text)}
 .target-menu button:focus-visible {outline-color:var(--warning);outline-offset:-1px}
+.snap-hint {position:absolute;left:50%;bottom:58px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid #4b9a8c;border-radius:6px;background:#163632;color:#baf4df;white-space:nowrap;pointer-events:none;font-size:12px}
 .viewport-footer {bottom:12px;right:88px}
 .view-tag,.coordinates,.zoom {background:var(--raised);display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;color:var(--text);font:10px var(--mono);padding:7px 8px;gap:6px;white-space:nowrap}
 .view-tag {letter-spacing:.08em}
@@ -286,6 +287,11 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
 .baseline-label {display:flex;gap:6px;align-items:center;color:var(--comparison);margin-bottom:5px}
 .baseline-label>.text-button {margin-left:auto}
 .lavender {background:var(--comparison)}
+.aligned-comparison {margin:6px 0 10px;padding:9px 12px;background:#18273a;border-left:2px solid #9bdafa;border-radius:4px}
+.aligned-values {display:flex;flex-wrap:wrap;gap:6px 20px;margin:5px 0}
+.aligned-values span,.aligned-comparison small {color:#b4c5d9}
+.aligned-values b {color:#e2edfa;font-variant-numeric:tabular-nums}
+.parameter-differences ul {padding-left:18px;margin:3px 0}
 .mobile-inspector {display:none}
 .error-banner {background:var(--warning-panel);color:var(--warning);border:1px solid var(--warning-line);border-radius:7px;padding:8px 11px;overflow-wrap:anywhere}
 .lab-message {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 10px;font-size:12px}
@@ -379,6 +385,15 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
   .site-header nav {gap:2px}
   .site-header nav a {padding:0 3px}
   .analysis-actions .button span {display:none}
+}
+@media (min-width:721px) and (max-width:900px) {
+  .lab-top {height:auto;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:42px 40px;gap:2px 8px;padding:4px 12px}
+  .lab-actions {grid-column:2;grid-row:1}
+  .run-buttons {grid-column:1/-1;grid-row:2;justify-content:center}
+}
+@media (max-width:360px) {
+  .run-buttons .run {min-width:65px;padding:0 6px}
+  .run-buttons .speed svg {display:none}
 }
 @media (prefers-reduced-motion:no-preference) {
   .button,.icon,.template-card,.hero-diagram {transition:background-color .14s,border-color .14s,color .14s}

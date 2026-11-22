@@ -1,9 +1,11 @@
+import { MeasurementChart } from './MeasurementChart'
 import { useRef, useState } from 'react'
 import { Activity, ChevronsDown, ChevronsUp, Download, GitCompareArrows, Pin } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ballisticReference, metrics, momentumCsv, momentumSamples, springPeriodReference, toCsv, type Sample } from './analysis'
 import type { BodyConfig, Experiment } from './model'
 import { downloadText } from './download'
+import { RunComparison } from './RunComparison'
 
 const groups = {
   Position:[['x','X 坐标','var(--soft)'],['y','Y 坐标','var(--trajectory)','5 3']],
@@ -106,12 +108,13 @@ export function AnalysisPanel({scene,results,selected,select,baseline,setBaselin
       {tab==='Compare'?<div className="comparison">
         {baseline&&<div className="baseline-label"><span className="dot lavender"/>{baseline.scene.title} · {baseline.body.name}<button className="text-button" onClick={()=>setBaseline(undefined)}>清除基准</button></div>}
         {externalForceApplied&&(scene.kind==='fall'||scene.kind==='projectile')&&<p className="muted">本次运行施加过外力，重力解析参考已停用。</p>}
+        {baseline&&body&&<RunComparison scene={scene} samples={samples} bodyName={body.name} baseline={baseline}/>}
         {!baseline&&!hasReference&&<p className="muted">{replay?'退出回放后可设置基准。':'记录一次运行并设为基准，就可以比较不同参数下的结果。基准轨迹会显示在画布上。'}</p>}
         {springPeriod!==undefined&&<p className="muted">理论周期适用于无接触的一维欠阻尼振动。</p>}
         {(baseline||hasReference)&&<table><thead><tr><th>指标</th><th>本次运行</th>{baseline&&<th>基准</th>}{hasReference&&<th>理论参考值</th>}</tr></thead>
           <tbody>{comparisonKeys.map(key=><tr key={key}><th>{metricLabels[key]}</th><td>{comparison[key]??'—'}</td>{baseline&&<td>{previous[key]??'—'}</td>}{hasReference&&<td>{reference[key]??'—'}</td>}</tr>)}</tbody>
         </table>}
-      </div>:<>
+      </div>:tab!=='Momentum'?<MeasurementChart key={tab+'-'+(body?.id??'empty')} group={tab} title={tabLabels[tab]} samples={samples} hasBody={Boolean(body)} hidden={hidden} toggleSeries={key=>setHidden(old=>old.includes(key)?old.filter(k=>k!==key):[...old,key])}/>:<>
         <div className="chart-wrap" aria-label={tabLabels[tab]+'随模拟时间变化'}>
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={110}>
             <LineChart data={points} margin={{left:0,right:16,top:8,bottom:2}}>
@@ -131,7 +134,6 @@ export function AnalysisPanel({scene,results,selected,select,baseline,setBaselin
           <div><dt>Δ动能</dt><dd>{(lastMomentum.kinetic-firstMomentum.kinetic).toFixed(3)} J</dd></div>
         </dl>}
         <div className="series">{series.map(([key,label,color,dash])=><button key={key} className={hidden.includes(key)?'series-hidden':''} aria-pressed={!hidden.includes(key)} onClick={()=>setHidden(hidden.includes(key)?hidden.filter(k=>k!==key):[...hidden,key])}><span className="series-line" style={{borderTopColor:color,borderTopStyle:dash?.startsWith('2')?'dotted':dash?'dashed':'solid'}}/>{label}</button>)}
-          {tab==='Energy'&&<small>按物体统计并计入分摊的弹性势能。摩擦、阻尼和外力做功会改变机械能。</small>}
         </div>
       </>}
     </>}
