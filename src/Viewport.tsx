@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { flushSync } from 'react-dom'
-import { ChevronsUpDown, Crosshair, Eraser, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, MoveUpRight, Orbit, PenLine, Plus, Spline, Trash2, Waves, Zap } from 'lucide-react'
+import { Check, ChevronsUpDown, Crosshair, Eraser, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, MoveUpRight, Orbit, PenLine, Plus, Spline, Trash2, Waves, Zap } from 'lucide-react'
 import { rotate, screenPoint, worldPoint, zoomAt } from './coordinates'
 import { type BodyConfig, type Camera, type Experiment, type Point, type Spring } from './model'
 import { defaultDisplay, drawScene, type Display, type EraseView, type Overlay, type ReplayView } from './render'
@@ -9,11 +9,14 @@ import type { Physics } from './physics'
 import { containsPoint } from './freeform'
 import { createInk, INK_COLORS } from './ink'
 import { eraseBodies, type EraserMode, type EraseResult } from './eraser'
+import { INK_WIDTHS, MAX_CUSTOM_INKS, type EraserSize, type InkMode, type InkPrefs } from './inkPrefs'
 import { findSurfaceSnap, type SurfaceSnap } from './surfaceSnap'
 import { resizeBody, resizeCursor, resizeHandleAt } from './resizeBody'
 import { pointerBearing, rotationGuide, turnBetween } from './rotationHandle'
 
 const displayLabels = {velocity:'速度矢量',acceleration:'加速度矢量',forces:'力矢量',trails:'运动轨迹',reference:'理论轨迹'} as const
+const widthLabels = ['细','中','粗'] as const
+const inkModeLabels = [['hold','停留'],['immediate','立即'],['free','关闭']] as const
 
 export type Tool = 'select'|'draw'|'eraser'|'spring'
 const tools = [
@@ -21,10 +24,9 @@ const tools = [
 ] as const
 type ToolsProps = {
   locked?:boolean; tool:Tool; setTool:(t:Tool)=>void; display:Display; toggle:(key:'forces'|'trails')=>void
-  inkColor:string; setInkColor:(color:string)=>void; customInks:string[]; addCustomInk:(color:string)=>void
-  eraserMode:EraserMode; setEraserMode:(mode:EraserMode)=>void
+  ink:InkPrefs; setInk:(patch:Partial<InkPrefs>)=>void
 }
-export function Tools({tool,setTool,display,toggle,locked=false,inkColor,setInkColor,customInks,addCustomInk,eraserMode,setEraserMode}:ToolsProps) {
+export function Tools({tool,setTool,display,toggle,locked=false,ink,setInk}:ToolsProps) {
   const [paletteOpen,setPaletteOpen]=useState(false)
   const [eraserOpen,setEraserOpen]=useState(false)
   useEffect(()=>{
@@ -36,37 +38,98 @@ export function Tools({tool,setTool,display,toggle,locked=false,inkColor,setInkC
     if(key==='eraser'&&tool==='eraser') {setEraserOpen(open=>!open);return}
     setTool(key)
   }
-  const custom=customInks.filter(color=>!INK_COLORS.some(base=>base.value.toLowerCase()===color.toLowerCase()))
+  function addCustomInk(color:string) {
+    const value=color.toLowerCase()
+    setInk({color:value,customInks:[...new Set([...ink.customInks.filter(item=>item!==value),value])].slice(-MAX_CUSTOM_INKS)})
+  }
+  const custom=ink.customInks.filter(color=>!INK_COLORS.some(base=>base.value.toLowerCase()===color.toLowerCase()))
+  const currentCustom=custom.find(color=>color.toLowerCase()===ink.color.toLowerCase())
   return <aside className="tools" aria-label="场景工具">
     <div className="tool-strip">
       {tools.map(([key,label,Icon])=><button key={key} className={tool===key?'tool active':'tool'} aria-pressed={tool===key} aria-expanded={key==='draw'&&tool==='draw'?paletteOpen:key==='eraser'&&tool==='eraser'?eraserOpen:undefined}
-        title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':key==='draw'?'绘制 · 左键或触控笔画线，再次点击选择颜色':key==='eraser'?'橡皮 · 再次点击切换擦除方式':'弹簧 · 连接两个物体'} disabled={locked} onClick={()=>choose(key)}><Icon size={17}/><span>{label}</span></button>)}
+        title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':key==='draw'?'绘制 · 左键或触控笔画线，右侧可调颜色、粗细和规整':key==='eraser'?'橡皮 · 右侧可调方式和大小':'弹簧 · 连接两个物体'} disabled={locked} onClick={()=>choose(key)}><Icon size={17}/><span>{label}</span></button>)}
     </div>
     <div className="tool-rule"/>
     <div className="tool-strip tool-display">
       <button className={display.forces?'tool toggled':'tool'} aria-pressed={display.forces} disabled={locked} onClick={()=>toggle('forces')}><Zap size={17}/><span>力矢量</span></button>
       <button className={display.trails?'tool toggled':'tool'} aria-pressed={display.trails} onClick={()=>toggle('trails')}><Spline size={17}/><span>轨迹</span></button>
     </div>
+    <div className="tool-context">
+      {tool==='draw'&&<>
+        <div className="context-group" role="group" aria-label="快捷颜色">
+          <span className="context-label">颜色</span>
+          {INK_COLORS.map(color=><button key={color.value} type="button" className={'context-swatch'+(ink.color.toLowerCase()===color.value?' chosen':'')}
+            style={{background:color.value}} aria-label={'快捷颜色 '+color.label} aria-pressed={ink.color.toLowerCase()===color.value}
+            title={color.label} disabled={locked} onClick={()=>setInk({color:color.value})}/>)}
+          {currentCustom&&<button type="button" className="context-swatch chosen" style={{background:currentCustom}}
+            aria-label="当前自定义颜色" aria-pressed="true" title="当前自定义颜色" disabled={locked} onClick={()=>setInk({color:currentCustom})}/>}
+          <button type="button" className="context-more" aria-expanded={paletteOpen} disabled={locked} onClick={()=>setPaletteOpen(open=>!open)}>更多</button>
+        </div>
+        <span className="context-sep"/>
+        <div className="context-group" role="group" aria-label="画笔粗细">
+          <span className="context-label">粗细</span>
+          {INK_WIDTHS.map((width,index)=><button key={width} type="button" className={'context-chip'+(ink.width===width?' chosen':'')}
+            aria-label={'画笔粗细 '+widthLabels[index]} aria-pressed={ink.width===width} title={widthLabels[index]+' · '+width+' px'}
+            disabled={locked} onClick={()=>setInk({width})}><i className={'width-bar w'+(index+1)}/>{widthLabels[index]}</button>)}
+        </div>
+        <span className="context-sep"/>
+        <div className="context-group" role="group" aria-label="自动规整">
+          <span className="context-label">规整</span>
+          {inkModeLabels.map(([value,label])=><button key={value} type="button" className={'context-chip'+(ink.mode===value?' chosen':'')}
+            aria-label={'自动规整 '+label} aria-pressed={ink.mode===value} title={value==='hold'?'笔画末端停留 1.5 秒后规整':value==='immediate'?'松开立即规整':''}
+            disabled={locked} onClick={()=>setInk({mode:value as InkMode})}>{label}</button>)}
+        </div>
+      </>}
+      {tool==='eraser'&&<>
+        <div className="context-group" role="group" aria-label="橡皮方式">
+          <span className="context-label">方式</span>
+          <button type="button" className={'context-chip'+(ink.eraserMode==='stroke'?' chosen':'')} aria-pressed={ink.eraserMode==='stroke'}
+            disabled={locked} onClick={()=>setInk({eraserMode:'stroke'})}>按笔画</button>
+          <button type="button" className={'context-chip'+(ink.eraserMode==='drag'?' chosen':'')} aria-pressed={ink.eraserMode==='drag'}
+            disabled={locked} onClick={()=>setInk({eraserMode:'drag'})}>按拖动</button>
+        </div>
+        <span className="context-sep"/>
+        <div className="context-group" role="group" aria-label="橡皮大小">
+          <span className="context-label">大小</span>
+          {(['small','medium','large'] as const).map((size,index)=><button key={size} type="button" className={'context-chip'+(ink.eraserSize===size?' chosen':'')}
+            aria-label={'橡皮大小 '+['小','中','大'][index]} aria-pressed={ink.eraserSize===size} disabled={locked} onClick={()=>setInk({eraserSize:size})}>{['小','中','大'][index]}</button>)}
+        </div>
+        <span className="context-sep"/>
+        <button type="button" className={'context-toggle'+(ink.eraserReturn?' chosen':'')} aria-pressed={ink.eraserReturn}
+          disabled={locked} onClick={()=>setInk({eraserReturn:!ink.eraserReturn})}><Check size={12}/>擦完回绘制</button>
+      </>}
+      {tool==='select'&&<span className="context-hint">{locked?'回放中不可编辑':'拖动物体移动 · 拖空白平移 · 双击编辑'}</span>}
+      {tool==='spring'&&<span className="context-hint">在两个物体上各点一次连接点</span>}
+    </div>
     {paletteOpen&&tool==='draw'&&<div className="ink-palette" role="group" aria-label="画笔颜色">
-      <span className="palette-title">画笔颜色</span>
+      <span className="palette-title">画笔颜色 · 自定义色会自动收藏</span>
       <div className="ink-swatches">
-        {INK_COLORS.map(color=><button key={color.value} type="button" className={'ink-swatch'+(inkColor.toLowerCase()===color.value?' chosen':'')}
-          style={{background:color.value}} aria-label={'画笔颜色 '+color.label} aria-pressed={inkColor.toLowerCase()===color.value} title={color.label}
-          onClick={()=>setInkColor(color.value)}/>)}
-        {custom.map((color,index)=><button key={color} type="button" className={'ink-swatch'+(inkColor.toLowerCase()===color.toLowerCase()?' chosen':'')}
-          style={{background:color}} aria-label={'自定义画笔颜色 '+(index+1)} aria-pressed={inkColor.toLowerCase()===color.toLowerCase()}
-          title={'自定义颜色 '+(index+1)} onClick={()=>setInkColor(color)}/>)}
+        {INK_COLORS.map(color=><button key={color.value} type="button" className={'ink-swatch'+(ink.color.toLowerCase()===color.value?' chosen':'')}
+          style={{background:color.value}} aria-label={'画笔颜色 '+color.label} aria-pressed={ink.color.toLowerCase()===color.value} title={color.label}
+          onClick={()=>setInk({color:color.value})}/>)}
+        {custom.map((color,index)=><button key={color} type="button" className={'ink-swatch'+(ink.color.toLowerCase()===color.toLowerCase()?' chosen':'')}
+          style={{background:color}} aria-label={'自定义画笔颜色 '+(index+1)} aria-pressed={ink.color.toLowerCase()===color.toLowerCase()}
+          title={'自定义颜色 '+(index+1)} onClick={()=>setInk({color})}/>)}
         <label className="ink-swatch custom" title="自定义颜色">
           <Plus size={11}/>
-          <input type="color" aria-label="自定义画笔颜色" value={/^#[0-9a-fA-F]{6}$/.test(inkColor)?inkColor:'#ff5a5a'}
-            onChange={e=>{setInkColor(e.target.value);addCustomInk(e.target.value)}}/>
+          <input type="color" aria-label="自定义画笔颜色" value={/^#[0-9a-fA-F]{6}$/.test(ink.color)?ink.color:'#ff5a5a'}
+            onChange={e=>addCustomInk(e.target.value)}/>
         </label>
       </div>
     </div>}
-    {eraserOpen&&tool==='eraser'&&<div className="eraser-menu" role="group" aria-label="橡皮模式">
-      <span className="palette-title">擦除方式</span>
-      <button type="button" className={eraserMode==='stroke'?'chosen':''} aria-pressed={eraserMode==='stroke'} onClick={()=>setEraserMode('stroke')}>按笔画擦除</button>
-      <button type="button" className={eraserMode==='drag'?'chosen':''} aria-pressed={eraserMode==='drag'} onClick={()=>setEraserMode('drag')}>按拖动擦除</button>
+    {eraserOpen&&tool==='eraser'&&<div className="eraser-menu">
+      <span className="palette-title">橡皮设置</span>
+      <div className="eraser-mode-row" role="group" aria-label="橡皮模式">
+        <button type="button" className={ink.eraserMode==='stroke'?'chosen':''} aria-pressed={ink.eraserMode==='stroke'} onClick={()=>setInk({eraserMode:'stroke'})}>按笔画擦除</button>
+        <button type="button" className={ink.eraserMode==='drag'?'chosen':''} aria-pressed={ink.eraserMode==='drag'} onClick={()=>setInk({eraserMode:'drag'})}>按拖动擦除</button>
+      </div>
+      <span className="context-label">橡皮大小</span>
+      <div className="context-segmented" role="group" aria-label="橡皮大小设置">
+        {(['small','medium','large'] as const).map((size,index)=><button key={size} type="button" className={'context-chip'+(ink.eraserSize===size?' chosen':'')}
+          aria-pressed={ink.eraserSize===size} onClick={()=>setInk({eraserSize:size})}>{['小','中','大'][index]}</button>)}
+      </div>
+      <button type="button" className={'eraser-return'+(ink.eraserReturn?' chosen':'')} aria-pressed={ink.eraserReturn}
+        onClick={()=>setInk({eraserReturn:!ink.eraserReturn})}><Check size={12}/>擦完回到绘制</button>
     </div>}
   </aside>
 }
@@ -77,11 +140,17 @@ type Target = {id:string;name:string;at:Point;body?:BodyConfig;joint?:Spring}
 type TargetMenu = {target:Target;pixel:Point}
 const interaction: Record<Tool,string> = {
   select:'拖物体移动 · 拖空白平移 · 右键操作',
-  draw:'按住鼠标左键绘制 · 触屏/触控笔直接画 · 末端停留 1.5 秒自动规整',
-  eraser:'按住鼠标左键擦除 · 再次点击橡皮切换擦除方式',
+  draw:'按住鼠标左键绘制 · 触屏/触控笔直接画',
+  eraser:'按住鼠标左键擦除 · 右侧可调方式和大小',
   spring:'在不同的物体上各选一个连接点',
 }
-const eraserRadius=(mode:EraserMode)=>mode==='drag'?0.22:0.13
+const eraserRadii:Record<EraserSize,Record<EraserMode,number>>={
+  small:{stroke:0.09,drag:0.16},
+  medium:{stroke:0.13,drag:0.22},
+  large:{stroke:0.19,drag:0.30},
+}
+const eraserRadius=(mode:EraserMode,size:EraserSize)=>eraserRadii[size][mode]
+const drawHint=(mode:InkMode)=>mode==='hold'?'按住不动 1.5 秒可自动规整':mode==='immediate'?'松开后立即规整':'自由手绘 · 松开不自动规整'
 
 function local(point:Point,position:Point,angle:number) {
   return rotate({x:point.x-position.x,y:point.y-position.y},-angle)
@@ -107,8 +176,7 @@ interface ViewportProps {
   change:(changes:Partial<Experiment>,freePlacement?:boolean)=>boolean
   remove:(id:string)=>void
   report:(message:string)=>void
-  inkColor:string
-  eraserMode:EraserMode
+  ink:InkPrefs
 }
 export function Viewport(props:ViewportProps) {
   const {scene,camera,setCamera,physics,tool,selected,display,setDisplay,change,select,remove,report}=props
@@ -202,7 +270,7 @@ export function Viewport(props:ViewportProps) {
       const move=d?.type==='select'&&d.moved?draggedPositions(d,d.now):undefined
       const edit=d?.body&&d.moved?transformBody(d,d.now):undefined
       const eraserView:EraseView|undefined=current.tool==='eraser'&&!current.replay?{
-        segments:erasePreview?.segments??[],cursor:position,radius:eraserRadius(current.eraserMode),
+        segments:erasePreview?.segments??[],cursor:position,radius:eraserRadius(current.ink.eraserMode,current.ink.eraserSize),
       }:undefined
       try {
         ctx!.setTransform(dpr,0,0,dpr,0,0)
@@ -252,9 +320,10 @@ export function Viewport(props:ViewportProps) {
   }
   function scheduleHold() {
     cancelHold()
+    if(latest.current.ink.mode!=='hold')return
     hold.current=setTimeout(()=>{
       const d=drag.current
-      if(!d||d.type!=='draw')return
+      if(!d||d.type!=='draw'||latest.current.ink.mode!=='hold')return
       holdReady.current=true
       d.holdReady=true
       setHoldPreview(true)
@@ -417,13 +486,13 @@ export function Viewport(props:ViewportProps) {
       setDraft([world])
       drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'draw',positions:new Map(),ink:inkPath.current}
       e.currentTarget.setPointerCapture(e.pointerId)
-      scheduleHold()
+      if(props.ink.mode==='hold')scheduleHold()
       return
     }
     if(type==='erase') {
       eraserPath.current=[world]
       drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'erase',positions:new Map()}
-      const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.eraserMode),props.eraserMode)
+      const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.ink.eraserMode,props.ink.eraserSize),props.ink.eraserMode)
       setErasePreview(preview.changed?preview:undefined)
       e.currentTarget.setPointerCapture(e.pointerId)
       return
@@ -475,7 +544,7 @@ export function Viewport(props:ViewportProps) {
           d.holdReady=false
           setHoldPreview(false)
         }
-        scheduleHold()
+        if(props.ink.mode==='hold')scheduleHold()
       }
       return
     }
@@ -483,7 +552,7 @@ export function Viewport(props:ViewportProps) {
       const last=eraserPath.current.at(-1)
       if(!last||Math.hypot(world.x-last.x,world.y-last.y)>=1.5/d.camera.scale) {
         eraserPath.current.push(world)
-        const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.eraserMode),props.eraserMode)
+        const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.ink.eraserMode,props.ink.eraserSize),props.ink.eraserMode)
         setErasePreview(preview.changed?preview:undefined)
       }
       return
@@ -508,21 +577,25 @@ export function Viewport(props:ViewportProps) {
     const {pixel,world:b}=points(e)
     if(d.type==='draw') {
       const path=[...inkPath.current]
-      const regularize=Boolean(d.holdReady||holdReady.current)
+      const mode=props.ink.mode
+      const regularize=mode==='immediate'||(mode==='hold'&&Boolean(d.holdReady||holdReady.current))
       cancelDrag()
-      const result=createInk(path,props.inkColor,regularize)
+      const result=createInk(path,props.ink.color,regularize,props.ink.width)
       if('error' in result)report(result.error)
       else add(result.body,true)
       return
     }
     if(d.type==='erase') {
       const path=[...eraserPath.current]
-      const mode=props.eraserMode
-      const result=eraseBodies(scene.bodies,path,eraserRadius(mode),mode)
+      const mode=props.ink.eraserMode
+      const result=eraseBodies(scene.bodies,path,eraserRadius(mode,props.ink.eraserSize),mode)
       cancelDrag()
       if(result.changed) {
         const joints=scene.joints.filter(j=>!result.removed.has(j.a)&&!result.removed.has(j.b))
-        if(change({bodies:result.bodies,joints},true)&&result.removed.has(selected))select('')
+        if(change({bodies:result.bodies,joints},true)) {
+          if(result.removed.has(selected))select('')
+          if(props.ink.eraserReturn)props.setTool('draw')
+        }
       }
       return
     }
@@ -616,8 +689,8 @@ export function Viewport(props:ViewportProps) {
       </div>
     </div>
     {!isReplay&&tool!=='select'&&<div className="tool-hint">{anchor?'请选择第二个连接点':interaction[tool]}
-      {tool==='draw'&&draft.length>0&&<span className="ink-status" role="status">{holdPreview?'已停留 1.5 秒 · 松开自动规整':'按住不动 1.5 秒可自动规整'}</span>}
-      {tool==='eraser'&&<span className="ink-status" role="status">{props.eraserMode==='stroke'?'整笔删除':'拖动擦除可切断曲线'}</span>}
+      {tool==='draw'&&<span className="ink-status" role="status">{draft.length>0?(holdPreview?'已停留 1.5 秒 · 松开自动规整':drawHint(props.ink.mode)):drawHint(props.ink.mode)}</span>}
+      {tool==='eraser'&&<span className="ink-status" role="status">{props.ink.eraserMode==='stroke'?'整笔删除':'拖动擦除可切断曲线'} · {props.ink.eraserSize==='small'?'小':props.ink.eraserSize==='medium'?'中':'大'}号</span>}
     </div>}
     {!isReplay&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">{editing?'拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转':'拖物体移动 · 双击编辑 · 拖空白平移'}</span>}
     {snapLabel&&<div className="snap-hint" role="status"><Magnet size={14}/> 松手贴合 {snapLabel}</div>}

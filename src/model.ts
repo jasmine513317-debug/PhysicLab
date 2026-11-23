@@ -50,6 +50,7 @@ export const bodySchema = z.object({
   mass: z.number().min(0.001).max(100000), friction: z.number().min(0).max(10),
   restitution: z.number().min(0).max(1), geometry,
   color: bodyColorSchema,
+  strokeWidth: z.number().min(1).max(8).optional(),
 }).refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
   .refine(b => b.geometry.kind!=='freeform' || b.geometry.closed || b.type==='static', '开放式手绘曲线必须设为静态。')
   .refine(b => b.geometry.kind!=='freeform' || b.type!=='dynamic' || !freeformError(b.geometry.vertices,b.geometry.closed,true), '动态物块必须使用无自相交的封闭曲线。')

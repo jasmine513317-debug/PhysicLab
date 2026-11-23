@@ -7,7 +7,7 @@ export type EraseResult = {
   bodies: BodyConfig[]
   removed: Set<string>
   hidden: Set<string>
-  segments: {points:Point[];color:string;name:string}[]
+  segments: {points:Point[];color:string;name:string;strokeWidth?:number}[]
   changed: boolean
 }
 
@@ -39,6 +39,7 @@ function runBody(original:BodyConfig,points:Point[]) {
   const center=centroid(points)
   return body(original.name,{kind:'freeform',vertices:toLocal(points,center),closed:false},center.x,center.y,{
     type:'static',color:original.color,friction:original.friction,restitution:original.restitution,
+    strokeWidth:original.strokeWidth,
   })
 }
 
@@ -77,7 +78,7 @@ function splitStroke(original:BodyConfig,path:readonly Point[],radius:number,spa
     const cleaned=cleanRun(run,spacing)
     if(!cleaned)continue
     bodies.push(runBody(original,cleaned))
-    segments.push({points:cleaned,color:original.color,name:original.name})
+    segments.push({points:cleaned,color:original.color,name:original.name,strokeWidth:original.strokeWidth})
   }
   return {bodies,segments}
 }

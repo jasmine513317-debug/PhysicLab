@@ -16,7 +16,7 @@ import { downloadText } from './download'
 import { encodeBackup } from './backup'
 import { appUrl } from './routes'
 import { separateEditedBodies } from './surfaceSnap'
-import type { EraserMode } from './eraser'
+import { loadInkPrefs, normalizeInkPrefs, saveInkPrefs, type InkPrefs } from './inkPrefs'
 
 const fit=(camera:Camera)=>({...camera,scale:Math.min(camera.scale,Math.max(25,(window.innerWidth-(window.innerWidth>1000?450:80))/10.6))})
 type EditSnapshot = {
@@ -36,9 +36,10 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [engine,setEngine]=useState(()=>new Physics(initial))
   const [selected,select]=useState(initial.bodies.find(b=>b.type==='dynamic')?.id??'')
   const [tool,setTool]=useState<Tool>('select')
-  const [inkColor,setInkColor]=useState('#ff5a5a')
-  const [customInks,setCustomInks]=useState<string[]>([])
-  const [eraserMode,setEraserMode]=useState<EraserMode>('stroke')
+  const [ink,setInkState]=useState<InkPrefs>(loadInkPrefs)
+  function setInk(patch:Partial<InkPrefs>) {
+    setInkState(previous=>normalizeInkPrefs({...previous,...patch}))
+  }
   const [display,setDisplay]=useState(defaultDisplay)
   const [running,setRunning]=useState(false)
   const [timerOpen,setTimerOpen]=useState(false)
@@ -73,6 +74,8 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
       .catch(e=>{if(active)setError(errorText(e))})
     return ()=>{active=false}
   },[initial.id,initial.version,initiallySaved])
+
+  useEffect(()=>{saveInkPrefs(ink)},[ink])
 
   function reset(source=current.current) {
     try {
@@ -319,9 +322,9 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     <TimedRunControls open={timerOpen && !isReplay} currentTime={time} timeStep={scene.environment.timeStep}
       running={running} start={runToTick}/>
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
-      <p>绘制工具支持任意曲线：电脑上按住鼠标左键绘制，触屏或触控笔可直接书写。再点一次“绘制”可选择红色、蓝色、白色或自定义颜色。</p>
-      <p>曲线末端停留 1.5 秒再松手，会自动规整为直线、圆、矩形、多边形或平滑曲线；快速松手则保留手绘轨迹。开放曲线会成为静态斜面或碰撞曲线，封闭图形会成为动态物块。</p>
-      <p>橡皮提供两种模式：“按笔画擦除”会整笔删除；“按拖动擦除”可以擦断曲线，也能删除物块。选择工具中左键拖动物体移动、拖空白平移，双击物块显示缩放手柄，拖动圆形手柄旋转。</p>
+      <p>绘制工具支持任意曲线：电脑上按住鼠标左键绘制，触屏或触控笔可直接书写。选中“绘制”后，右侧可直接切换红、蓝、白和最近使用的自定义颜色，也可调整线宽；“更多”或再次点击“绘制”会打开完整调色板。</p>
+      <p>规整有“停留 / 立即 / 关闭”三档。默认在曲线末端停留 1.5 秒再松手，会自动规整为直线、圆、矩形、多边形或平滑曲线；切到“立即”会松手即规整，“关闭”则始终保留手绘。开放曲线会成为静态斜面或碰撞曲线，封闭图形会成为动态物块；线宽只影响视觉，不改变物理参数。</p>
+      <p>橡皮提供“按笔画擦除”和“按拖动擦除”两种方式，右侧可切换小、中、大号并选择是否擦完自动回到绘制。选择工具中左键拖动物体移动、拖空白平移，双击物块显示缩放手柄，拖动圆形手柄旋转。</p>
       <p>在两个物体上分别选择连接点，即可添加弹簧。右键点击或在触屏上长按目标，可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除，按 <kbd>Esc</kbd> 退出编辑。</p>
       <p>播放快捷键：<kbd>P</kbd> 运行或暂停，<kbd>.</kbd> 单步推进 1/60 s，<kbd>Shift</kbd>+<kbd>R</kbd> 重置模拟。焦点在输入框或按钮上时，快捷键不生效。空格仍用于按住拖动平移画布。</p>
       <p>环境设置中的重力预设可一键切换到地球、月球、火星或失重，用于比较同一场景在不同重力下的运动。修改重力会回到初始状态重新模拟。</p>
@@ -333,13 +336,11 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     <div className="workbench">
       <div className="work-center">
         <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}
-          inkColor={inkColor} setInkColor={setInkColor} customInks={customInks}
-          addCustomInk={color=>setCustomInks(values=>[...new Set([...values,color])].slice(-6))}
-          eraserMode={eraserMode} setEraserMode={setEraserMode}/>
+          ink={ink} setInk={setInk}/>
         <Viewport scene={replay?.scene??scene} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
           replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}
           display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}
-          inkColor={inkColor} eraserMode={eraserMode}/>
+          ink={ink}/>
         {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>

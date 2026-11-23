@@ -177,3 +177,48 @@ it('keeps freeform vertices centered on the body centroid',()=>{
     expect(localCenter.y).toBeCloseTo(0,6)
   }
 })
+
+it('stores stroke width on every ink form and keeps it through splitting',()=>{
+  const forms=[
+    {result:createInk([{x:0,y:0},{x:.4,y:.25},{x:.8,y:0},{x:1.2,y:.3}],'#5b8dff',false,3.6),width:3.6},
+    {result:createInk(circlePath(.5,1,1),'#ffffff',false,1.8),width:1.8},
+    {result:createInk([{x:0,y:0},{x:.5,y:.01},{x:1,y:0},{x:1.5,y:.02}],'#ff5a5a',true,3.6),width:3.6},
+    {result:createInk(circlePath(.5,2,1),'#5b8dff',true,1.8),width:1.8},
+    {result:createInk(rectanglePath(1,.6),'#ffffff',true,3.6),width:3.6},
+    {result:createInk(trianglePath({x:0,y:0},{x:1.4,y:0},{x:.4,y:1}),'#ff5a5a',true,1.8),width:1.8},
+  ]
+  for(const {result,width} of forms) {
+    if(!('body' in result))throw new Error(result.error)
+    expect(result.body.strokeWidth).toBe(width)
+  }
+
+  const line=body('手绘曲线',{kind:'freeform',vertices:[{x:-1,y:0},{x:1,y:0}],closed:false},0,0,{type:'static',color:'#5b8dff',strokeWidth:3.6})
+  const split=eraseBodies([line],[{x:0,y:-.2},{x:0,y:.2}],.15,'drag')
+  expect(split.bodies).toHaveLength(2)
+  for(const part of split.bodies)expect(part.strokeWidth).toBe(3.6)
+  for(const segment of split.segments)expect(segment.strokeWidth).toBe(3.6)
+})
+
+it('decodes optional stroke width and rejects values outside the visual range',()=>{
+  const scene=emptyExperiment()
+  const wide=body('粗线',{kind:'circle',radius:.3},0,1,{strokeWidth:3.6})
+  const decoded=decodeExperiment({...scene,version:2,bodies:[wide]}).bodies[0]
+  expect(decoded.strokeWidth).toBe(3.6)
+  expect(()=>decodeExperiment({...scene,version:2,bodies:[{...wide,strokeWidth:12}]})).toThrow()
+  expect(()=>decodeExperiment({...scene,version:2,bodies:[{...wide,strokeWidth:0.2}]})).toThrow()
+})
+
+it('treats stroke width as visual-only and never changes simulated motion',()=>{
+  const scene=emptyExperiment()
+  const make=(strokeWidth:number)=>body('落球',{kind:'circle',radius:.2},0,2,{restitution:0,strokeWidth})
+  const floor=body('地面',{kind:'surface',width:4,height:.2},0,0,{type:'static',restitution:0})
+  const thinBall=make(1.8), thickBall=make(3.6)
+  const thin=new Physics({...scene,version:2,bodies:[thinBall,floor]})
+  const thick=new Physics({...scene,version:2,bodies:[thickBall,floor]})
+  for(let i=0;i<180;i++){thin.step();thick.step()}
+  const thinBody=thin.bodies.get(thinBall.id)!
+  const thickBody=thick.bodies.get(thickBall.id)!
+  expect(thickBody.getMass()).toBe(thinBody.getMass())
+  expect(thickBody.getPosition().x).toBeCloseTo(thinBody.getPosition().x,10)
+  expect(thickBody.getPosition().y).toBeCloseTo(thinBody.getPosition().y,10)
+})

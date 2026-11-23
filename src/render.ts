@@ -22,7 +22,7 @@ export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
 export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
 export type Overlay = {points:Point[]; color?:string}
-export type EraseView = {segments:{points:Point[];color:string}[];cursor?:Point;radius:number}
+export type EraseView = {segments:{points:Point[];color:string;strokeWidth?:number}[];cursor?:Point;radius:number}
 
 function path(ctx:CanvasRenderingContext2D, points:Point[], color:string, dash:number[]=[]) {
   if (!points.length) return
@@ -58,7 +58,8 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
   if((g.kind==='track')||(g.kind==='freeform'&&!g.closed)) {
     const vertices=g.vertices.map(p=>({x:p.x*scale,y:-p.y*scale}))
     if(g.kind==='track'&&g.closed)vertices.push(vertices[0])
-    ctx.lineWidth=selected?3.2:2.4
+    const strokeWidth=b.strokeWidth??2.4
+    ctx.lineWidth=selected?strokeWidth+.8:strokeWidth
     ctx.lineCap='round'
     ctx.lineJoin='round'
     ctx.lineDashOffset=dash??0
@@ -80,7 +81,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     ctx.fillStyle=gradient
   }
   ctx.strokeStyle=stroke
-  ctx.lineWidth=1.1
+  ctx.lineWidth=b.strokeWidth??1.1
   ctx.fill();ctx.stroke()
   if (g.kind==='surface') {
     ctx.save();ctx.clip()
@@ -279,8 +280,10 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     ctx.save()
     ctx.lineCap='round'
     ctx.lineJoin='round'
-    ctx.lineWidth=2.4
-    for(const segment of erase.segments)path(ctx,segment.points.map(p),inkColors(segment.color)[1])
+    for(const segment of erase.segments) {
+      ctx.lineWidth=segment.strokeWidth??2.4
+      path(ctx,segment.points.map(p),inkColors(segment.color)[1])
+    }
     if(erase.cursor) {
       const at=p(erase.cursor)
       ctx.beginPath()

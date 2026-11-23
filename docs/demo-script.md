@@ -2,7 +2,7 @@
 
 **0:00–0:20 · Open a blank world.** “PhysicLab gives the learner control over the experiment. I'll build a ramp and test how the block's friction affects its motion.”
 
-**0:20–0:55 · Construct the setup.** Choose **绘制** and draw a descending line from left to right with the left mouse button; hold still for 1.5 seconds at the end before lifting so the stroke regularizes into a straight ramp. Draw a closed rectangle just above its upper part the same way. Inspect the block, set mass to 1 kg and friction to 0.1, and rotate it to align approximately with the slope. Under Environment, verify 9.81 m/s² gravity. Keep the incline moderate and leave room to observe the slide.
+**0:20–0:55 · Construct the setup.** Choose **绘制**, keep **停留** active in the right-side context bar, and draw a descending line from left to right with the left mouse button; hold still for 1.5 seconds at the end before lifting so the stroke regularizes into a straight ramp. Draw a closed rectangle just above its upper part the same way. Inspect the block, set mass to 1 kg and friction to 0.1, and rotate it to align approximately with the slope. Under Environment, verify 9.81 m/s² gravity. Keep the incline moderate and leave room to observe the slide.
 
 **0:55–1:25 · Record the baseline.** Run until the block has moved along the incline, then pause before it reaches the end. Turn on velocity and acceleration using Display options. Show Velocity and point out the change in speed over time. Record the displayed time and choose Set baseline.
 

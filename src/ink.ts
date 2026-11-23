@@ -148,14 +148,14 @@ function localGeometry(kind:'freeform',points:readonly Point[],closed:boolean) {
   return {center,geometry:{kind,vertices:points.map(p=>({x:p.x-center.x,y:p.y-center.y})),closed} as BodyConfig['geometry']}
 }
 
-function inkBody(points:Point[],closed:boolean,color:BodyColor,name:string,type:BodyConfig['type']='dynamic') {
+function inkBody(points:Point[],closed:boolean,color:BodyColor,name:string,type:BodyConfig['type']='dynamic',strokeWidth=2.4) {
   const {center,geometry}=localGeometry('freeform',points,closed)
-  return body(name,geometry,center.x,center.y,{type,color})
+  return body(name,geometry,center.x,center.y,{type,color,strokeWidth})
 }
 
 export type InkResult = {body:BodyConfig;label:string;kind:'line'|'circle'|'rectangle'|'polygon'|'curve'|'freeform'} | {error:string}
 
-export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolean):InkResult {
+export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolean,strokeWidth=2.4):InkResult {
   const source=dedupe(raw)
   if(source.length<2)return {error:'笔画太短，请画出更长的线条。'}
   const box=bounds(source)
@@ -170,10 +170,10 @@ export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolea
       if(points.length<3)return {error:'封闭图形过小，请画得更大一些。'}
       const error=freeformError(points,true,true)
       if(error)return {error}
-      return {body:inkBody(points,true,color,'手绘物块'),label:'手绘物块',kind:'freeform'}
+      return {body:inkBody(points,true,color,'手绘物块','dynamic',strokeWidth),label:'手绘物块',kind:'freeform'}
     }
     if(points.length<2)return {error:'笔画太短，请画出更长的线条。'}
-    return {body:inkBody(points,false,color,'手绘曲线','static'),label:'手绘曲线（静态斜面/碰撞曲线）',kind:'freeform'}
+    return {body:inkBody(points,false,color,'手绘曲线','static',strokeWidth),label:'手绘曲线（静态斜面/碰撞曲线）',kind:'freeform'}
   }
 
   const sampled=resample(source,closed?96:110,closed)
@@ -183,7 +183,7 @@ export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolea
       const ratio=Math.abs(polygonArea(sampled))/boxFit.area
       const aspect=Math.min(boxFit.width,boxFit.height)/Math.max(boxFit.width,boxFit.height)
       if(ratio>.86&&aspect>.12&&boxFit.width>=0.02&&boxFit.height>=0.02)
-        return {body:body('手绘矩形',{kind:'rectangle',width:boxFit.width,height:boxFit.height},boxFit.cx,boxFit.cy,{angle:boxFit.angle,color}),
+        return {body:body('手绘矩形',{kind:'rectangle',width:boxFit.width,height:boxFit.height},boxFit.cx,boxFit.cy,{angle:boxFit.angle,color,strokeWidth}),
           label:'规整为矩形',kind:'rectangle'}
     }
 
@@ -193,7 +193,7 @@ export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolea
     if(mean>0.03) {
       const deviation=Math.sqrt(radii.reduce((sum,r)=>sum+(r-mean)**2,0)/radii.length)/mean
       if(deviation<.13&&Math.abs(polygonArea(sampled))/(Math.PI*mean*mean)>.72)
-        return {body:body('手绘圆',{kind:'circle',radius:mean},center.x,center.y,{color}),label:'规整为圆',kind:'circle'}
+        return {body:body('手绘圆',{kind:'circle',radius:mean},center.x,center.y,{color,strokeWidth}),label:'规整为圆',kind:'circle'}
     }
 
     const hull=dropTinyCorners(convexHull(sampled))
@@ -204,7 +204,7 @@ export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolea
         const local=centroid(hull)
         const vertices=hull.map(p=>({x:p.x-local.x,y:p.y-local.y}))
         const name=hull.length===3?'手绘三角形':'手绘多边形'
-        return {body:body(name,{kind:'polygon',vertices},local.x,local.y,{color}),label:'规整为'+(hull.length===3?'三角形':'多边形'),kind:'polygon'}
+        return {body:body(name,{kind:'polygon',vertices},local.x,local.y,{color,strokeWidth}),label:'规整为'+(hull.length===3?'三角形':'多边形'),kind:'polygon'}
       }
     }
 
@@ -212,16 +212,16 @@ export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolea
     if(smooth.length<3)return {error:'封闭曲线过于简单，请画得更大一些。'}
     const error=freeformError(smooth,true,true)
     if(error)return {error}
-    return {body:inkBody(smooth,true,color,'手绘物块'),label:'规整为平滑物块',kind:'freeform'}
+    return {body:inkBody(smooth,true,color,'手绘物块','dynamic',strokeWidth),label:'规整为平滑物块',kind:'freeform'}
   }
 
   if(isStraight(source)) {
     const start=source[0],end=source.at(-1)!
     if(distance(start,end)<0.02)return {error:'笔画太短，请画出更长的线条。'}
-    return {body:inkBody([start,end],false,color,'手绘直线','static'),label:'规整为直线',kind:'line'}
+    return {body:inkBody([start,end],false,color,'手绘直线','static',strokeWidth),label:'规整为直线',kind:'line'}
   }
 
   const smooth=thin(decimate(chaikin(sampled,false),false),false)
   if(smooth.length<2)return {error:'笔画太短，请画出更长的线条。'}
-  return {body:inkBody(smooth,false,color,'平滑曲线','static'),label:'规整为平滑曲线',kind:'curve'}
+  return {body:inkBody(smooth,false,color,'平滑曲线','static',strokeWidth),label:'规整为平滑曲线',kind:'curve'}
 }
