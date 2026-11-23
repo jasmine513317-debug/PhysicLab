@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, rightStroke } from './helpers'
+import { circlePixels, drawStroke } from './helpers'
 
 test('opens a pen palette with red, blue, white and custom colors but no black',async({page})=>{
   await page.goto('/lab?new=1')
@@ -36,7 +36,7 @@ test('stroke eraser removes whole curves while drag eraser cuts them and removes
   const bounds=(await canvas.boundingBox())!
   const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
   await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await rightStroke(page,[px(150,200),px(240,190),px(330,205),px(450,195)])
+  await drawStroke(page,[px(150,200),px(240,190),px(330,205),px(450,195)])
   await expect(objects.locator('option:checked')).toHaveText('手绘曲线')
 
   await tools.getByRole('button',{name:'橡皮',exact:true}).click()
@@ -60,7 +60,7 @@ test('stroke eraser removes whole curves while drag eraser cuts them and removes
 
   await tools.getByRole('button',{name:'绘制',exact:true}).click()
   const center=px(250,320)
-  await rightStroke(page,circlePixels(center.x,center.y,40,24))
+  await drawStroke(page,circlePixels(center.x,center.y,40,24))
   await expect(objects.locator('option:checked')).toHaveText('手绘物块')
   await tools.getByRole('button',{name:'橡皮',exact:true}).click()
   await tools.getByRole('button',{name:'橡皮',exact:true}).click()

@@ -319,7 +319,7 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     <TimedRunControls open={timerOpen && !isReplay} currentTime={time} timeStep={scene.environment.timeStep}
       running={running} start={runToTick}/>
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
-      <p>绘制工具支持任意曲线：电脑上按住鼠标右键绘制，触屏或触控笔可直接书写。再点一次“绘制”可选择红色、蓝色、白色或自定义颜色。</p>
+      <p>绘制工具支持任意曲线：电脑上按住鼠标左键绘制，触屏或触控笔可直接书写。再点一次“绘制”可选择红色、蓝色、白色或自定义颜色。</p>
       <p>曲线末端停留 1.5 秒再松手，会自动规整为直线、圆、矩形、多边形或平滑曲线；快速松手则保留手绘轨迹。开放曲线会成为静态斜面或碰撞曲线，封闭图形会成为动态物块。</p>
       <p>橡皮提供两种模式：“按笔画擦除”会整笔删除；“按拖动擦除”可以擦断曲线，也能删除物块。选择工具中左键拖动物体移动、拖空白平移，双击物块显示缩放手柄，拖动圆形手柄旋转。</p>
       <p>在两个物体上分别选择连接点，即可添加弹簧。右键点击或在触屏上长按目标，可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除，按 <kbd>Esc</kbd> 退出编辑。</p>

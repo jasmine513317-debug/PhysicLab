@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, rightStroke } from './helpers'
+import { circlePixels, drawStroke } from './helpers'
 
 test('undo restores a deleted body and its spring, and a new edit replaces the redo branch', async ({page})=>{
   await page.goto('/lab?template=spring')
@@ -37,7 +37,7 @@ test('a drag creates one edit regardless of pointer movement count',async({page}
   const bounds=(await canvas.boundingBox())!
   await tools.getByRole('button',{name:'绘制',exact:true}).click()
   const center={x:bounds.x+220,y:bounds.y+150}
-  await rightStroke(page,circlePixels(center.x,center.y,35,24))
+  await drawStroke(page,circlePixels(center.x,center.y,35,24))
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
   await tools.getByRole('button',{name:'选择',exact:true}).click()
   const x=page.getByRole('spinbutton',{name:'X 坐标'})

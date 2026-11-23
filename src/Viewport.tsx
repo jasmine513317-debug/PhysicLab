@@ -40,7 +40,7 @@ export function Tools({tool,setTool,display,toggle,locked=false,inkColor,setInkC
   return <aside className="tools" aria-label="场景工具">
     <div className="tool-strip">
       {tools.map(([key,label,Icon])=><button key={key} className={tool===key?'tool active':'tool'} aria-pressed={tool===key} aria-expanded={key==='draw'&&tool==='draw'?paletteOpen:key==='eraser'&&tool==='eraser'?eraserOpen:undefined}
-        title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':key==='draw'?'绘制 · 右键或触控笔画线，再次点击选择颜色':key==='eraser'?'橡皮 · 再次点击切换擦除方式':'弹簧 · 连接两个物体'} disabled={locked} onClick={()=>choose(key)}><Icon size={17}/><span>{label}</span></button>)}
+        title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':key==='draw'?'绘制 · 左键或触控笔画线，再次点击选择颜色':key==='eraser'?'橡皮 · 再次点击切换擦除方式':'弹簧 · 连接两个物体'} disabled={locked} onClick={()=>choose(key)}><Icon size={17}/><span>{label}</span></button>)}
     </div>
     <div className="tool-rule"/>
     <div className="tool-strip tool-display">
@@ -77,7 +77,7 @@ type Target = {id:string;name:string;at:Point;body?:BodyConfig;joint?:Spring}
 type TargetMenu = {target:Target;pixel:Point}
 const interaction: Record<Tool,string> = {
   select:'拖物体移动 · 拖空白平移 · 右键操作',
-  draw:'按住鼠标右键绘制 · 触屏/触控笔直接画 · 末端停留 1.5 秒自动规整',
+  draw:'按住鼠标左键绘制 · 触屏/触控笔直接画 · 末端停留 1.5 秒自动规整',
   eraser:'按住鼠标左键擦除 · 再次点击橡皮切换擦除方式',
   spring:'在不同的物体上各选一个连接点',
 }
@@ -384,11 +384,9 @@ export function Viewport(props:ViewportProps) {
   }
   function onDown(e:ReactPointerEvent<HTMLCanvasElement>) {
     if(drag.current)return
-    const mouse=e.pointerType==='mouse'
-    const drawPointer=tool==='draw'&&!isReplay&&(mouse?e.button===2:e.button===0)
+    const drawPointer=tool==='draw'&&!isReplay&&e.button===0
     const erasePointer=tool==='eraser'&&!isReplay&&e.button===0
     if(!drawPointer&&!erasePointer&&e.button!==0&&e.button!==1)return
-    if(tool==='draw'&&mouse&&e.button!==2&&e.button!==1&&!space.current&&!isReplay)return
     e.preventDefault()
     e.currentTarget.focus()
     const {pixel,world}=points(e)

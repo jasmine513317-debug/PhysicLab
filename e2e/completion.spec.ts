@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { circlePixels, rightStroke, touchStroke } from './helpers'
+import { circlePixels, drawStroke, touchStroke } from './helpers'
 
 test('records poses, scrubs history, and restores the saved recording after reload',async({page})=>{
   await page.goto('/lab?template=collision')
@@ -36,13 +36,13 @@ test('classifies a quick open stroke as a static curve and a closed stroke as a 
   const canvas=page.getByLabel('物理场景')
   const bounds=(await canvas.boundingBox())!
   await page.getByRole('button',{name:'绘制',exact:true}).click()
-  await rightStroke(page,[
+  await drawStroke(page,[
     {x:bounds.x+140,y:bounds.y+150},{x:bounds.x+220,y:bounds.y+185},
     {x:bounds.x+320,y:bounds.y+140},{x:bounds.x+430,y:bounds.y+175},
   ])
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
   await expect(page.getByText(/手绘曲线（静态斜面\/碰撞曲线） · \d+ 个点/)).toBeVisible()
-  await rightStroke(page,circlePixels(bounds.x+250,bounds.y+300,45))
+  await drawStroke(page,circlePixels(bounds.x+250,bounds.y+300,45))
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
   await expect(page.getByText(/手绘物块 · \d+ 个点/)).toBeVisible()
   await page.getByRole('button',{name:'运行',exact:true}).click()

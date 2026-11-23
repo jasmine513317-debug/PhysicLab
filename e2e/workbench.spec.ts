@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, rightStroke } from './helpers'
+import { circlePixels, drawStroke } from './helpers'
 
 test('opens a real template, records data, compares runs, exports CSV and manages a saved experiment',async({page})=>{
   const errors:string[]=[]
@@ -53,18 +53,18 @@ test('constructs a scene with the drawing tools, connects a spring, moves, rotat
   expect(toolsBox.y+toolsBox.height).toBeLessThanOrEqual(bounds.y+1)
   const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
   await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await rightStroke(page,[px(130,230),px(260,228),px(400,231),px(520,229)])
+  await drawStroke(page,[px(130,230),px(260,228),px(400,231),px(520,229)])
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
 
   const rectCenter=px(320,130)
-  await rightStroke(page,[
+  await drawStroke(page,[
     px(260,95),px(380,95),px(380,165),px(260,165),px(261,97),
   ],1700)
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘矩形')
   await expect(page.getByRole('spinbutton',{name:'宽度'})).toBeVisible()
 
   const circleCenter=px(180,150)
-  await rightStroke(page,circlePixels(circleCenter.x,circleCenter.y,38,28),1700)
+  await drawStroke(page,circlePixels(circleCenter.x,circleCenter.y,38,28),1700)
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘圆')
   await expect(page.getByRole('spinbutton',{name:'半径'})).toBeVisible()
 
