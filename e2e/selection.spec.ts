@@ -1,20 +1,21 @@
 import { expect, test } from '@playwright/test'
+import { body, emptyExperiment } from '../src/model'
+import { openImportedScene, pixelOf } from './helpers'
 
 test('uses selection for dragging, panning, animated context selection, and deletion',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
+  const scene={...emptyExperiment(),title:'选择测试',camera:{x:0,y:2.2,scale:80},bodies:[body('测试圆',{kind:'circle',radius:.35},0,2.2,{restitution:0})]}
+  const canvas=await openImportedScene(page,scene)
   const tools=page.getByRole('complementary',{name:'场景工具'})
   const menu=page.getByRole('group',{name:'目标操作'})
   const bounds=(await canvas.boundingBox())!
-  const p={x:196,y:172}
+  const center=pixelOf(bounds,scene.camera,{x:0,y:2.2})
+  const at=(dx:number,dy:number)=>({x:center.x-bounds.x+dx,y:center.y-bounds.y+dy})
+  const p=at(0,0)
   await expect(tools.getByRole('button',{name:'平移',exact:true})).toHaveCount(0)
   await expect(tools.getByRole('button',{name:'删除',exact:true})).toHaveCount(0)
-  await tools.getByRole('button',{name:'圆形',exact:true}).click()
-  await canvas.click({position:p})
-  await tools.getByRole('button',{name:'选择',exact:true}).click()
   await canvas.click({position:p,button:'right'})
-  await expect(menu.getByRole('button',{name:'删除 圆形'})).toBeVisible()
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('圆形')
+  await expect(menu.getByRole('button',{name:'删除 测试圆'})).toBeVisible()
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('测试圆')
   const first=await canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())
   await expect.poll(()=>canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())).not.toBe(first)
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
@@ -31,17 +32,17 @@ test('uses selection for dragging, panning, animated context selection, and dele
   expect(Number(await x.inputValue())).toBeCloseTo(oldX+1,4)
   expect(Number(await y.inputValue())).toBeCloseTo(oldY+.5,4)
 
-  const blank={x:465,y:185}
+  const blank=at(180,20)
   await canvas.click({position:blank,button:'right'})
   await expect(menu).toHaveCount(0)
   await drag(blank,60,38)
-  const moved={x:p.x+140,y:p.y-2}
+  const moved=at(140,-2)
   await canvas.click({position:moved,button:'right'})
-  await expect(menu.getByRole('button',{name:'删除 圆形'})).toBeVisible()
+  await expect(menu.getByRole('button',{name:'删除 测试圆'})).toBeVisible()
   expect(Number(await x.inputValue())).toBeCloseTo(oldX+1,4)
   expect(Number(await y.inputValue())).toBeCloseTo(oldY+.5,4)
 
-  await menu.getByRole('button',{name:'删除 圆形'}).click()
+  await menu.getByRole('button',{name:'删除 测试圆'}).click()
   await expect(menu).toHaveCount(0)
   await expect(page.getByText('当前场景为空')).toBeVisible()
 })

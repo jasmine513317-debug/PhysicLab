@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { circlePixels, rightStroke } from './helpers'
 
 test('undo restores a deleted body and its spring, and a new edit replaces the redo branch', async ({page})=>{
   await page.goto('/lab?template=spring')
@@ -33,15 +34,17 @@ test('a drag creates one edit regardless of pointer movement count',async({page}
   await page.goto('/lab?new=1')
   const tools=page.getByRole('complementary',{name:'场景工具'})
   const canvas=page.getByLabel('物理场景')
-  await tools.getByRole('button',{name:'圆形',exact:true}).click()
-  await canvas.click({position:{x:140,y:120}})
+  const bounds=(await canvas.boundingBox())!
+  await tools.getByRole('button',{name:'绘制',exact:true}).click()
+  const center={x:bounds.x+220,y:bounds.y+150}
+  await rightStroke(page,circlePixels(center.x,center.y,35,24))
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
   await tools.getByRole('button',{name:'选择',exact:true}).click()
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
   const initialX=await x.inputValue()
-  const bounds=(await canvas.boundingBox())!
-  await page.mouse.move(bounds.x+140,bounds.y+120)
+  await page.mouse.move(center.x,center.y)
   await page.mouse.down()
-  await page.mouse.move(bounds.x+180,bounds.y+130,{steps:12})
+  await page.mouse.move(center.x+40,center.y+10,{steps:12})
   await page.mouse.up()
   await expect(x).not.toHaveValue(initialX)
   await canvas.press('Control+z')

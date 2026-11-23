@@ -1,6 +1,7 @@
 import { Box, Chain, Circle, DistanceJoint, Polygon, Vec2, World, type Body } from 'planck'
 import { area, decodeExperiment, DEFAULT_WORLD_BOUNDS, springFrequency, type Experiment, type Point } from './model'
 import { energies } from './analysis'
+import { convexHull, triangulate } from './freeform'
 import { REPLAY_SAMPLE_LIMIT, type RecordedSample, type Replay } from './replay'
 
 export const SAMPLE_EVERY = 4
@@ -28,11 +29,27 @@ export class Physics {
         angularVelocity:config.type==='dynamic' ? config.angularVelocity : 0,
       })
       const g = config.geometry
-      const shape = g.kind==='circle' ? new Circle(g.radius)
-        : g.kind==='polygon' ? new Polygon(g.vertices)
-        : g.kind==='track' ? new Chain(g.vertices,g.closed)
-        : new Box(g.width/2,g.height/2)
-      b.createFixture(shape,{density:g.kind==='track'?0:config.mass/area(g),friction:config.friction,restitution:config.restitution})
+      const fixtures={friction:config.friction,restitution:config.restitution}
+      if(g.kind==='freeform') {
+        if(config.type==='static') {
+          b.createFixture(new Chain(g.vertices,g.closed),{...fixtures,density:0})
+        } else {
+          const density=config.mass/area(g)
+          const triangles=triangulate(g.vertices)
+          if(!triangles.length) {
+            const hull=convexHull(g.vertices)
+            if(hull.length<3)throw new Error('无法为手绘物块生成碰撞形状。')
+            triangles.push(hull)
+          }
+          for(const triangle of triangles)b.createFixture(new Polygon(triangle),{...fixtures,density})
+        }
+      } else {
+        const shape = g.kind==='circle' ? new Circle(g.radius)
+          : g.kind==='polygon' ? new Polygon(g.vertices)
+          : g.kind==='track' ? new Chain(g.vertices,g.closed)
+          : new Box(g.width/2,g.height/2)
+        b.createFixture(shape,{...fixtures,density:g.kind==='track'?0:config.mass/area(g)})
+      }
       this.bodies.set(config.id,b)
       if (config.type==='dynamic') {
         this.samples.set(config.id,[])

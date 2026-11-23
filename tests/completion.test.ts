@@ -1,6 +1,5 @@
 import 'fake-indexeddb/auto'
 import { expect, it } from 'vitest'
-import { classifyDrawing } from '../src/drawing'
 import { decodeExperiment } from '../src/model'
 import { instantiate } from '../src/templates'
 import { setInitialExtension, springGeometry } from '../src/springs'
@@ -9,17 +8,6 @@ import { decodeReplay } from '../src/replay'
 import { deleteExperiment, loadExperiment, loadReplay, saveReplay } from '../src/repository'
 import { metrics } from '../src/analysis'
 
-it('recognizes straight boundaries, ramps, segments and convex polygons',()=>{
-  const origin={x:0,y:0}
-  expect(classifyDrawing([origin,{x:3,y:.1}])).toBe('ground')
-  expect(classifyDrawing([origin,{x:-3,y:2}])).toBe('ramp')
-  expect(classifyDrawing([origin,{x:0,y:2}])).toBe('segment')
-  expect(classifyDrawing([origin,{x:0,y:.001}])).toBeUndefined()
-  const triangle=[origin,{x:2,y:0},{x:1,y:2}]
-  expect(classifyDrawing(triangle)).toBe('polygon')
-  expect(classifyDrawing([...triangle].reverse())).toBe('polygon')
-  expect(classifyDrawing([origin,{x:2,y:2},{x:0,y:2},{x:2,y:0}])).toBeUndefined()
-})
 
 it('sets spring displacement along the rotated anchors while preserving rest length',()=>{
   const scene=instantiate('spring')

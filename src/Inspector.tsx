@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react'
-import { Box, Circle, Globe2, Hexagon, Layers3, SlidersHorizontal, Waves } from 'lucide-react'
+import { Box, Circle, Globe2, Hexagon, Layers3, PenLine, SlidersHorizontal, Spline, Waves } from 'lucide-react'
 import { area, DEFAULT_WORLD_BOUNDS, GRAVITY_PRESETS, type BodyConfig, type Experiment, type Spring } from './model'
 import { setInitialExtension, springGeometry } from './springs'
 
@@ -74,16 +74,16 @@ export function Inspector({scene,selected,select,change,force}:Props) {
           {scene.joints.map((joint,i)=><option key={joint.id} value={joint.id}>弹簧 {i+1}</option>)}
         </select></label>
         {b&&fields&&<div key={b.id}>
-          <div className="object-title"><span className={'object-icon '+b.color}>{fields.kind==='circle'?<Circle size={18}/>:fields.kind==='polygon'?<Hexagon size={18}/>:<Box size={18}/>}</span><div><strong>{b.name}</strong><small>{b.type==='dynamic'?'动态物体':'静态物体'}</small></div></div>
+          <div className="object-title"><span className={'object-icon '+b.color} style={b.color.startsWith('#')?{color:b.color}:undefined}>{fields.kind==='circle'?<Circle size={18}/>:fields.kind==='polygon'?<Hexagon size={18}/>:fields.kind==='freeform'?<PenLine size={18}/>:fields.kind==='track'?<Spline size={18}/>:<Box size={18}/>}</span><div><strong>{b.name}</strong><small>{b.type==='dynamic'?'动态物体':'静态物体'}</small></div></div>
           <div className="prop-group">
             <h3>物理属性</h3>
-            {fields.kind!=='track'&&<>
+            {fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<>
               <NumberField label="质量" unit="kg" min={0.001} max={100000} value={b.mass} onCommit={mass=>patch({mass})}/>
               <NumberField label="面密度" unit="kg/m²" min={0.000001} value={b.mass/area(fields)} onCommit={density=>patch({mass:density*area(fields)})}/>
             </>}
             <NumberField label="摩擦系数" min={0} max={10} value={b.friction} onCommit={friction=>patch({friction})}/>
             <NumberField label="恢复系数" min={0} max={1} value={b.restitution} onCommit={restitution=>patch({restitution})}/>
-            {fields.kind!=='surface'&&fields.kind!=='track'&&<label className="plain-select">物体类型<select value={b.type} onChange={e=>patch({type:e.target.value as BodyConfig['type']})}><option value="dynamic">动态</option><option value="static">静态</option></select></label>}
+            {fields.kind!=='surface'&&fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<label className="plain-select">物体类型<select value={b.type} onChange={e=>patch({type:e.target.value as BodyConfig['type']})}><option value="dynamic">动态</option><option value="static">静态</option></select></label>}
           </div>
           {b.type==='dynamic'&&<div className="prop-group">
             <h3>初始运动</h3>
@@ -107,11 +107,12 @@ export function Inspector({scene,selected,select,change,force}:Props) {
             <NumberField label="Y 坐标" unit="m" value={b.position.y} onCommit={y=>patch({position:{...b.position,y}})}/>
             <NumberField label="旋转角" unit="°" value={b.angle*180/Math.PI} onCommit={n=>patch({angle:n*Math.PI/180})}/>
             {fields.kind==='circle'?<NumberField label="半径" unit="m" min={0.02} max={1000} value={fields.radius} onCommit={radius=>patch({geometry:{...fields,radius}})}/>
-              :fields.kind!=='polygon'&&fields.kind!=='track'&&<>
+              :fields.kind!=='polygon'&&fields.kind!=='track'&&fields.kind!=='freeform'&&<>
                 <NumberField label="宽度" unit="m" min={0.02} max={1000} value={fields.width} onCommit={width=>patch({geometry:{...fields,width}})}/>
                 <NumberField label="高度" unit="m" min={0.02} max={1000} value={fields.height} onCommit={height=>patch({geometry:{...fields,height}})}/>
               </>}
             {fields.kind==='track'&&<p className="muted">静态碰撞轨道 · {fields.vertices.length} 个顶点</p>}
+            {fields.kind==='freeform'&&<p className="muted">{fields.closed?'手绘物块':'手绘曲线（静态斜面/碰撞曲线）'} · {fields.vertices.length} 个点</p>}
           </div>
           {b.type==='dynamic'&&<ForceFields apply={(x,y)=>force(b.id,x,y)}/>}
         </div>}

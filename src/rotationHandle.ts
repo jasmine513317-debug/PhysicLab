@@ -3,7 +3,7 @@ import type { BodyConfig, Point } from './model'
 
 export function rotationGuide(body:BodyConfig,scale:number) {
   const g=body.geometry
-  const top=g.kind==='polygon'||g.kind==='track'
+  const top=g.kind==='polygon'||g.kind==='track'||g.kind==='freeform'
     ? g.vertices.reduce((highest,p)=>p.y>highest.y?p:highest)
     : {x:0,y:g.kind==='circle'?g.radius:g.height/2}
   const toWorld=(p:Point)=>{

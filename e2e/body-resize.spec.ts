@@ -1,43 +1,51 @@
 import { expect, test } from '@playwright/test'
+import { body, emptyExperiment } from '../src/model'
+import { openImportedScene, pixelOf } from './helpers'
+
+function rectangleScene(title:string) {
+  return {...emptyExperiment(),title,camera:{x:0,y:2.2,scale:80},
+    bodies:[body(title,{kind:'rectangle',width:.8,height:.6},0,2.2,{restitution:0})]}
+}
 
 test('double-clicks a placed block, drags its edge and interior, and undoes each drag',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
+  const scene=rectangleScene('缩放方块')
+  const canvas=await openImportedScene(page,scene)
   const tools=page.getByRole('complementary',{name:'场景工具'})
-  const center={x:220,y:170}
-  await tools.getByRole('button',{name:'矩形',exact:true}).click()
-  await canvas.click({position:center})
-  await canvas.dblclick({position:center})
+  const bounds=(await canvas.boundingBox())!
+  const center=pixelOf(bounds,scene.camera,{x:0,y:2.2})
+  const local=(x:number,y:number)=>({x:center.x-bounds.x+x,y:center.y-bounds.y+y})
+  await canvas.dblclick({position:local(0,0)})
   const hint=page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')
   await expect(hint).toBeVisible()
   await expect(tools.getByRole('button',{name:'选择',exact:true})).toHaveAttribute('aria-pressed','true')
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:'矩形'})).toHaveCount(1)
-  const rect=(await canvas.boundingBox())!
-  const move=(x:number,y:number)=>page.mouse.move(rect.x+x,rect.y+y,{steps:6})
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:'缩放方块'})).toHaveCount(1)
+  const move=(x:number,y:number)=>page.mouse.move(bounds.x+center.x-bounds.x+x,bounds.y+center.y-bounds.y+y,{steps:6})
   const width=page.getByRole('spinbutton',{name:'宽度',exact:true})
   const height=page.getByRole('spinbutton',{name:'高度',exact:true})
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
-  const startX=Number(await x.inputValue())
-  await move(252,180)
+  const y=page.getByRole('spinbutton',{name:'Y 坐标'})
+  const startX=Number(await x.inputValue()),startY=Number(await y.inputValue())
+  await move(32,0)
   await page.mouse.down()
-  await move(292,180)
+  await move(72,0)
   await page.mouse.up()
   await expect(width).toHaveValue('1.3')
   await expect(height).toHaveValue('0.6')
   expect(Number(await x.inputValue())).toBeCloseTo(startX+.25)
-  await move(240,170)
+  await move(20,0)
   await page.mouse.down()
-  await move(280,154)
+  await move(60,-16)
   await page.mouse.up()
   expect(Number(await x.inputValue())).toBeCloseTo(startX+.75)
+  expect(Number(await y.inputValue())).toBeCloseTo(startY+.2)
   await canvas.press('Control+z')
   expect(Number(await x.inputValue())).toBeCloseTo(startX+.25)
   await canvas.press('Control+z')
   await expect(width).toHaveValue('0.8')
   await expect(hint).toBeVisible()
-  await move(252,170)
+  await move(32,0)
   await page.mouse.down()
-  await move(298,170)
+  await move(78,0)
   await canvas.press('Escape')
   await page.mouse.up()
   await expect(width).toHaveValue('0.8')
@@ -46,34 +54,29 @@ test('double-clicks a placed block, drags its edge and interior, and undoes each
 
 test.describe('touch editing',()=>{
   test.use({hasTouch:true,viewport:{width:390,height:844}})
-  test('double-taps to edit a circle',async({page})=>{
-    await page.goto('/lab?new=1')
-    const canvas=page.getByLabel('物理场景')
-    const p={x:140,y:145}
-    await page.getByRole('button',{name:'圆形',exact:true}).tap()
-    await canvas.tap({position:p})
-    await page.getByRole('button',{name:'选择',exact:true}).tap()
-    await canvas.tap({position:p})
-    await canvas.tap({position:p})
+  test('double-taps to edit a block',async({page})=>{
+    const scene=rectangleScene('触控方块')
+    const canvas=await openImportedScene(page,scene)
+    const bounds=(await canvas.boundingBox())!
+    const p=pixelOf(bounds,scene.camera,{x:0,y:2.2})
+    await canvas.tap({position:{x:p.x-bounds.x,y:p.y-bounds.y}})
+    await canvas.tap({position:{x:p.x-bounds.x,y:p.y-bounds.y}})
     await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toBeVisible()
   })
 })
 
 test('rotates around the block center with the round handle and supports undo',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  const center={x:290,y:205}
-  await tools.getByRole('button',{name:'矩形',exact:true}).click()
-  await canvas.click({position:center})
-  await canvas.dblclick({position:center})
+  const scene=rectangleScene('旋转方块')
+  const canvas=await openImportedScene(page,scene)
   const bounds=(await canvas.boundingBox())!
+  const center=pixelOf(bounds,scene.camera,{x:0,y:2.2})
+  await canvas.dblclick({position:{x:center.x-bounds.x,y:center.y-bounds.y}})
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
   const y=page.getByRole('spinbutton',{name:'Y 坐标'})
   const angle=page.getByRole('spinbutton',{name:'旋转角'})
   const [startX,startY]=await Promise.all([x.inputValue(),y.inputValue()])
-  const radius=49 // Half the default block height at 80 px/m, plus the handle gap.
-  const move=(a:number)=>page.mouse.move(bounds.x+center.x+radius*Math.cos(a),bounds.y+center.y-radius*Math.sin(a))
+  const radius=49 // Half the block height at 80 px/m, plus the handle gap.
+  const move=(a:number)=>page.mouse.move(center.x+radius*Math.cos(a),center.y-radius*Math.sin(a))
   await move(Math.PI/2)
   await expect(canvas).toHaveCSS('cursor','grab')
   await page.mouse.down()

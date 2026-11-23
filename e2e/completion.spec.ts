@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
+import { circlePixels, rightStroke, touchStroke } from './helpers'
 
 test('records poses, scrubs history, and restores the saved recording after reload',async({page})=>{
   await page.goto('/lab?template=collision')
@@ -30,22 +31,23 @@ test('records poses, scrubs history, and restores the saved recording after relo
   await expect(page.getByRole('button',{name:'运行',exact:true})).toBeEnabled()
 })
 
-test('recognizes a draft and confirms its type while keeping manual override',async({page})=>{
+test('classifies a quick open stroke as a static curve and a closed stroke as a body',async({page})=>{
   await page.goto('/lab?new=1')
   const canvas=page.getByLabel('物理场景')
   const bounds=(await canvas.boundingBox())!
   await page.getByRole('button',{name:'绘制',exact:true}).click()
-  await page.mouse.move(bounds.x+150,bounds.y+134)
-  await page.mouse.down()
-  await page.mouse.move(bounds.x+325,bounds.y+220,{steps:5})
-  await page.mouse.up()
-  await expect(page.getByText('识别为：斜面')).toBeVisible()
-  await page.getByRole('button',{name:'线段',exact:true}).click()
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('静态线段')
-  for(const p of [{x:170,y:240},{x:268,y:250},{x:219,y:301}])await canvas.click({position:p})
-  await expect(page.getByText('识别为：多边形')).toBeVisible()
-  await page.getByRole('button',{name:'确认创建'}).click()
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('多边形')
+  await rightStroke(page,[
+    {x:bounds.x+140,y:bounds.y+150},{x:bounds.x+220,y:bounds.y+185},
+    {x:bounds.x+320,y:bounds.y+140},{x:bounds.x+430,y:bounds.y+175},
+  ])
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
+  await expect(page.getByText(/手绘曲线（静态斜面\/碰撞曲线） · \d+ 个点/)).toBeVisible()
+  await rightStroke(page,circlePixels(bounds.x+250,bounds.y+300,45))
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
+  await expect(page.getByText(/手绘物块 · \d+ 个点/)).toBeVisible()
+  await page.getByRole('button',{name:'运行',exact:true}).click()
+  await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
+  await page.getByRole('button',{name:'暂停',exact:true}).click()
 })
 
 test('edits the initial spring displacement and shows vector velocity in comparisons',async({page})=>{
@@ -100,16 +102,17 @@ test('runs and edits a 50-body scene while recording data and rendering charts',
 
 test.describe('mobile touch emulation',()=>{
   test.use({viewport:{width:390,height:844},hasTouch:true})
-  test('creates and simulates a body using touch',async({page})=>{
+  test('draws and simulates a body using touch',async({page})=>{
     await page.goto('/lab?new=1')
-    await page.getByRole('button',{name:'圆形',exact:true}).tap()
+    await page.getByRole('button',{name:'绘制',exact:true}).tap()
     const canvas=page.getByLabel('物理场景')
     const bounds=(await canvas.boundingBox())!
-    await page.touchscreen.tap(bounds.x+160,bounds.y+180)
-    await expect(page.getByRole('combobox',{name:'分析对象'}).locator('option:checked')).toHaveText('圆形')
-    await page.getByRole('button',{name:'运行',exact:true}).tap()
+    await touchStroke(page,circlePixels(bounds.x+bounds.width/2,bounds.y+bounds.height/2,45,28))
+    await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
+    // A raw CDP touch stroke leaves Chromium's gesture state so the next synthesized tap emits no click.
+    await page.getByRole('button',{name:'运行',exact:true}).click()
     await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
-    await page.getByRole('button',{name:'暂停',exact:true}).tap()
+    await page.getByRole('button',{name:'暂停',exact:true}).click()
   })
 })
 

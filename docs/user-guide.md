@@ -1,7 +1,7 @@
 # User guide
 
 1. From Overview, create a blank experiment or open an experiment template. **曲线轨道** starts a ball above a shallow parabolic track.
-2. Choose Circle or Rectangle and drag to size it. Drag Ground horizontally or draw a ramp between two endpoints. The Draw tool recognizes a horizontal boundary, incline, steep line segment, or a convex polygon made of 3–8 corners. Confirm the suggestion or choose a different type before creating it.
+2. Choose **绘制** and draw with the right mouse button on a computer or with a finger or stylus on touch screens. A quick stroke stays freehand: open curves become static ramps or collision curves, and closed shapes become dynamic bodies. Hold still at the end for 1.5 seconds before lifting to regularize the stroke into a line, circle, rectangle, polygon, or smooth curve. Click **绘制** again to choose red, blue, white, or a custom color. Choose **橡皮** to delete whole strokes, or click it again and switch to drag mode to cut curves and delete bodies.
 3. With Select active, drag a body to move it or drag empty canvas to pan. Right-click a body or spring to highlight it and show the delete action. On touch screens, press and hold the target. For keyboard access, select a target and press Shift+F10 on the canvas. Rotate by 15° with R or enter a rotation in the inspector.
 4. To connect a spring, choose Spring and click an attachment point on each of two bodies. At least one must be dynamic. Use **初始位移** to set the initial anchor separation relative to the rest length. The inspector moves one dynamic endpoint along the line between the anchors. Adjust local anchor coordinates in the inspector.
 5. Use the Object tab for mass, density, geometry and initial velocity. Use Environment for gravity, collisions, and the four adjustable bounds. The gravity presets fill in Earth (9.81), Moon (1.62), Mars (3.71) or weightlessness (0) with one click; you can still type any other value. Press Enter or leave a numeric field to apply an edit. An invalid value shows a field or scene error.
@@ -12,7 +12,7 @@
 10. Choose **历史回放** after stepping or running. Scrub the timeline or use its Play control, then choose **保存回放** to keep the recording with the experiment in this browser. Exit replay to edit or run the scene again. Saving another recording replaces the saved recording for that experiment.
 11. Edit the title at the top of the workspace or add notes in the inspector. Save the experiment and reopen it from Library. Library also supports rename, duplicate, and delete. Export scene JSON from the workspace title menu. Use **导入实验** in the library to validate and open a copy from another browser.
 
-On a phone, scroll the tool strip horizontally, use the zoom buttons, and find Parameters below the charts.
+On a phone, the tool strip sits above the canvas, the color palette spans the screen width, and Parameters is below the charts.
 
 Open **动量** in the analysis panel to view signed momentum components. Switch between **全体动态物体** and an individual object. The summary compares the first and last retained samples and includes the change in kinetic energy. **导出动量 CSV** includes momentum and kinetic energy at every retained sample for the selected scope.
 

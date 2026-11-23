@@ -1,65 +1,90 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { flushSync } from 'react-dom'
-import { Circle, Crosshair, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, Plus, Spline, Square, Trash2, Triangle, X, Zap, MoveUpRight, PenLine, Waves, ChevronsUpDown, Orbit } from 'lucide-react'
+import { ChevronsUpDown, Crosshair, Eraser, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, MoveUpRight, Orbit, PenLine, Plus, Spline, Trash2, Waves, Zap } from 'lucide-react'
 import { rotate, screenPoint, worldPoint, zoomAt } from './coordinates'
-import { body, type BodyConfig, type Camera, type Experiment, type Point, type Spring } from './model'
-import { defaultDisplay, drawScene, type Display, type Overlay, type ReplayView } from './render'
+import { type BodyConfig, type Camera, type Experiment, type Point, type Spring } from './model'
+import { defaultDisplay, drawScene, type Display, type EraseView, type Overlay, type ReplayView } from './render'
 import type { Sample } from './analysis'
 import type { Physics } from './physics'
-import { classifyDrawing, drawingLabels, type DrawingKind } from './drawing'
-import { segmentDistance } from './track'
+import { containsPoint } from './freeform'
+import { createInk, INK_COLORS } from './ink'
+import { eraseBodies, type EraserMode, type EraseResult } from './eraser'
 import { findSurfaceSnap, type SurfaceSnap } from './surfaceSnap'
 import { resizeBody, resizeCursor, resizeHandleAt } from './resizeBody'
 import { pointerBearing, rotationGuide, turnBetween } from './rotationHandle'
 
 const displayLabels = {velocity:'速度矢量',acceleration:'加速度矢量',forces:'力矢量',trails:'运动轨迹',reference:'理论轨迹'} as const
 
-export type Tool = 'select'|'circle'|'rectangle'|'ground'|'ramp'|'draw'|'spring'
+export type Tool = 'select'|'draw'|'eraser'|'spring'
 const tools = [
-  ['select','选择',MousePointer2],['circle','圆形',Circle],['rectangle','矩形',Square],
-  ['ground','地面',Minus],['ramp','斜面',Triangle],['draw','绘制',PenLine],['spring','弹簧',Waves],
+  ['select','选择',MousePointer2],['draw','绘制',PenLine],['eraser','橡皮',Eraser],['spring','弹簧',Waves],
 ] as const
-export function Tools({tool,setTool,display,toggle,locked=false}:{locked?:boolean;tool:Tool;setTool:(t:Tool)=>void;display:Display;toggle:(key:'forces'|'trails')=>void}) {
+type ToolsProps = {
+  locked?:boolean; tool:Tool; setTool:(t:Tool)=>void; display:Display; toggle:(key:'forces'|'trails')=>void
+  inkColor:string; setInkColor:(color:string)=>void; customInks:string[]; addCustomInk:(color:string)=>void
+  eraserMode:EraserMode; setEraserMode:(mode:EraserMode)=>void
+}
+export function Tools({tool,setTool,display,toggle,locked=false,inkColor,setInkColor,customInks,addCustomInk,eraserMode,setEraserMode}:ToolsProps) {
+  const [paletteOpen,setPaletteOpen]=useState(false)
+  const [eraserOpen,setEraserOpen]=useState(false)
+  useEffect(()=>{
+    if(tool!=='draw')setPaletteOpen(false)
+    if(tool!=='eraser')setEraserOpen(false)
+  },[tool])
+  function choose(key:Tool) {
+    if(key==='draw'&&tool==='draw') {setPaletteOpen(open=>!open);return}
+    if(key==='eraser'&&tool==='eraser') {setEraserOpen(open=>!open);return}
+    setTool(key)
+  }
+  const custom=customInks.filter(color=>!INK_COLORS.some(base=>base.value.toLowerCase()===color.toLowerCase()))
   return <aside className="tools" aria-label="场景工具">
-    {tools.map(([key,label,Icon])=><button key={key} className={tool===key?'tool active':'tool'} aria-pressed={tool===key} title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':label} disabled={locked} onClick={()=>setTool(key)}><Icon size={17}/><span>{label}</span></button>)}
+    <div className="tool-strip">
+      {tools.map(([key,label,Icon])=><button key={key} className={tool===key?'tool active':'tool'} aria-pressed={tool===key} aria-expanded={key==='draw'&&tool==='draw'?paletteOpen:key==='eraser'&&tool==='eraser'?eraserOpen:undefined}
+        title={key==='select'?'选择 · 拖物体移动，拖空白平移，右键查看操作':key==='draw'?'绘制 · 右键或触控笔画线，再次点击选择颜色':key==='eraser'?'橡皮 · 再次点击切换擦除方式':'弹簧 · 连接两个物体'} disabled={locked} onClick={()=>choose(key)}><Icon size={17}/><span>{label}</span></button>)}
+    </div>
     <div className="tool-rule"/>
-    <button className={display.forces?'tool toggled':'tool'} aria-pressed={display.forces} disabled={locked} onClick={()=>toggle('forces')}><Zap size={17}/><span>力矢量</span></button>
-    <button className={display.trails?'tool toggled':'tool'} aria-pressed={display.trails} onClick={()=>toggle('trails')}><Spline size={17}/><span>轨迹</span></button>
+    <div className="tool-strip tool-display">
+      <button className={display.forces?'tool toggled':'tool'} aria-pressed={display.forces} disabled={locked} onClick={()=>toggle('forces')}><Zap size={17}/><span>力矢量</span></button>
+      <button className={display.trails?'tool toggled':'tool'} aria-pressed={display.trails} onClick={()=>toggle('trails')}><Spline size={17}/><span>轨迹</span></button>
+    </div>
+    {paletteOpen&&tool==='draw'&&<div className="ink-palette" role="group" aria-label="画笔颜色">
+      <span className="palette-title">画笔颜色</span>
+      <div className="ink-swatches">
+        {INK_COLORS.map(color=><button key={color.value} type="button" className={'ink-swatch'+(inkColor.toLowerCase()===color.value?' chosen':'')}
+          style={{background:color.value}} aria-label={'画笔颜色 '+color.label} aria-pressed={inkColor.toLowerCase()===color.value} title={color.label}
+          onClick={()=>setInkColor(color.value)}/>)}
+        {custom.map((color,index)=><button key={color} type="button" className={'ink-swatch'+(inkColor.toLowerCase()===color.toLowerCase()?' chosen':'')}
+          style={{background:color}} aria-label={'自定义画笔颜色 '+(index+1)} aria-pressed={inkColor.toLowerCase()===color.toLowerCase()}
+          title={'自定义颜色 '+(index+1)} onClick={()=>setInkColor(color)}/>)}
+        <label className="ink-swatch custom" title="自定义颜色">
+          <Plus size={11}/>
+          <input type="color" aria-label="自定义画笔颜色" value={/^#[0-9a-fA-F]{6}$/.test(inkColor)?inkColor:'#ff5a5a'}
+            onChange={e=>{setInkColor(e.target.value);addCustomInk(e.target.value)}}/>
+        </label>
+      </div>
+    </div>}
+    {eraserOpen&&tool==='eraser'&&<div className="eraser-menu" role="group" aria-label="橡皮模式">
+      <span className="palette-title">擦除方式</span>
+      <button type="button" className={eraserMode==='stroke'?'chosen':''} aria-pressed={eraserMode==='stroke'} onClick={()=>setEraserMode('stroke')}>按笔画擦除</button>
+      <button type="button" className={eraserMode==='drag'?'chosen':''} aria-pressed={eraserMode==='drag'} onClick={()=>setEraserMode('drag')}>按拖动擦除</button>
+    </div>}
   </aside>
 }
 
 type ResizeHandle = NonNullable<ReturnType<typeof resizeHandleAt>>
-type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan'|'resize'|'rotate';positions:Map<string,Point>;moved?:boolean;body?:BodyConfig;snap?:SurfaceSnap;handle?:ResizeHandle;rotation?:{angle:number;bearing:number}}
+type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan'|'resize'|'rotate'|'erase';positions:Map<string,Point>;moved?:boolean;body?:BodyConfig;snap?:SurfaceSnap;handle?:ResizeHandle;rotation?:{angle:number;bearing:number};ink?:Point[];erase?:EraseResult;holdReady?:boolean}
 type Target = {id:string;name:string;at:Point;body?:BodyConfig;joint?:Spring}
 type TargetMenu = {target:Target;pixel:Point}
 const interaction: Record<Tool,string> = {
-  select:'拖物体移动 · 拖空白平移 · 右键操作',circle:'拖动以设置圆形半径',
-  rectangle:'从一个角拖动到对角',ground:'水平拖动以放置地面',ramp:'从起点拖动到终点以放置斜面',
-  draw:'点击顶点或拖出线段，再选择图形类型',spring:'在不同的物体上各选一个连接点',
+  select:'拖物体移动 · 拖空白平移 · 右键操作',
+  draw:'按住鼠标右键绘制 · 触屏/触控笔直接画 · 末端停留 1.5 秒自动规整',
+  eraser:'按住鼠标左键擦除 · 再次点击橡皮切换擦除方式',
+  spring:'在不同的物体上各选一个连接点',
 }
+const eraserRadius=(mode:EraserMode)=>mode==='drag'?0.22:0.13
 
 function local(point:Point,position:Point,angle:number) {
   return rotate({x:point.x-position.x,y:point.y-position.y},-angle)
-}
-function contains(b:BodyConfig,p:Point,position:Point,angle:number,tolerance:number) {
-  const q=local(p,position,angle),g=b.geometry
-  if (g.kind==='circle') return Math.hypot(q.x,q.y)<=g.radius+tolerance
-  if (g.kind==='track') return g.vertices.some((p,i)=>{
-    const next=g.vertices[i+1]??(g.closed?g.vertices[0]:undefined)
-    return next!==undefined&&segmentDistance(q,p,next)<=tolerance
-  })
-  if (g.kind!=='polygon') return Math.abs(q.x)<=g.width/2+tolerance&&Math.abs(q.y)<=g.height/2+tolerance
-  let inside=false
-  g.vertices.forEach((v,i)=>{
-    const w=g.vertices[(i+1)%g.vertices.length]
-    if ((v.y>q.y)!==(w.y>q.y) && q.x<(w.x-v.x)*(q.y-v.y)/(w.y-v.y)+v.x) inside=!inside
-  })
-  return inside
-}
-function segment(a:Point,b:Point,horizontal=false) {
-  const dy=horizontal?0:b.y-a.y, dx=b.x-a.x
-  return body(horizontal?'地面':'静态线段',{kind:'surface',width:Math.max(0.2,Math.hypot(dx,dy)),height:0.18},
-    (a.x+b.x)/2,a.y+dy/2,{angle:Math.atan2(dy,dx)})
 }
 
 interface ViewportProps {
@@ -82,6 +107,8 @@ interface ViewportProps {
   change:(changes:Partial<Experiment>,freePlacement?:boolean)=>boolean
   remove:(id:string)=>void
   report:(message:string)=>void
+  inkColor:string
+  eraserMode:EraserMode
 }
 export function Viewport(props:ViewportProps) {
   const {scene,camera,setCamera,physics,tool,selected,display,setDisplay,change,select,remove,report}=props
@@ -91,6 +118,9 @@ export function Viewport(props:ViewportProps) {
   const drag=useRef<Drag|null>(null)
   const space=useRef(false)
   const hold=useRef<ReturnType<typeof setTimeout>|null>(null)
+  const holdReady=useRef(false)
+  const inkPath=useRef<Point[]>([])
+  const eraserPath=useRef<Point[]>([])
   const menuRef=useRef<HTMLDivElement>(null)
   const [targetMenu,setTargetMenu]=useState<TargetMenu|null>(null)
   const [snapLabel,setSnapLabel]=useState<string>()
@@ -101,19 +131,19 @@ export function Viewport(props:ViewportProps) {
   const [position,setPosition]=useState<Point>({x:0,y:0})
   const [anchor,setAnchor]=useState<{id:string; local:Point; world:Point}|null>(null)
   const [draft,setDraft]=useState<Point[]>([])
-  const [closed,setClosed]=useState(false)
-  const suggestion=classifyDrawing(draft)
+  const [holdPreview,setHoldPreview]=useState(false)
+  const [erasePreview,setErasePreview]=useState<EraseResult>()
   const isReplay=Boolean(props.replay)
   const [displayMenu,setDisplayMenu]=useState(false)
-  const stageState=useRef({anchor,draft,position,closed,targetMenu,editing})
-  stageState.current={anchor,draft,position,closed,targetMenu,editing}
+  const stageState=useRef({anchor,draft,position,targetMenu,editing,erasePreview,holdPreview})
+  stageState.current={anchor,draft,position,targetMenu,editing,erasePreview,holdPreview}
   useEffect(()=>{
     if(!editing)setEditingId('')
     setCursor('')
   },[editing])
   useEffect(()=>{
     cancelDrag()
-    setAnchor(null);setDraft([]);setClosed(false);setTargetMenu(null)
+    setAnchor(null);setDraft([]);setTargetMenu(null);setErasePreview(undefined);setHoldPreview(false)
     return clearTap
   },[tool,physics,isReplay])
   useEffect(()=>{
@@ -166,23 +196,17 @@ export function Viewport(props:ViewportProps) {
       }
       if(resized) {el.width=w;el.height=h}
       previousProps=current;previousStage=stage;previousDrag=d;previousTime=time;lastDraw=now
-      const {draft,anchor,position,closed}=stageState.current
-      let overlay:Overlay|undefined=draft.length?{points:closed?[...draft,draft[0]]:draft}:undefined
+      const {draft,anchor,position,erasePreview,holdPreview}=stageState.current
+      let overlay:Overlay|undefined=draft.length?{points:draft,color:holdPreview?'#ffd796':undefined}:undefined
       if(anchor) overlay={points:[anchor.world,position],color:'#e8b779'}
       const move=d?.type==='select'&&d.moved?draggedPositions(d,d.now):undefined
       const edit=d?.body&&d.moved?transformBody(d,d.now):undefined
-      if(d && d.type!=='pan' && d.type!=='select') {
-        const a=d.from,b=d.now
-        if(d.type==='rectangle') overlay={points:[a,{x:b.x,y:a.y},b,{x:a.x,y:b.y},a]}
-        else if(d.type==='ground') overlay={points:[a,{x:b.x,y:a.y}]}
-        else if(d.type==='circle') {
-          const radius=Math.hypot(a.x-b.x,a.y-b.y)
-          overlay={points:Array.from({length:37},(_,i)=>({x:a.x+radius*Math.cos(i*Math.PI/18),y:a.y+radius*Math.sin(i*Math.PI/18)}))}
-        } else if(d.type==='ramp'||d.type==='draw') overlay={points:[...draft,a,b]}
-      }
+      const eraserView:EraseView|undefined=current.tool==='eraser'&&!current.replay?{
+        segments:erasePreview?.segments??[],cursor:position,radius:eraserRadius(current.eraserMode),
+      }:undefined
       try {
         ctx!.setTransform(dpr,0,0,dpr,0,0)
-        drawScene(ctx!,view,camera,scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0})
+        drawScene(ctx!,view,camera,scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0,hidden:erasePreview?.hidden,erase:eraserView})
       } catch {
         if(!failed) latest.current.report('无法绘制当前场景。请重置视图或重新加载实验。')
         failed=true
@@ -200,7 +224,7 @@ export function Viewport(props:ViewportProps) {
     const down=(e:KeyboardEvent)=>{
       if(e.target instanceof HTMLElement && e.target.closest('input, textarea, select, button, [contenteditable]')) return
       if(e.code==='Space') {space.current=true;e.preventDefault()}
-      if(e.key==='Escape') {cancelDrag();clearTap();setEditingId('');setDraft([]);setAnchor(null);setClosed(false);setTargetMenu(null)}
+      if(e.key==='Escape') {cancelDrag();clearTap();setEditingId('');setDraft([]);setAnchor(null);setTargetMenu(null)}
       if(e.key==='Alt'&&drag.current?.moved&&drag.current.body) {
         e.preventDefault()
         updateSnap(drag.current.now,true)
@@ -226,10 +250,32 @@ export function Viewport(props:ViewportProps) {
     if(hold.current!==null)clearTimeout(hold.current)
     hold.current=null
   }
+  function scheduleHold() {
+    cancelHold()
+    hold.current=setTimeout(()=>{
+      const d=drag.current
+      if(!d||d.type!=='draw')return
+      holdReady.current=true
+      d.holdReady=true
+      setHoldPreview(true)
+      hold.current=null
+    },1500)
+  }
   function cancelDrag() {
+    const active=drag.current
     drag.current=null
     setSnapLabel(undefined)
     cancelHold()
+    holdReady.current=false
+    if(active?.type==='draw') {
+      inkPath.current=[]
+      setDraft([])
+      setHoldPreview(false)
+    }
+    if(active?.type==='erase') {
+      eraserPath.current=[]
+      setErasePreview(undefined)
+    }
   }
   function clearTap() {
     if(lastTap.current?.timer!==undefined)clearTimeout(lastTap.current.timer)
@@ -301,7 +347,7 @@ export function Viewport(props:ViewportProps) {
       const body=scene.bodies[i]
       const live=physics.bodies.get(body.id)
       const at=live?.getPosition()??body.position
-      if(contains(body,world,at,live?.getAngle()??body.angle,4/camera.scale)) {
+      if(containsPoint({...body,position:at,angle:live?.getAngle()??body.angle},world,4/camera.scale)) {
         return {id:body.id,name:body.name,at,body}
       }
     }
@@ -320,7 +366,9 @@ export function Viewport(props:ViewportProps) {
     setTargetMenu({target,pixel})
   }
   function onContext(e:ReactMouseEvent<HTMLCanvasElement>) {
-    if(isReplay||tool!=='select')return
+    if(isReplay)return
+    if(tool==='draw') {e.preventDefault();return}
+    if(tool!=='select')return
     e.preventDefault()
     const {pixel,world}=points(e)
     const target=hitTarget(world)
@@ -335,12 +383,17 @@ export function Viewport(props:ViewportProps) {
     if(change({joints:[...scene.joints,j]})) {setAnchor(null);select(j.id)}
   }
   function onDown(e:ReactPointerEvent<HTMLCanvasElement>) {
-    if((e.button!==0&&e.button!==1)||drag.current)return
+    if(drag.current)return
+    const mouse=e.pointerType==='mouse'
+    const drawPointer=tool==='draw'&&!isReplay&&(mouse?e.button===2:e.button===0)
+    const erasePointer=tool==='eraser'&&!isReplay&&e.button===0
+    if(!drawPointer&&!erasePointer&&e.button!==0&&e.button!==1)return
+    if(tool==='draw'&&mouse&&e.button!==2&&e.button!==1&&!space.current&&!isReplay)return
     e.preventDefault()
     e.currentTarget.focus()
     const {pixel,world}=points(e)
     const forcedPan=e.button===1||space.current||isReplay
-    const type=forcedPan?'pan':tool
+    const type=forcedPan?'pan':drawPointer?'draw':erasePointer?'erase':tool
     const edited=type==='select'?editingBody():undefined
     if(edited&&hitsRotation(edited,world,e.pointerType==='touch'?16:11)) {
       clearTap()
@@ -359,12 +412,30 @@ export function Viewport(props:ViewportProps) {
       return
     }
     if(props.running&&type!=='select'&&type!=='pan') {report('请先暂停模拟，再编辑场景。');return}
+    if(type==='draw') {
+      inkPath.current=[world]
+      holdReady.current=false
+      setHoldPreview(false)
+      setDraft([world])
+      drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'draw',positions:new Map(),ink:inkPath.current}
+      e.currentTarget.setPointerCapture(e.pointerId)
+      scheduleHold()
+      return
+    }
+    if(type==='erase') {
+      eraserPath.current=[world]
+      drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'erase',positions:new Map()}
+      const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.eraserMode),props.eraserMode)
+      setErasePreview(preview.changed?preview:undefined)
+      e.currentTarget.setPointerCapture(e.pointerId)
+      return
+    }
     if(type==='spring') {
       const hit=hitTarget(world,true)?.body
       if(hit)attachSpring(hit,world)
       return
     }
-    const insideEdited=edited&&contains(edited,world,edited.position,edited.angle,0)
+    const insideEdited=edited&&containsPoint(edited,world)
     const target=type==='select'?(insideEdited?targetById(edited!.id):hitTarget(world)):undefined
     if(type==='select')select(target?.id??'')
     const positions=new Map<string,Point>()
@@ -396,9 +467,31 @@ export function Viewport(props:ViewportProps) {
     }
     if(!d||d.pointer!==e.pointerId)return
     d.now=world
+    if(d.type==='draw') {
+      const last=inkPath.current.at(-1)
+      if(!last||Math.hypot(world.x-last.x,world.y-last.y)>=2/d.camera.scale) {
+        inkPath.current.push(world)
+        setDraft([...inkPath.current])
+        if(holdReady.current||d.holdReady) {
+          holdReady.current=false
+          d.holdReady=false
+          setHoldPreview(false)
+        }
+        scheduleHold()
+      }
+      return
+    }
+    if(d.type==='erase') {
+      const last=eraserPath.current.at(-1)
+      if(!last||Math.hypot(world.x-last.x,world.y-last.y)>=1.5/d.camera.scale) {
+        eraserPath.current.push(world)
+        const preview=eraseBodies(scene.bodies,eraserPath.current,eraserRadius(props.eraserMode),props.eraserMode)
+        setErasePreview(preview.changed?preview:undefined)
+      }
+      return
+    }
     if(Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5&&!d.moved) {
       d.moved=true
-      cancelHold()
       clearTap()
       if(d.type==='select'&&props.running)props.pause()
     }
@@ -414,15 +507,34 @@ export function Viewport(props:ViewportProps) {
   function onUp(e:ReactPointerEvent<HTMLCanvasElement>) {
     const d=drag.current
     if(!d||d.pointer!==e.pointerId)return
+    const {pixel,world:b}=points(e)
+    if(d.type==='draw') {
+      const path=[...inkPath.current]
+      const regularize=Boolean(d.holdReady||holdReady.current)
+      cancelDrag()
+      const result=createInk(path,props.inkColor,regularize)
+      if('error' in result)report(result.error)
+      else add(result.body,true)
+      return
+    }
+    if(d.type==='erase') {
+      const path=[...eraserPath.current]
+      const mode=props.eraserMode
+      const result=eraseBodies(scene.bodies,path,eraserRadius(mode),mode)
+      cancelDrag()
+      if(result.changed) {
+        const joints=scene.joints.filter(j=>!result.removed.has(j.a)&&!result.removed.has(j.b))
+        if(change({bodies:result.bodies,joints},true)&&result.removed.has(selected))select('')
+      }
+      return
+    }
     cancelDrag()
     if(d.type==='pan') {
-      const {pixel}=points(e)
       if(Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5) {
         setCamera({...d.camera,x:d.camera.x-(pixel.x-d.pixel.x)/d.camera.scale,y:d.camera.y+(pixel.y-d.pixel.y)/d.camera.scale})
       }
       return
     }
-    const {pixel,world:b}=points(e),a=d.from
     const moved=Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5
     if(d.type==='resize'||d.type==='rotate') {
       if(!moved)return
@@ -452,38 +564,7 @@ export function Viewport(props:ViewportProps) {
         })},e.altKey)
       } else if(d.body)tapBody(d.body.id,pixel)
       else clearTap()
-    } else if(d.type==='circle') {
-      place(body('圆形',{kind:'circle',radius:moved?Math.max(0.08,Math.hypot(b.x-a.x,b.y-a.y)):0.3},a.x,a.y))
-    } else if(d.type==='rectangle') {
-      place(body('矩形',{kind:'rectangle',width:moved?Math.max(0.1,Math.abs(b.x-a.x)):0.8,height:moved?Math.max(0.1,Math.abs(b.y-a.y)):0.6},
-        moved?(a.x+b.x)/2:a.x,moved?(a.y+b.y)/2:a.y,{color:'blue'}))
-    } else if(d.type==='ground'||d.type==='ramp') {
-      const end=moved?b:{x:a.x+3,y:a.y+(d.type==='ramp'?-1.2:0)}
-      const result=segment(a,end,d.type==='ground')
-      place({...result,name:d.type==='ramp'?'斜面':'地面'})
-    } else if(d.type==='draw') {
-      if(moved) {setDraft([a,b]);setClosed(false);return}
-      if(closed)return
-      if(draft.length>=3&&Math.hypot(a.x-draft[0].x,a.y-draft[0].y)*camera.scale<12) {setClosed(true);return}
-      setDraft([...draft,a].slice(0,8))
     }
-    function place(config:BodyConfig) {
-      const target=!moved&&hitTarget(b,true)
-      if(target)tapBody(target.id,pixel,()=>add(config,e.altKey))
-      else {clearTap();add(config,e.altKey)}
-    }
-  }
-  function confirmDrawing(kind:DrawingKind) {
-    if(draft.length<2)return
-    let config:BodyConfig
-    if(kind==='polygon') {
-      const c=draft.reduce((s,p)=>({x:s.x+p.x/draft.length,y:s.y+p.y/draft.length}),{x:0,y:0})
-      config=body('多边形',{kind:'polygon',vertices:draft.map(p=>({x:p.x-c.x,y:p.y-c.y}))},c.x,c.y,{type:'static',color:'slate'})
-    } else {
-      const b=segment(draft[0],draft.at(-1)!,kind==='ground')
-      config={...b,name:kind==='ground'?'静态边界':kind==='ramp'?'斜面':b.name}
-    }
-    if(add(config)) {setDraft([]);setClosed(false)}
   }
   function doZoom(factor:number) {
     const el=canvas.current!
@@ -491,7 +572,8 @@ export function Viewport(props:ViewportProps) {
     setCamera(zoomAt(camera,view,{x:view.width/2,y:view.height/2},factor))
   }
   return <section className="viewport" aria-label="模拟视图">
-    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':tool} style={editing&&cursor?{cursor}:undefined}
+    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':tool}
+      style={tool==='draw'?{cursor:'crosshair'}:tool==='eraser'?{cursor:'none'}:editing&&cursor?{cursor}:undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={cancelDrag}
       onLostPointerCapture={e=>{if(drag.current?.pointer===e.pointerId)cancelDrag()}}
       onContextMenu={onContext} onKeyDown={e=>{
@@ -536,19 +618,12 @@ export function Viewport(props:ViewportProps) {
       </div>
     </div>
     {!isReplay&&tool!=='select'&&<div className="tool-hint">{anchor?'请选择第二个连接点':interaction[tool]}
-      {draft.length>=2&&<>
-        <div className="draw-suggestion" role="status">{suggestion?'识别为：'+drawingLabels[suggestion]:'顶点未组成简单凸多边形，可重画或选择线段。'}</div>
-        <div className="draw-actions">
-          {suggestion&&<button className="button primary" onClick={()=>confirmDrawing(suggestion)}>确认创建</button>}
-          {(['ground','ramp','segment','polygon'] as const).filter(kind=>kind!=='polygon'||suggestion==='polygon').map(kind=>
-            <button key={kind} onClick={()=>confirmDrawing(kind)}>{drawingLabels[kind]}</button>)}
-          <button className="icon" aria-label="取消绘制" onClick={()=>{setDraft([]);setClosed(false)}}><X size={14}/></button>
-        </div>
-      </>}
+      {tool==='draw'&&draft.length>0&&<span className="ink-status" role="status">{holdPreview?'已停留 1.5 秒 · 松开自动规整':'按住不动 1.5 秒可自动规整'}</span>}
+      {tool==='eraser'&&<span className="ink-status" role="status">{props.eraserMode==='stroke'?'整笔删除':'拖动擦除可切断曲线'}</span>}
     </div>}
     {!isReplay&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">{editing?'拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转':'拖物体移动 · 双击编辑 · 拖空白平移'}</span>}
     {snapLabel&&<div className="snap-hint" role="status"><Magnet size={14}/> 松手贴合 {snapLabel}</div>}
-    {scene.bodies.length===0&&tool==='select'&&<div className="canvas-empty"><Orbit size={25}/><strong>当前场景为空</strong><span>在工具栏中选择一种物体，开始搭建场景。</span></div>}
+    {scene.bodies.length===0&&tool==='select'&&<div className="canvas-empty"><Orbit size={25}/><strong>当前场景为空</strong><span>使用顶部的绘制工具，在画布上勾勒场景。</span></div>}
   </section>
 }
 

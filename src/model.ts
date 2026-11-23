@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { TRACK_VERTEX_LIMIT, trackError } from './track'
+import { freeformError, polygonArea, TRACK_VERTEX_LIMIT, trackError } from './track'
 
 z.config(z.locales.zhCN())
 
@@ -8,6 +8,9 @@ const positive = z.number().min(0.02).max(1000)
 const id = z.string().min(1)
 export const pointSchema = z.object({ x: finite, y: finite })
 export type Point = z.infer<typeof pointSchema>
+export const paletteColorSchema = z.enum(['mint','blue','amber','slate'])
+export const bodyColorSchema = z.union([paletteColorSchema,z.string().regex(/^#[0-9a-fA-F]{6}$/,'颜色必须使用 #RRGGBB 格式。')])
+export type BodyColor = z.infer<typeof bodyColorSchema>
 const geometry = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('circle'), radius: positive }),
   z.object({ kind: z.literal('rectangle'), width: positive, height: positive }),
@@ -16,6 +19,12 @@ const geometry = z.discriminatedUnion('kind', [
     .superRefine(({vertices,closed},ctx)=>{
       if(vertices.length>TRACK_VERTEX_LIMIT)return
       const message=trackError(vertices,closed)
+      if(message)ctx.addIssue({code:'custom',message})
+    }),
+  z.object({ kind:z.literal('freeform'), vertices:z.array(pointSchema).min(2).max(TRACK_VERTEX_LIMIT), closed:z.boolean() })
+    .superRefine(({vertices,closed},ctx)=>{
+      if(vertices.length>TRACK_VERTEX_LIMIT)return
+      const message=freeformError(vertices,closed)
       if(message)ctx.addIssue({code:'custom',message})
     }),
   z.object({ kind: z.literal('polygon'), vertices: z.array(pointSchema).min(3).max(8) }).refine(
@@ -40,8 +49,10 @@ export const bodySchema = z.object({
   position: pointSchema, angle: finite, velocity: pointSchema, angularVelocity: finite,
   mass: z.number().min(0.001).max(100000), friction: z.number().min(0).max(10),
   restitution: z.number().min(0).max(1), geometry,
-  color: z.enum(['mint','blue','amber','slate']),
+  color: bodyColorSchema,
 }).refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
+  .refine(b => b.geometry.kind!=='freeform' || b.geometry.closed || b.type==='static', '开放式手绘曲线必须设为静态。')
+  .refine(b => b.geometry.kind!=='freeform' || b.type!=='dynamic' || !freeformError(b.geometry.vertices,b.geometry.closed,true), '动态物块必须使用无自相交的封闭曲线。')
 export const springSchema = z.object({
   id, a: id, b: id, anchorA: pointSchema, anchorB: pointSchema,
   stiffness: z.number().min(0.01).max(100000), damping: z.number().min(0).max(5), restLength: positive,
@@ -70,8 +81,8 @@ export const experimentSchema = z.object({
   environment: environmentSchema, camera: cameraSchema,
   bodies: z.array(bodySchema).max(100), joints: z.array(springSchema).max(200),
 }).superRefine((scene, ctx) => {
-  if(scene.version===1&&scene.bodies.some(body=>body.geometry.kind==='track')) {
-    ctx.addIssue({code:'custom',message:'曲线轨道需要使用版本 2 的实验文件。'})
+  if(scene.version===1&&scene.bodies.some(body=>body.geometry.kind==='track'||body.geometry.kind==='freeform')) {
+    ctx.addIssue({code:'custom',message:'手绘图形和曲线轨道需要使用版本 2 的实验文件。'})
   }
   const bodies = new Map(scene.bodies.map(body => [body.id, body]))
   if (bodies.size !== scene.bodies.length || new Set(scene.joints.map(j => j.id)).size !== scene.joints.length) {
@@ -98,12 +109,10 @@ export function springFrequency(k: number, a: BodyConfig, b: BodyConfig) {
 
 export function area(g: BodyConfig['geometry']) {
   if (g.kind === 'track') return 0
+  if (g.kind === 'freeform') return g.closed?polygonArea(g.vertices):0
   if (g.kind === 'circle') return Math.PI * g.radius ** 2
   if (g.kind !== 'polygon') return g.width * g.height
-  return Math.abs(g.vertices.reduce((sum,a,i) => {
-    const b = g.vertices[(i+1)%g.vertices.length]
-    return sum+a.x*b.y-a.y*b.x
-  },0))/2
+  return polygonArea(g.vertices)
 }
 export function body(name: string, geometry: BodyConfig['geometry'], x: number, y: number, values: Partial<BodyConfig> = {}): BodyConfig {
   const fixed=geometry.kind==='surface'||geometry.kind==='track'

@@ -34,6 +34,24 @@ function intersects(a:Point,b:Point,c:Point,d:Point) {
     || [segmentDistance(a,c,d),segmentDistance(b,c,d),segmentDistance(c,a,b),segmentDistance(d,a,b)].some(x=>x<1e-8)
 }
 
+export function polygonArea(vertices:readonly Point[]) {
+  return Math.abs(vertices.reduce((sum,a,i)=>{
+    const b=vertices[(i+1)%vertices.length]
+    return sum+a.x*b.y-a.y*b.x
+  },0))/2
+}
+
+function selfIntersectionError(vertices:readonly Point[],closed:boolean) {
+  const count=vertices.length-(closed?0:1)
+  const start=(i:number)=>vertices[(i+vertices.length)%vertices.length]
+  for(let i=0;i<count;i++) {
+    for(let j=i+2;j<count;j++) {
+      if(closed&&i===0&&j===count-1)continue
+      if(intersects(start(i),start(i+1),start(j),start(j+1)))return '图形不能自相交或包含重叠的线段。'
+    }
+  }
+}
+
 export function trackError(vertices:readonly Point[],closed:boolean) {
   if(vertices.length<(closed?3:2)||vertices.length>TRACK_VERTEX_LIMIT)return '轨道需要 2 至 256 个顶点，闭合轨道至少需要 3 个。'
   const count=vertices.length-(closed?0:1)
@@ -46,9 +64,25 @@ export function trackError(vertices:readonly Point[],closed:boolean) {
       const c=start(i+2),x=c.x-b.x,y=c.y-b.y
       if(dx*x+dy*y<-0.98*length*Math.hypot(x,y))return '轨道转角过尖，无法稳定计算碰撞。'
     }
-    for(let j=i+2;j<count;j++) {
-      if(closed&&i===0&&j===count-1)continue
-      if(intersects(a,b,start(j),start(j+1)))return '轨道不能自相交或包含重叠的线段。'
-    }
+  }
+  return selfIntersectionError(vertices,closed)?.replace('图形','轨道')
+}
+
+export function isSimplePolygon(vertices:readonly Point[]) {
+  return vertices.length>=3&&!selfIntersectionError(vertices,true)
+}
+
+export function freeformError(vertices:readonly Point[],closed:boolean,dynamic=false) {
+  if(vertices.length<(closed?3:2)||vertices.length>TRACK_VERTEX_LIMIT)return '手绘图形需要 2 至 256 个顶点，封闭图形至少需要 3 个。'
+  const count=vertices.length-(closed?0:1)
+  for(let i=0;i<count;i++) {
+    const a=vertices[i],b=vertices[(i+1)%vertices.length]
+    if(Math.hypot(b.x-a.x,b.y-a.y)<TRACK_MIN_EDGE)return '手绘图形含小于 0.02 m 的线段。请放大图形。'
+  }
+  if(dynamic&&!closed)return '动态物块必须使用封闭曲线。'
+  if(closed) {
+    const error=selfIntersectionError(vertices,true)
+    if(error)return error
+    if(dynamic&&polygonArea(vertices)<0.0001)return '手绘物块的面积过小，请画得更大一些。'
   }
 }

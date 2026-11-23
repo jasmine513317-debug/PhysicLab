@@ -16,6 +16,7 @@ import { downloadText } from './download'
 import { encodeBackup } from './backup'
 import { appUrl } from './routes'
 import { separateEditedBodies } from './surfaceSnap'
+import type { EraserMode } from './eraser'
 
 const fit=(camera:Camera)=>({...camera,scale:Math.min(camera.scale,Math.max(25,(window.innerWidth-(window.innerWidth>1000?450:80))/10.6))})
 type EditSnapshot = {
@@ -35,6 +36,9 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [engine,setEngine]=useState(()=>new Physics(initial))
   const [selected,select]=useState(initial.bodies.find(b=>b.type==='dynamic')?.id??'')
   const [tool,setTool]=useState<Tool>('select')
+  const [inkColor,setInkColor]=useState('#ff5a5a')
+  const [customInks,setCustomInks]=useState<string[]>([])
+  const [eraserMode,setEraserMode]=useState<EraserMode>('stroke')
   const [display,setDisplay]=useState(defaultDisplay)
   const [running,setRunning]=useState(false)
   const [timerOpen,setTimerOpen]=useState(false)
@@ -88,7 +92,9 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
       const unchanged=Object.entries(patch).every(([key,value])=>
         JSON.stringify(previous[key as keyof Experiment])===JSON.stringify(value))
       if(unchanged)return true
-      const next=decodeExperiment({...previous,...patch})
+      const candidate={...previous,...patch}
+      const upgraded=candidate.version===1&&candidate.bodies.some(b=>b.geometry.kind==='freeform'||b.geometry.kind==='track')?{...candidate,version:2 as const}:candidate
+      const next=decodeExperiment(upgraded)
       const a=previous.environment.worldBounds,b=next.environment.worldBounds
       const mechanics=patch.bodies||patch.joints||(patch.environment&&(
         previous.environment.gravity!==next.environment.gravity||
@@ -313,9 +319,10 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     <TimedRunControls open={timerOpen && !isReplay} currentTime={time} timeStep={scene.environment.timeStep}
       running={running} start={runToTick}/>
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
-      <p>选择形状工具，在网格中拖动即可创建物体。在选择工具中，左键拖物体可移动，拖空白处可平移。右键点击或在触屏上长按目标，即可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除。滚动滚轮或使用缩放按钮调整视图。</p>
-      <p>双击物块显示编辑手柄，拖动圆形手柄可旋转。按 <kbd>Esc</kbd> 退出编辑。</p>
-      <p>在两个物体上分别选择连接点，即可添加弹簧。绘制线段或依次点击多边形顶点，查看识别结果后确认，也可改选类型。</p>
+      <p>绘制工具支持任意曲线：电脑上按住鼠标右键绘制，触屏或触控笔可直接书写。再点一次“绘制”可选择红色、蓝色、白色或自定义颜色。</p>
+      <p>曲线末端停留 1.5 秒再松手，会自动规整为直线、圆、矩形、多边形或平滑曲线；快速松手则保留手绘轨迹。开放曲线会成为静态斜面或碰撞曲线，封闭图形会成为动态物块。</p>
+      <p>橡皮提供两种模式：“按笔画擦除”会整笔删除；“按拖动擦除”可以擦断曲线，也能删除物块。选择工具中左键拖动物体移动、拖空白平移，双击物块显示缩放手柄，拖动圆形手柄旋转。</p>
+      <p>在两个物体上分别选择连接点，即可添加弹簧。右键点击或在触屏上长按目标，可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除，按 <kbd>Esc</kbd> 退出编辑。</p>
       <p>播放快捷键：<kbd>P</kbd> 运行或暂停，<kbd>.</kbd> 单步推进 1/60 s，<kbd>Shift</kbd>+<kbd>R</kbd> 重置模拟。焦点在输入框或按钮上时，快捷键不生效。空格仍用于按住拖动平移画布。</p>
       <p>环境设置中的重力预设可一键切换到地球、月球、火星或失重，用于比较同一场景在不同重力下的运动。修改重力会回到初始状态重新模拟。</p>
       <p>物块与地面或斜面重叠时，会贴到物块中心所在一侧的表面。拖动时可看绿色接触线，按住 <kbd>Alt</kbd> 可自由摆放。</p>
@@ -324,11 +331,15 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     {error&&<div className="lab-message error-banner" role="alert">{error}<button className="icon" aria-label="关闭错误提示" onClick={()=>setError('')}><X size={15}/></button></div>}
     {notice&&<div className="lab-message toast" role="status"><Check size={16}/>{notice}</div>}
     <div className="workbench">
-      <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}/>
       <div className="work-center">
+        <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}
+          inkColor={inkColor} setInkColor={setInkColor} customInks={customInks}
+          addCustomInk={color=>setCustomInks(values=>[...new Set([...values,color])].slice(-6))}
+          eraserMode={eraserMode} setEraserMode={setEraserMode}/>
         <Viewport scene={replay?.scene??scene} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
           replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}
-          display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}/>
+          display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}
+          inkColor={inkColor} eraserMode={eraserMode}/>
         {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>

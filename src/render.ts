@@ -10,11 +10,19 @@ import { rotationGuide } from './rotationHandle'
 const palette = {
   mint:['#d2d2d0','#f5f5f2'], blue:['#899bbd','#b9c9ef'],
   amber:['#947650','#f2c38b'], slate:['#303035','#717178'],
+} as const
+export function inkColors(color:string):[string,string] {
+  if(color in palette) {
+    const [fill,stroke]=palette[color as keyof typeof palette]
+    return [fill,stroke]
+  }
+  return /^#[0-9a-fA-F]{6}$/.test(color)?[color+'55',color]:['#d2d2d055','#d2d2d0']
 }
 export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number}
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
 export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
 export type Overlay = {points:Point[]; color?:string}
+export type EraseView = {segments:{points:Point[];color:string}[];cursor?:Point;radius:number}
 
 function path(ctx:CanvasRenderingContext2D, points:Point[], color:string, dash:number[]=[]) {
   if (!points.length) return
@@ -43,21 +51,24 @@ function arrow(ctx:CanvasRenderingContext2D, a:Point, b:Point, color:string, tex
 }
 
 function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:number,scale:number,selected:boolean,simple:boolean,dash?:number) {
-  const [fill,stroke] = palette[b.color], g = b.geometry
+  const [fill,stroke] = inkColors(b.color), g = b.geometry
   ctx.save()
   ctx.translate(center.x,center.y)
   ctx.rotate(-angle)
-  if(g.kind==='track') {
+  if((g.kind==='track')||(g.kind==='freeform'&&!g.closed)) {
     const vertices=g.vertices.map(p=>({x:p.x*scale,y:-p.y*scale}))
-    if(g.closed)vertices.push(vertices[0])
-    ctx.lineWidth=selected?3:2
-    path(ctx,vertices,selected?'#f5f5f2':'#a8a8b0',dash===undefined?[]:[8,6])
+    if(g.kind==='track'&&g.closed)vertices.push(vertices[0])
+    ctx.lineWidth=selected?3.2:2.4
+    ctx.lineCap='round'
+    ctx.lineJoin='round'
+    ctx.lineDashOffset=dash??0
+    path(ctx,vertices,g.kind==='track'?(selected?'#f5f5f2':'#a8a8b0'):(selected?'#ffffff':stroke),dash===undefined?[]:[8,6])
     ctx.restore()
     return
   }
   ctx.beginPath()
   if (g.kind==='circle') ctx.arc(0,0,g.radius*scale,0,Math.PI*2)
-  else if (g.kind==='polygon') {
+  else if (g.kind==='polygon'||g.kind==='freeform') {
     g.vertices.forEach((p,i)=>i===0?ctx.moveTo(p.x*scale,-p.y*scale):ctx.lineTo(p.x*scale,-p.y*scale))
     ctx.closePath()
   } else ctx.rect(-g.width*scale/2,-g.height*scale/2,g.width*scale,g.height*scale)
@@ -65,7 +76,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
   if(!simple) {
     const gradient=ctx.createLinearGradient(0,-18,0,27)
     gradient.addColorStop(0,fill)
-    gradient.addColorStop(1,b.color==='slate'?'#1a1a1e':fill+'7d')
+    gradient.addColorStop(1,b.color==='slate'?'#1a1a1e':b.color in palette?fill+'7d':stroke+'2a')
     ctx.fillStyle=gradient
   }
   ctx.strokeStyle=stroke
@@ -88,10 +99,10 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     ctx.lineDashOffset=dash??0
     ctx.beginPath()
     if (radius) ctx.arc(0,0,radius+6,0,Math.PI*2)
-    else if (g.kind==='polygon') {
+    else if (g.kind==='polygon'||g.kind==='freeform') {
       g.vertices.forEach((p,i)=>i===0?ctx.moveTo(p.x*scale*1.08,-p.y*scale*1.08):ctx.lineTo(p.x*scale*1.08,-p.y*scale*1.08))
       ctx.closePath()
-    } else if (g.kind!=='circle') ctx.rect(-g.width*scale/2-5,-g.height*scale/2-5,g.width*scale+10,g.height*scale+10)
+    } else if (g.kind==='rectangle'||g.kind==='surface') ctx.rect(-g.width*scale/2-5,-g.height*scale/2-5,g.width*scale+10,g.height*scale+10)
     ctx.stroke()
   }
   ctx.restore()
@@ -99,10 +110,10 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
 
 export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera, scene:Experiment, display:Display, options:{
   physics?:Physics; selected?:string; overlay?:Overlay; trailSince?:number; baseline?:Sample[]; diagram?:boolean; replay?:ReplayView; move?:Map<string,Point>; snap?:SurfaceSnap; highlight?:string; dash?:number
-  editing?:string; edit?:{body:BodyConfig;scaleAnchor?:(anchor:Point)=>Point}; rotating?:boolean
+  editing?:string; edit?:{body:BodyConfig;scaleAnchor?:(anchor:Point)=>Point}; rotating?:boolean; hidden?:ReadonlySet<string>; erase?:EraseView
 }={}) {
   const {width,height}=view
-  const {physics, selected, overlay, baseline, diagram, replay, move, snap, highlight, dash, edit}=options
+  const {physics, selected, overlay, baseline, diagram, replay, move, snap, highlight, dash, edit, hidden, erase}=options
   const p=(v:Point)=>screenPoint(v,camera,view)
   ctx.clearRect(0,0,width,height)
   ctx.font=(diagram?'11':'10')+'px "JetBrains Mono Variable", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace'
@@ -184,6 +195,7 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     return {x:at.x+offset.x,y:at.y+offset.y}
   }
   for (const j of scene.joints) {
+    if(hidden?.has(j.a)||hidden?.has(j.b))continue
     const a=p(anchor(j.a,j.anchorA))
     const b=p(anchor(j.b,j.anchorB))
     const len=Math.hypot(b.x-a.x,b.y-a.y)
@@ -205,6 +217,7 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
   }
   const manyBodies=scene.bodies.length>=40
   for (const b of scene.bodies) {
+    if(hidden?.has(b.id))continue
     const live=physics?.bodies.get(b.id)
     const pose=replay?.tracks.get(b.id)?.[replay.index]
     const snapped=snap?.bodyId===b.id?snap:undefined
@@ -262,6 +275,24 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     ctx.restore()
   }
   if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#91d9ff',[5,4])}
+  if(erase) {
+    ctx.save()
+    ctx.lineCap='round'
+    ctx.lineJoin='round'
+    ctx.lineWidth=2.4
+    for(const segment of erase.segments)path(ctx,segment.points.map(p),inkColors(segment.color)[1])
+    if(erase.cursor) {
+      const at=p(erase.cursor)
+      ctx.beginPath()
+      ctx.arc(at.x,at.y,erase.radius*camera.scale,0,Math.PI*2)
+      ctx.fillStyle='#f5f5f21c'
+      ctx.strokeStyle='#f5f5f2aa'
+      ctx.lineWidth=1.4
+      ctx.setLineDash([5,4])
+      ctx.fill();ctx.stroke()
+    }
+    ctx.restore()
+  }
   if (diagram) return
   const scaleLength = Math.min(major,1)*camera.scale
   const x=width-scaleLength-23, y=height-20

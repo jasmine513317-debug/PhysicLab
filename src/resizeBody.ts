@@ -8,7 +8,7 @@ const minus = (a:Point,b:Point) => ({x:a.x-b.x,y:a.y-b.y})
 const limit = (n:number,min=.02,max=1000) => Math.max(min,Math.min(max,n))
 
 export function resizeHandles(g:Geometry):Handle[] {
-  if(g.kind==='track')return []
+  if(g.kind==='track'||g.kind==='freeform')return []
   if(g.kind==='circle')return [{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].map(direction=>({
     point:{x:direction.x*g.radius,y:direction.y*g.radius},direction,
   }))
@@ -37,7 +37,7 @@ export function resizeHandleAt(body:BodyConfig,world:Point,tolerance:number) {
       return {point:p,direction:{x:p.x/r,y:p.y/r}}
     return
   }
-  if(g.kind==='track')return
+  if(g.kind==='track'||g.kind==='freeform')return
   const handles=resizeHandles(g)
   // Keep the middle of narrow objects available for moving.
   if(g.kind!=='polygon')tolerance=Math.min(tolerance,Math.min(g.width,g.height)*.32)
@@ -65,7 +65,7 @@ export function resizeCursor(handle:Handle,angle:number) {
 
 export function resizeBody(body:BodyConfig,handle:Handle,from:Point,to:Point) {
   const delta=rotate(minus(to,from),-body.angle),g=body.geometry,n=handle.direction
-  if(g.kind==='track')return {body,scaleAnchor:(p:Point)=>p}
+  if(g.kind==='track'||g.kind==='freeform')return {body,scaleAnchor:(p:Point)=>p}
   let geometry:Geometry
   let offset={x:0,y:0}
   let scaleAnchor:(p:Point)=>Point

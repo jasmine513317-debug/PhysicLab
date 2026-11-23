@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { circlePixels, rightStroke } from './helpers'
 
 test('opens a real template, records data, compares runs, exports CSV and manages a saved experiment',async({page})=>{
   const errors:string[]=[]
@@ -43,41 +44,45 @@ test('opens a real template, records data, compares runs, exports CSV and manage
   expect(errors).toEqual([])
 })
 
-test('constructs a scene with drag tools, connects a spring, moves, rotates, and deletes',async({page})=>{
+test('constructs a scene with the drawing tools, connects a spring, moves, rotates, and deletes',async({page})=>{
   await page.goto('/lab?new=1')
   const canvas=page.getByLabel('物理场景')
+  const tools=page.getByRole('complementary',{name:'场景工具'})
   const bounds=(await canvas.boundingBox())!
-  const drag=async(x:number,y:number,dx:number,dy:number)=>{
-    await page.mouse.move(bounds.x+x,bounds.y+y)
-    await page.mouse.down()
-    await page.mouse.move(bounds.x+x+dx,bounds.y+y+dy,{steps:5})
-    await page.mouse.up()
-  }
-  await page.getByRole('button',{name:'圆形',exact:true}).click()
-  await drag(190,115,25,0)
-  await expect(page.getByRole('spinbutton',{name:'半径'})).toBeVisible()
-  await page.getByRole('button',{name:'矩形',exact:true}).click()
-  await drag(300,95,52,50)
+  const toolsBox=(await tools.boundingBox())!
+  expect(toolsBox.y+toolsBox.height).toBeLessThanOrEqual(bounds.y+1)
+  const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
+  await tools.getByRole('button',{name:'绘制',exact:true}).click()
+  await rightStroke(page,[px(130,230),px(260,228),px(400,231),px(520,229)])
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
+
+  const rectCenter=px(320,130)
+  await rightStroke(page,[
+    px(260,95),px(380,95),px(380,165),px(260,165),px(261,97),
+  ],1700)
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘矩形')
   await expect(page.getByRole('spinbutton',{name:'宽度'})).toBeVisible()
-  await page.getByRole('button',{name:'地面',exact:true}).click()
-  await drag(130,230,350,0)
-  await page.getByRole('button',{name:'斜面',exact:true}).click()
-  await drag(390,145,100,65)
-  await page.getByRole('button',{name:'绘制',exact:true}).click()
-  await drag(480,115,42,5)
-  await page.getByRole('button',{name:'线段',exact:true}).click()
-  await page.getByRole('button',{name:'弹簧',exact:true}).click()
-  await canvas.click({position:{x:190,y:115}})
-  await canvas.click({position:{x:326,y:120}})
+
+  const circleCenter=px(180,150)
+  await rightStroke(page,circlePixels(circleCenter.x,circleCenter.y,38,28),1700)
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘圆')
+  await expect(page.getByRole('spinbutton',{name:'半径'})).toBeVisible()
+
+  await tools.getByRole('button',{name:'弹簧',exact:true}).click()
+  await canvas.click({position:{x:circleCenter.x-bounds.x,y:circleCenter.y-bounds.y}})
+  await canvas.click({position:{x:rectCenter.x-bounds.x,y:rectCenter.y-bounds.y}})
   await expect(page.getByRole('spinbutton',{name:'刚度'})).toHaveValue('40')
-  await page.getByRole('button',{name:'选择',exact:true}).click()
-  await drag(190,115,15,22)
+  await tools.getByRole('button',{name:'选择',exact:true}).click()
+  await page.mouse.move(circleCenter.x,circleCenter.y)
+  await page.mouse.down()
+  await page.mouse.move(circleCenter.x+15,circleCenter.y+22,{steps:6})
+  await page.mouse.up()
   await canvas.press('r')
   await expect(page.getByRole('spinbutton',{name:'旋转角'})).toHaveValue('15')
   await page.getByRole('button',{name:'放大',exact:true}).click()
   await expect(page.getByText('125%',{exact:true})).toBeVisible()
   await canvas.press('Delete')
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:/^圆形$/})).toHaveCount(0)
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:/^手绘圆$/})).toHaveCount(0)
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:/^弹簧 1$/})).toHaveCount(0)
 })
 
