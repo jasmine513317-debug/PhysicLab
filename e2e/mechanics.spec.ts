@@ -29,14 +29,14 @@ test('plots system and individual momentum, exports samples, and reopens momentu
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(375)
 })
 
-test('shows the free-fall reference and runs the curve-track template from the library',async({page})=>{
+test('shows the free-fall reference and runs the curve-track template from the sidebar',async({page})=>{
   await page.goto('/lab?template=fall')
   for(let i=0;i<8;i++)await page.getByRole('button',{name:'单步运行'}).click()
   await page.getByRole('button',{name:'对比',exact:true}).click()
   await expect(page.getByRole('columnheader',{name:'理论参考值'})).toBeVisible()
   await expect(page.getByRole('row',{name:/竖直速度/})).toContainText('-1.308 m/s')
   await page.goto('/experiments')
-  await page.getByRole('link',{name:/曲线轨道.*让小球滚过曲线/}).click()
+  await page.getByRole('region',{name:'实验模板'}).getByRole('link',{name:'曲线轨道',exact:true}).click()
   await expect(page.getByLabel('实验标题')).toHaveValue('曲线轨道')
   await page.getByLabel('当前物体').selectOption({label:'抛物线轨道'})
   await expect(page.getByText(/静态碰撞轨道 · 25 个顶点/)).toBeVisible()

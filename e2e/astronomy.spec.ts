@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 
 test('measures an orbit, compares Kepler periods, and exports samples',async({page})=>{
   await page.goto('/experiments')
-  await page.getByRole('link',{name:/开普勒定律.*测量等时扫过面积/}).click()
+  await page.getByRole('region',{name:'实验模板'}).getByRole('link',{name:'开普勒定律',exact:true}).click()
   await expect(page.getByLabel('轨道画布')).toBeVisible()
   const law=page.getByRole('region',{name:'开普勒第三定律'})
   await law.getByRole('button',{name:'验证开普勒第三定律'}).click()

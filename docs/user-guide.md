@@ -1,6 +1,6 @@
 # User guide
 
-1. From Overview, create a blank experiment or open an experiment template. **曲线轨道** starts a ball above a shallow parabolic track.
+1. Create a blank experiment from the sidebar or open any grouped template shortcut there. **曲线轨道** starts a ball above a shallow parabolic track.
 2. Choose **绘制** and draw with the left mouse button on a computer or with a finger or stylus on touch screens. The right side of the tool bar keeps the current color, stroke width, and regularization mode visible. **停留** waits 1.5 seconds at the end of a stroke before regularizing; **立即** regularizes on release; **关闭** always keeps the freehand result. Open freehand curves become static ramps or collision curves, and closed shapes become dynamic bodies. Stroke width changes only the drawing, never mass, friction, or collision geometry. Click **绘制** again to open the full palette with red, blue, white, and up to four remembered custom colors. Choose **橡皮** for whole-stroke deletion or drag cutting; its right-side controls set stroke or drag mode, a small, medium, or large radius, and whether the tool returns to drawing after each erase. Drawing preferences are remembered on this device.
 3. With Select active, drag a body to move it or drag empty canvas to pan. Right-click a body or spring to highlight it and show the delete action. On touch screens, press and hold the target. For keyboard access, select a target and press Shift+F10 on the canvas. Rotate by 15° with R or enter a rotation in the inspector.
 4. To connect a spring, choose Spring and click an attachment point on each of two bodies. At least one must be dynamic. Use **初始位移** to set the initial anchor separation relative to the rest length. The inspector moves one dynamic endpoint along the line between the anchors. Adjust local anchor coordinates in the inspector.
@@ -33,7 +33,7 @@ Open **动量** in the analysis panel to view signed momentum components. Switch
 
 ## Electrostatics
 
-1. Choose **电磁学** in the domain navigation or open **电偶极子电场** or **等势线** in the experiment library.
+1. Choose **电磁学** in the domain navigation or open **电偶极子电场** or **等势线** from the sidebar templates.
 2. Pick **正电荷** or **负电荷**, then click the canvas to place a charge. Drag a charge with **选择** active. Edit its strength in nC or its coordinates in meters in the parameter panel.
 3. Toggle **电场线**, **电场矢量**, **电势热力图**, or **等势线**. The contour interval controls the spacing of the plotted potential levels in volts. The heat map displays four intervals in either polarity.
 4. Use **探针** to click a position or enter its coordinates. The readout shows voltage, field magnitude, and both components. A probe at a nonzero point charge shows a singularity message.
@@ -41,7 +41,7 @@ Open **动量** in the analysis panel to view signed momentum components. Switch
 
 ## Two-body orbits
 
-1. Open **椭圆轨道** or **开普勒定律** in the experiment library. In a blank scene, add two stars, planets, or satellites and edit their mass, radius, initial position, and initial velocity.
+1. Open **椭圆轨道** or **开普勒定律** from the sidebar templates. In a blank scene, add two stars, planets, or satellites and edit their mass, radius, initial position, and initial velocity.
 2. Choose **运行轨道**, pause, single-step, or reset. The canvas uses the center-of-mass frame. Enable **扫过面积** to display the first and latest completed equal-time sectors. The analysis panel reports the numerical period after a full revolution.
 3. Choose **验证开普勒第三定律** to integrate three ellipses with the same masses and eccentricity. The table compares measured periods with the predicted periods and lists their measured T²/a³ values.
 4. Export orbital samples to CSV. Save the scene to the library or use the JSON export to transfer the initial configuration to another browser.

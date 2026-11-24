@@ -23,7 +23,7 @@ test('updates the dipole probe and renders each static field layer',async({page}
 
 test('edits, saves, reopens, and imports a static experiment from the shared library',async({page})=>{
   await page.goto('/experiments')
-  await page.getByRole('link',{name:/等势线.*观察同号电荷/}).click()
+  await page.getByRole('region',{name:'实验模板'}).getByRole('link',{name:'等势线',exact:true}).click()
   await expect(page.getByRole('checkbox',{name:'电势热力图'})).toBeChecked()
   const title=page.getByLabel('静电实验名称')
   await title.fill('同号电势实验')

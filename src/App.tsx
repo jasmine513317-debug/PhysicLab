@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Activity, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Atom, BookOpen, Boxes, Check, Circle, CircleDot, Clock3, Copy, FolderOpen, HardDrive, Home as HomeIcon, LibraryBig, Menu, MoveUpRight, Orbit, Pencil, Plus, Shapes, Spline, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Atom, Boxes, Check, CircleDot, Clock3, Copy, FolderOpen, HardDrive, Home as HomeIcon, LibraryBig, Menu, MoveUpRight, Orbit, Pencil, Plus, Shapes, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
 import { emptyExperiment, type Experiment } from './model'
 import { instantiate, templates, type TemplateId } from './templates'
 import { deleteExperiment, duplicateExperiment, importExperiment, listExperiments, loadExperiment, renameExperiment, saveAstronomy, saveElectrostatic, saveExtended, storageFor } from './repository'
@@ -17,7 +17,6 @@ const ElectrostaticLab = lazy(() => import('./ElectrostaticLab').then(module => 
 const AstronomyLab = lazy(() => import('./AstronomyLab').then(module => ({default:module.AstronomyLab})))
 const ExtendedLab = lazy(() => import('./ExtendedLab').then(module => ({default:module.ExtendedLab})))
 
-const templateIcons = {projectile:MoveUpRight,collision:Circle,spring:Waves,friction:Triangle,fall:ArrowDownRight,track:Spline}
 const dates=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'long',day:'numeric'})
 function useLibrary() {
   const [entries,setEntries]=useState<SavedExperiment[]>([])
@@ -134,7 +133,7 @@ function Home() {
         <h1>设计你的<br/>物理实验</h1>
         <p>搭建实验场景，设定初始条件。观察物体如何运动，用模拟数据检验你的假设。</p>
         <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={19}/> 创建实验</a>
-          <a className="button outline" href="#templates">浏览模板 <ArrowRight size={16}/></a></div>
+          <a className="button outline" href="#domains">探索实验领域 <ArrowRight size={16}/></a></div>
       </div>
       <a className="hero-diagram" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
         <div className="diagram-top"><span><Activity size={15}/> 斜抛运动</span><ArrowUpRight size={17}/></div>
@@ -142,7 +141,7 @@ function Home() {
         <div className="diagram-bottom"><span><i/> 理论轨迹</span><span>g = 9.81 m/s²</span></div>
       </a>
     </section>
-    <section className="home-section domain-section" aria-labelledby="domains-title">
+    <section className="home-section domain-section" id="domains" aria-labelledby="domains-title">
       <div className="section-title"><h2 id="domains-title">实验领域</h2></div>
       <div className="domain-grid">{domains.map(domain=><a key={domain.id} className="domain-card" href={domainUrl(domain)}>
         <div className="domain-card-head"><domain.icon size={24} strokeWidth={1.5} aria-hidden="true"/><ArrowUpRight size={17} aria-hidden="true"/></div>
@@ -150,36 +149,12 @@ function Home() {
         <p>{domain.description}</p>
       </a>)}</div>
     </section>
-    <section className="home-section" id="templates">
-      <div className="section-title"><div><h2>实验模板</h2><p>从现成场景开始，自由调整实验参数。</p></div></div>
-      <TemplateCards/>
-    </section>
     <section className="feature-grid" aria-label="实验室功能">
       <div><Boxes size={21}/><h3>搭建场景</h3><p>在坐标网格中放置物体、斜面和弹簧。</p></div>
       <div><Zap size={21}/><h3>观察运动</h3><p>逐步运行模拟，查看运动轨迹与矢量。</p></div>
       <div><Activity size={21}/><h3>对比实验结果</h3><p>用图表查看采样数据、设置基准并导出 CSV。</p></div>
     </section>
   </main><footer className="site-footer page-width"><span>PhysicLab Studio</span><a href={appUrl('/experiments')}>实验库 <ArrowUpRight size={13}/></a></footer></>
-}
-function TemplateCards() {
-  return <div className="template-grid">
-    {templates.map(template=>{
-      const Icon=templateIcons[template.id]
-      return <a key={template.id} className="template-card" href={appUrl('/lab?template='+template.id)}><div className="template-top"><span className={'object-icon '+template.tint}><Icon size={19}/></span><ArrowUpRight size={16}/></div><small>{template.topic}</small><h3>{template.title}</h3><p>{template.description}</p></a>
-    })}
-    {electrostaticTemplates.map(template=><a key={template.id} className="template-card" href={appUrl('/lab?domain=electromagnetism&preset='+template.id)}>
-      <div className="template-top"><span className="object-icon slate"><Zap size={19}/></span><ArrowUpRight size={16}/></div>
-      <small>静电学</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-    {astronomyTemplates.map(template=><a key={template.id} className="template-card" href={appUrl('/lab?domain=astrophysics&preset='+template.id)}>
-      <div className="template-top"><span className="object-icon slate"><Orbit size={19}/></span><ArrowUpRight size={16}/></div>
-      <small>天体物理</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-    {extendedTemplates.map(template=><a key={template.id} className="template-card" href={extensionUrl(template.id)}>
-      <div className="template-top"><span className="object-icon slate">{template.domain==='mechanics'?<Waves size={19}/>:template.domain==='astrophysics'?<Orbit size={19}/>:<Zap size={19}/>}</span><ArrowUpRight size={16}/></div>
-      <small>{template.domain==='mechanics'?'振动':template.domain==='astrophysics'?'天体物理':'电磁学'}</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-  </div>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
@@ -231,7 +206,6 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
           </div>}
         </div>
       </article>)}</div>}
-    <section className="home-section"><div className="section-title"><div><h2><BookOpen size={20}/> 从模板开始</h2></div></div><TemplateCards/></section>
   </main></>
 }
 function currentDomain() {
