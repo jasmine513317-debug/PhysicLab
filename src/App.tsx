@@ -1,126 +1,109 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Activity, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Atom, BookOpen, Boxes, Check, Circle, Clock3, Copy, FolderOpen, MoveUpRight, Orbit, Pencil, Plus, Spline, Trash2, Triangle, Upload, Waves, Zap } from 'lucide-react'
-import { emptyExperiment, type Experiment } from './model'
+import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Activity, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Atom, Boxes, Check, Circle, Clock3, Copy, Database, FlaskConical, FolderOpen, House, Menu, MoveUpRight, Pencil, Plus, Trash2, Triangle, Upload, Waves, X, Zap } from 'lucide-react'
+import { decodeExperiment, emptyExperiment, type Experiment } from './model'
 import { instantiate, templates, type TemplateId } from './templates'
-import { deleteExperiment, duplicateExperiment, importExperiment, listExperiments, loadExperiment, renameExperiment, saveAstronomy, saveElectrostatic, saveExtended, storageFor } from './repository'
-import { decodeLibraryImport } from './backup'
-import { electrostaticTemplates, isElectrostatic } from './electrostatics'
-import { astronomyTemplates, type SavedExperiment } from './astronomy'
-import { extendedTemplates, extensionUrl, isExtension, type Extension } from './extended-experiments'
-import { downloadText } from './download'
+import { deleteExperiment, duplicateExperiment, listExperiments, loadExperiment, renameExperiment, saveExperiment } from './repository'
 import { SceneDiagram } from './Viewport'
 import { appPath, appUrl } from './routes'
-import { domains, domainUrl, DomainNav, type Domain } from './domains'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
-const GeometryStudio = lazy(() => import('./GeometryStudio').then(module => ({default:module.GeometryStudio})))
-const ElectrostaticLab = lazy(() => import('./ElectrostaticLab').then(module => ({default:module.ElectrostaticLab})))
-const AstronomyLab = lazy(() => import('./AstronomyLab').then(module => ({default:module.AstronomyLab})))
-const ExtendedLab = lazy(() => import('./ExtendedLab').then(module => ({default:module.ExtendedLab})))
 
-const templateIcons = {projectile:MoveUpRight,collision:Circle,spring:Waves,friction:Triangle,fall:ArrowDownRight,track:Spline}
+const templateIcons = {projectile:MoveUpRight,collision:Circle,spring:Waves,friction:Triangle,fall:ArrowDownRight}
 const dates=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'long',day:'numeric'})
+const shortDates=new Intl.DateTimeFormat('zh-CN',{month:'2-digit',day:'2-digit'})
+type Page='home'|'lab'|'library'
 function useLibrary() {
-  const [entries,setEntries]=useState<SavedExperiment[]>([])
-  const [unreadable,setUnreadable]=useState<unknown[]>([])
-  const [incomplete,setIncomplete]=useState(false)
+  const [entries,setEntries]=useState<Experiment[]>([])
   const [error,setError]=useState('')
   const [loading,setLoading]=useState(true)
   async function refresh() {
-    try {
-      const {experiments,unreadable,incomplete}=await listExperiments()
-      setEntries(experiments);setUnreadable(unreadable);setIncomplete(incomplete);setError('')
-    }
+    try {setEntries(await listExperiments());setError('')}
     catch(e) {setError(message(e))}
     finally {setLoading(false)}
   }
   useEffect(()=>{void refresh()},[])
-  return {entries,unreadable,incomplete,error,setError,refresh,loading}
+  return {entries,error,setError,refresh,loading}
 }
 export function message(e:unknown) { return e instanceof Error?e.message:'操作未完成，请重试。' }
 const newLab=appUrl('/lab?new=1')
-function savedUrl(scene:SavedExperiment) {
-  if('extension' in scene)return extensionUrl(scene.extension,scene.id)
-  return appUrl('/lab?'+('domain' in scene?'domain='+scene.domain+'&':'')+'id='+encodeURIComponent(scene.id))
-}
 
-function Header({page}:{page:string}) {
-  return <header className="site-header">
-    <a className="brand" href={appUrl('/')} aria-label="PhysicLab Studio 首页"><span className="brand-mark"><Atom size={23} strokeWidth={1.5} aria-hidden="true"/></span><span>PhysicLab <span className="brand-studio">Studio</span></span></a>
-    <nav aria-label="主导航">
-      <a className={page==='home'?'current':''} href={appUrl('/')} aria-current={page==='home'?'page':undefined}>首页</a>
-      <a className={page==='lab'?'current':''} href={appUrl('/lab')} aria-current={page==='lab'?'page':undefined}>实验台</a>
-      <a className={page==='geometry'?'current':''} href={appUrl('/geometry')} aria-current={page==='geometry'?'page':undefined} aria-label="几何工作室">几何<span className="wide-nav-label">工作室</span></a>
-      <a className={page==='library'?'current':''} href={appUrl('/experiments')} aria-current={page==='library'?'page':undefined}>实验库</a>
-    </nav>
-    {page==='lab'?<a href={appUrl('/experiments')} className="button compact header-end" aria-label="打开实验库"><FolderOpen size={15}/><span>实验库</span></a>
-      :<a href={newLab} className="button primary header-end" aria-label="新建实验"><Plus size={16}/><span>新建实验</span></a>}
-  </header>
+function Brand({compact=false}:{compact?:boolean}) {
+  return <span className={'brand'+(compact?' compact':'')}><span className="brand-mark"><Atom size={21} strokeWidth={1.8}/></span><span className="brand-word">Physic<span>Lab</span></span></span>
+}
+function AppShell({page,entries,loading,error,children}:{page:Page;entries:Experiment[];loading:boolean;error:string;children:ReactNode}) {
+  const [open,setOpen]=useState(false)
+  useEffect(()=>{
+    function onKey(e:KeyboardEvent) {if(e.key==='Escape')setOpen(false)}
+    window.addEventListener('keydown',onKey)
+    return ()=>window.removeEventListener('keydown',onKey)
+  },[])
+  return <div className={'app-shell page-'+page}>
+    <aside id="app-sidebar" className={'app-sidebar'+(open?' open':'')} aria-label="实验导航">
+      <div className="sidebar-brand-row"><a href={appUrl('/')} aria-label="PhysicLab 首页" onClick={()=>setOpen(false)}><Brand/></a><button className="icon sidebar-close" aria-label="关闭侧边栏" onClick={()=>setOpen(false)}><X size={18}/></button></div>
+      <a className="button primary sidebar-new" href={newLab} aria-label="新建实验"><Plus size={17}/><span>新建实验</span></a>
+      <nav className="sidebar-nav" aria-label="主导航">
+        <a className={page==='home'?'current':''} href={appUrl('/')} aria-current={page==='home'?'page':undefined} onClick={()=>setOpen(false)}><House size={18}/><span className="nav-label">首页</span></a>
+        <a className={page==='lab'?'current':''} href={appUrl('/lab')} aria-current={page==='lab'?'page':undefined} onClick={()=>setOpen(false)}><FlaskConical size={18}/><span className="nav-label">实验台</span></a>
+        <a className={page==='library'?'current':''} href={appUrl('/experiments')} aria-current={page==='library'?'page':undefined} onClick={()=>setOpen(false)}><FolderOpen size={18}/><span className="nav-label">实验库</span><span className="nav-count" aria-hidden="true">{entries.length||''}</span></a>
+      </nav>
+      <div className="sidebar-scroll">
+        <section className="sidebar-section" aria-label="实验模板">
+          <div className="sidebar-section-heading"><span>实验模板</span><small>5 个场景</small></div>
+          <div className="sidebar-template-list">{templates.map(t=>{
+            const Icon=templateIcons[t.id]
+            return <a key={t.id} href={appUrl('/lab?template='+t.id)} title={t.title+' · '+t.topic} onClick={()=>setOpen(false)}><span className={'object-icon '+t.tint}><Icon size={16}/></span><span className="sidebar-template-copy"><strong>{t.title}</strong><small>{t.topic}</small></span><ArrowUpRight className="sidebar-link-arrow" size={13}/></a>
+          })}</div>
+        </section>
+        <section className="sidebar-section sidebar-recent" aria-label="最近实验">
+          <div className="sidebar-section-heading"><span>最近实验</span>{entries.length>0&&<a href={appUrl('/experiments')} onClick={()=>setOpen(false)}>全部 <ArrowRight size={12}/></a>}</div>
+          {loading?<p className="sidebar-empty">正在读取实验…</p>:error?<p className="sidebar-empty error-text">{error}</p>:entries.length?<div className="sidebar-recent-list">{entries.slice(0,5).map(scene=><a key={scene.id} href={appUrl('/lab?id='+encodeURIComponent(scene.id))} title={scene.title} onClick={()=>setOpen(false)}><Clock3 size={15}/><span className="sidebar-recent-copy"><strong>{scene.title}</strong><small>{shortDates.format(new Date(scene.updatedAt))} · {scene.bodies.length} 个物体</small></span></a>)}</div>:<div className="sidebar-empty"><FolderOpen size={18}/><span>还没有保存的实验</span></div>}
+        </section>
+      </div>
+      <div className="sidebar-footer" title="实验保存在当前浏览器的 IndexedDB 中"><Database size={15}/><span className="sidebar-footer-text">本地保存 · 无需登录</span></div>
+    </aside>
+    {open&&<button className="sidebar-backdrop" aria-label="关闭侧边栏" onClick={()=>setOpen(false)}/>}
+    <div className="app-content">
+      <header className="mobile-bar"><button className="icon" aria-label="打开侧边栏" aria-expanded={open} aria-controls="app-sidebar" onClick={()=>setOpen(true)}><Menu size={20}/></button><a href={appUrl('/')} aria-label="PhysicLab 首页"><Brand compact/></a><a className="icon mobile-new" href={newLab} aria-label="新建实验"><Plus size={19}/></a></header>
+      {children}
+    </div>
+  </div>
 }
 function Home() {
-  const {entries,error}=useLibrary()
-  const [demo]=useState(()=>instantiate('projectile'))
-  return <><Header page="home"/><main className="home page-width">
+  const demo=useMemo(()=>instantiate('projectile'),[])
+  return <><main className="home page-width">
     <section className="hero">
       <div className="hero-copy">
-        <span className="kicker">交互式物理实验室</span>
-        <h1>设计你的<br/>物理实验</h1>
-        <p>搭建实验场景，设定初始条件。观察物体如何运动，用模拟数据检验你的假设。</p>
-        <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={19}/> 创建实验</a>
-          <a className="button outline" href="#templates">浏览模板 <ArrowRight size={16}/></a></div>
+        <span className="kicker"><span/> 虚拟物理实验室</span>
+        <h1>搭建，设定。<br/><em>开始模拟。</em></h1>
+        <p>设计自己的物理实验。搭建场景、设定初始条件，运行模拟并观察数据变化。</p>
+        <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={18}/> 创建实验</a>
+          <a className="button outline" href={appUrl('/lab?template=projectile')}>从模板开始 <ArrowUpRight size={16}/></a></div>
+        <div className="hero-note"><span><Check size={13}/> 无需登录</span><span><Check size={13}/> 数据本地保存</span></div>
       </div>
       <a className="hero-diagram" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
         <div className="diagram-top"><span><Activity size={15}/> 斜抛运动</span><ArrowUpRight size={17}/></div>
-        <div className="diagram-stage"><SceneDiagram scene={demo} scale={0.88}/><span className="diagram-axis">Y ↑ &nbsp; X →</span></div>
+        <div className="diagram-stage"><SceneDiagram scene={demo}/><span className="diagram-axis">Y ↑ &nbsp; X →</span></div>
         <div className="diagram-bottom"><span><i/> 理论轨迹</span><span>g = 9.81 m/s²</span></div>
       </a>
     </section>
-    <section className="home-section domain-section" aria-labelledby="domains-title">
-      <div className="section-title"><h2 id="domains-title">实验领域</h2></div>
-      <div className="domain-grid">{domains.map(domain=><a key={domain.id} className="domain-card" href={domainUrl(domain)}>
-        <div className="domain-card-head"><domain.icon size={24} strokeWidth={1.5} aria-hidden="true"/><ArrowUpRight size={17} aria-hidden="true"/></div>
-        <h3>{domain.name}</h3>
-        <p>{domain.description}</p>
-      </a>)}</div>
+    <section className="home-section workflow-section" aria-labelledby="workflow-title">
+      <div className="section-title"><div><span className="eyebrow">HOW IT WORKS</span><h2 id="workflow-title">三步完成一次实验</h2><p>从空白画布出发，把想法变成可验证的数据。</p></div></div>
+      <div className="workflow-grid">
+        <article><span className="step-number">01</span><span className="step-icon"><Boxes size={21}/></span><h3>搭建场景</h3><p>拖放圆形、矩形、地面和斜面，用弹簧连接物体。</p></article>
+        <article><span className="step-number">02</span><span className="step-icon"><Zap size={21}/></span><h3>设定并运行</h3><p>调整质量、速度与重力，单步观察或连续模拟运动。</p></article>
+        <article><span className="step-number">03</span><span className="step-icon"><Activity size={21}/></span><h3>分析与对比</h3><p>查看轨迹和图表，设置基准，导出 CSV 保留结果。</p></article>
+      </div>
     </section>
-    <section className="home-section" id="templates">
-      <div className="section-title"><div><h2>实验模板</h2><p>从现成场景开始，自由调整实验参数。</p></div></div>
-      <TemplateCards/>
+    <section className="home-section feature-section">
+      <div className="feature-copy"><span className="eyebrow">BUILT FOR DISCOVERY</span><h2>让每一次变化，<br/>都有迹可循。</h2><p>模板和最近实验已放到左侧导航，随时继续。你可以在实验台里自由修改参数，保存当前版本，再回来对比不同条件下的结果。</p><a className="text-button" href={appUrl('/experiments')}>打开实验库 <ArrowRight size={15}/></a></div>
+      <div className="feature-grid">
+        <div><Boxes size={21}/><h3>直观搭建</h3><p>在坐标网格中放置物体、斜面和弹簧。</p></div>
+        <div><Zap size={21}/><h3>稳定模拟</h3><p>固定步长物理引擎，逐步运行与历史回放。</p></div>
+        <div><Activity size={21}/><h3>数据驱动</h3><p>采样图表、实验基准和 CSV 导出。</p></div>
+      </div>
     </section>
-    <section className="home-section">
-      <div className="section-title"><div><h2>最近的实验</h2><p>继续上次的实验。</p></div><a className="text-button" href={appUrl('/experiments')}>查看实验库 <ArrowRight size={15}/></a></div>
-      {error&&<p className="error-banner" role="alert">{error}</p>}
-      {entries.length?<div className="recent">{entries.slice(0,3).map(scene=><a key={scene.id} href={savedUrl(scene)}><FolderOpen size={17}/><strong>{scene.title}</strong><small>{dates.format(new Date(scene.updatedAt))}</small><ArrowRight size={15}/></a>)}</div>
-      :<div className="empty-library"><FolderOpen size={23}/><strong>暂无保存的实验</strong><p>在实验台保存你的第一个实验。</p></div>}
-    </section>
-    <section className="feature-grid" aria-label="实验室功能">
-      <div><Boxes size={21}/><h3>搭建场景</h3><p>在坐标网格中放置物体、斜面和弹簧。</p></div>
-      <div><Zap size={21}/><h3>观察运动</h3><p>逐步运行模拟，查看运动轨迹与矢量。</p></div>
-      <div><Activity size={21}/><h3>对比实验结果</h3><p>用图表查看采样数据、设置基准并导出 CSV。</p></div>
-    </section>
-  </main><footer className="site-footer page-width"><span>PhysicLab Studio</span><a href={appUrl('/experiments')}>实验库 <ArrowUpRight size={13}/></a></footer></>
+  </main><footer className="site-footer page-width"><span>PhysicLab · 搭建，设定，开始模拟。</span><span>为课堂演示与自主探究设计</span></footer></>
 }
-function TemplateCards() {
-  return <div className="template-grid">
-    {templates.map(template=>{
-      const Icon=templateIcons[template.id]
-      return <a key={template.id} className="template-card" href={appUrl('/lab?template='+template.id)}><div className="template-top"><span className={'object-icon '+template.tint}><Icon size={19}/></span><ArrowUpRight size={16}/></div><small>{template.topic}</small><h3>{template.title}</h3><p>{template.description}</p></a>
-    })}
-    {electrostaticTemplates.map(template=><a key={template.id} className="template-card" href={appUrl('/lab?domain=electromagnetism&preset='+template.id)}>
-      <div className="template-top"><span className="object-icon slate"><Zap size={19}/></span><ArrowUpRight size={16}/></div>
-      <small>静电学</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-    {astronomyTemplates.map(template=><a key={template.id} className="template-card" href={appUrl('/lab?domain=astrophysics&preset='+template.id)}>
-      <div className="template-top"><span className="object-icon slate"><Orbit size={19}/></span><ArrowUpRight size={16}/></div>
-      <small>天体物理</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-    {extendedTemplates.map(template=><a key={template.id} className="template-card" href={extensionUrl(template.id)}>
-      <div className="template-top"><span className="object-icon slate">{template.domain==='mechanics'?<Waves size={19}/>:template.domain==='astrophysics'?<Orbit size={19}/>:<Zap size={19}/>}</span><ArrowUpRight size={16}/></div>
-      <small>{template.domain==='mechanics'?'振动':template.domain==='astrophysics'?'天体物理':'电磁学'}</small><h3>{template.title}</h3><p>{template.description}</p>
-    </a>)}
-  </div>
-}
-function Library() {
-  const {entries,unreadable,incomplete,error,setError,refresh,loading}=useLibrary()
+function Library({entries,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
   const [title,setTitle]=useState('')
   const [pending,setPending]=useState('')
@@ -133,128 +116,57 @@ function Library() {
   }
   async function importScene(file:File) {
     await action(async()=>{
-      const result=decodeLibraryImport(await file.text(),file.size)
-      if(result.kind==='electrostatic')await saveElectrostatic(result.scene,true)
-      else if(result.kind==='astronomy')await saveAstronomy(result.scene,true)
-      else if(result.kind==='extended')await saveExtended(result.scene,true)
-      else await importExperiment(result.scene,result.replay)
+      if(file.size>5_000_000) throw new Error('请选择小于 5 MB 的 PhysicLab JSON 文件。')
+      let scene:Experiment
+      try {scene=decodeExperiment(JSON.parse((await file.text()).replace(/^\uFEFF/,'')))}
+      catch {throw new Error('该文件不是有效的 PhysicLab 版本 1 实验文件。')}
+      await saveExperiment({...scene,id:crypto.randomUUID()})
     })
   }
-  function exportUnreadable() {
-    try {downloadText('无法打开的实验','json','application/json',JSON.stringify(unreadable,null,2))}
-    catch {setError('无法导出这些记录。原始记录仍保存在实验库中。')}
-  }
-  return <><Header page="library"/><main className="page-width library">
-    <a href={appUrl('/')} className="text-button"><ArrowLeft size={15}/> 首页</a>
-    <div className="section-title library-title"><div><h1>实验库</h1><p>打开和管理保存在当前浏览器中的实验。</p></div><div className="library-command">
-      <label className="button import-button"><Upload size={15}/> 导入实验<input type="file" accept=".json,application/json" aria-label="导入实验 JSON" disabled={busy} onChange={e=>{
+  return <main className="page-width library">
+    <div className="section-title library-title"><div><span className="eyebrow">YOUR EXPERIMENTS</span><h1>实验库</h1><p>打开和管理保存在当前浏览器中的实验。</p></div><div className="library-command">
+      <label className="button import-button"><Upload size={15}/> 导入场景<input type="file" accept=".json,application/json" aria-label="导入实验 JSON" disabled={busy} onChange={e=>{
         const file=e.currentTarget.files?.[0]
         e.currentTarget.value=''
         if(file)void importScene(file)
       }}/></label>
       <a href={newLab} className="button primary"><Plus size={17}/> 创建实验</a></div></div>
+    <div className="library-summary"><span><FolderOpen size={15}/> {loading?'正在读取…':entries.length+' 个实验'}</span><span><Database size={15}/> 数据保存在此浏览器</span></div>
     {error&&<div className="error-banner" role="alert">{error}</div>}
-    {incomplete&&<p className="library-warning error-banner" role="status">部分实验存储暂时无法读取。可以继续使用已加载的实验。</p>}
-    {unreadable.length>0&&<div className="library-warning error-banner" role="status"><span>{unreadable.length} 条记录无法打开，原始记录仍保留在此浏览器中。</span><button className="text-button" onClick={exportUnreadable}>导出原始记录</button></div>}
-    {loading?<p className="muted">正在加载实验…</p>:entries.length===0?<div className="empty-library"><FolderOpen size={28}/><strong>暂无保存的实验</strong><p>在实验台保存后，实验会显示在这里。</p><a className="button" href={newLab}>打开实验台 <ArrowRight size={15}/></a></div>:
+    {loading?<div className="library-loading"><span className="loading-spinner"/> 正在加载实验…</div>:entries.length===0?<div className="empty-library"><FolderOpen size={28}/><strong>暂无保存的实验</strong><p>在实验台保存后，实验会显示在这里。</p><a className="button" href={newLab}>打开实验台 <ArrowRight size={15}/></a></div>:
       <div className="library-grid">{entries.map(scene=><article className="library-card" key={scene.id}>
-        <a className="library-preview" href={savedUrl(scene)} aria-label={'预览：'+scene.title}>{'extension' in scene?<span className="library-orbit-preview"><Activity size={23}/> {extendedTemplates.find(item=>item.id===scene.extension)?.title}</span>:isElectrostatic(scene)?<span className="library-electric-preview"><Zap size={23}/> 静电实验</span>:'domain' in scene?<span className="library-orbit-preview"><Orbit size={23}/> 双体实验</span>:<SceneDiagram scene={scene}/>}</a>
+        <a className="library-preview" href={appUrl('/lab?id='+encodeURIComponent(scene.id))} aria-label={'预览：'+scene.title}><SceneDiagram scene={scene}/><span className="library-preview-tag">{scene.kind==='custom'?'自定义实验':templates.find(t=>t.id===scene.kind)?.title??'自定义实验'}</span></a>
         <div className="library-content">
-          {editing===scene.id?<form className="rename-form" onSubmit={e=>{e.preventDefault();void action(()=>renameExperiment(scene.id,title,storageFor(scene)))}}><input autoFocus aria-label="实验名称" maxLength={100} value={title} onChange={e=>setTitle(e.target.value)}/><button className="icon" aria-label="确认重命名" disabled={busy}><Check size={16}/></button><button className="text-button" type="button" onClick={()=>setEditing('')}>取消</button></form>:<h2>{scene.title}</h2>}
-          <p><Clock3 size={13}/> 创建于 {dates.format(new Date(scene.createdAt))} <span>· {'extension' in scene?extendedTemplates.find(item=>item.id===scene.extension)?.title:isElectrostatic(scene)?`${scene.charges.length} 个电荷`:`${scene.bodies.length} 个${'domain' in scene?'天体':'物体'}`}</span></p>
-          {pending===scene.id?<div className="library-actions"><span>删除此实验？</span><button className="text-button danger" disabled={busy} onClick={()=>void action(()=>deleteExperiment(scene.id,storageFor(scene)))}>删除</button><button className="text-button" onClick={()=>setPending('')}>取消</button></div>:
-          <div className="library-actions"><a className="button compact" href={savedUrl(scene)}>打开 <ArrowUpRight size={14}/></a>
+          {editing===scene.id?<form className="rename-form" onSubmit={e=>{e.preventDefault();void action(()=>renameExperiment(scene.id,title))}}><input autoFocus aria-label="实验名称" maxLength={100} value={title} onChange={e=>setTitle(e.target.value)}/><button className="icon" aria-label="确认重命名" disabled={busy}><Check size={16}/></button><button className="text-button" type="button" onClick={()=>setEditing('')}>取消</button></form>:<h2>{scene.title}</h2>}
+          <p><Clock3 size={13}/> 更新于 {dates.format(new Date(scene.updatedAt))} <span>· {scene.bodies.length} 个物体</span></p>
+          {pending===scene.id?<div className="library-actions"><span>删除此实验？</span><button className="text-button danger" disabled={busy} onClick={()=>void action(()=>deleteExperiment(scene.id))}>删除</button><button className="text-button" onClick={()=>setPending('')}>取消</button></div>:
+          <div className="library-actions"><a className="button compact" href={appUrl('/lab?id='+encodeURIComponent(scene.id))}>打开 <ArrowUpRight size={14}/></a>
             <button className="icon" aria-label={'重命名：'+scene.title} title="重命名" disabled={busy} onClick={()=>{setTitle(scene.title);setEditing(scene.id)}}><Pencil size={15}/></button>
             <button className="icon" aria-label={'复制：'+scene.title} title="复制" disabled={busy} onClick={()=>void action(()=>duplicateExperiment(scene))}><Copy size={15}/></button>
             <button className="icon" aria-label={'删除：'+scene.title} title="删除" disabled={busy} onClick={()=>setPending(scene.id)}><Trash2 size={15}/></button>
           </div>}
         </div>
       </article>)}</div>}
-    <section className="home-section"><div className="section-title"><div><h2><BookOpen size={20}/> 从模板开始</h2></div></div><TemplateCards/></section>
-  </main></>
+  </main>
 }
-function currentDomain() {
-  const params = new URLSearchParams(location.search)
-  const experiment=extendedTemplates.find(candidate=>candidate.id===params.get('extension'))
-  return domains.find(candidate=>candidate.id===(experiment?.domain??params.get('domain')))??domains[0]
-}
-
-function readExtension(search:string|undefined) {
-  const value=new URLSearchParams(search).get('extension')
-  return isExtension(value)?value:undefined
-}
-
 function Workspace() {
-  const [domain,setDomain]=useState(currentDomain)
-  const [searches,setSearches]=useState<Partial<Record<Domain['id'],string>>>(()=>({[currentDomain().id]:location.search}))
-  const addresses=useRef<Partial<Record<Domain['id'],string>>>({})
-
-  function activate(next:Domain) {
-    const search=location.search
-    setSearches(previous=>previous[next.id]===undefined?{...previous,[next.id]:search}:previous)
-    setDomain(next)
-  }
-
-  useEffect(()=>{
-    function onBackOrForward() {
-      const next=currentDomain()
-      addresses.current[next.id]=location.pathname+location.search
-      activate(next)
-    }
-    window.addEventListener('popstate',onBackOrForward)
-    return ()=>window.removeEventListener('popstate',onBackOrForward)
-  },[])
-
-  function selectDomain(next:Domain) {
-    if(next.id===domain.id)return
-    addresses.current[domain.id]=location.pathname+location.search
-    history.pushState(null,'',addresses.current[next.id]??domainUrl(next))
-    activate(next)
-  }
-  function updateSavedAddress(id:string,scope:Domain['id']='mechanics',extension?:Extension) {
-    const url=new URL(extension?extensionUrl(extension,id):appUrl('/lab'),location.origin)
-    if(!extension) {
-      if(scope!=='mechanics')url.searchParams.set('domain',scope)
-      url.searchParams.set('id',id)
-    }
-    const address=url.pathname+url.search
-    addresses.current[scope]=address
-    if(currentDomain().id===scope)history.replaceState(null,'',address)
-  }
-
-  const inMechanics=domain.id==='mechanics'
-  const mechanicsExtension=readExtension(searches.mechanics),electricExtension=readExtension(searches.electromagnetism),astronomyExtension=readExtension(searches.astrophysics)
-  return <><Header page="lab"/><DomainNav active={domain} select={selectDomain}/>
-    {searches.mechanics!==undefined&&<div hidden={!inMechanics}>{mechanicsExtension?<Suspense fallback={<main className="page-width library"><p>正在打开实验…</p></main>}>
-      <ExtendedLab search={searches.mechanics} extension={mechanicsExtension} active={inMechanics} updateSavedAddress={id=>updateSavedAddress(id,'mechanics',mechanicsExtension)}/>
-    </Suspense>:<MechanicsWorkspace search={searches.mechanics} active={inMechanics} updateSavedAddress={updateSavedAddress}/>}</div>}
-    {searches.electromagnetism!==undefined&&<div hidden={domain.id!=='electromagnetism'}><Suspense fallback={<main className="page-width library"><p>正在打开静电实验…</p></main>}>
-      {electricExtension?<ExtendedLab search={searches.electromagnetism} extension={electricExtension} active={domain.id==='electromagnetism'} updateSavedAddress={id=>updateSavedAddress(id,'electromagnetism',electricExtension)}/>:<ElectrostaticLab search={searches.electromagnetism} updateSavedAddress={id=>updateSavedAddress(id,'electromagnetism')}/>}
-    </Suspense></div>}
-    {searches.astrophysics!==undefined&&<div hidden={domain.id!=='astrophysics'}><Suspense fallback={<main className="page-width library"><p>正在打开双体实验…</p></main>}>
-      {astronomyExtension?<ExtendedLab search={searches.astrophysics} extension={astronomyExtension} active={domain.id==='astrophysics'} updateSavedAddress={id=>updateSavedAddress(id,'astrophysics',astronomyExtension)}/>:<AstronomyLab search={searches.astrophysics} active={domain.id==='astrophysics'} updateSavedAddress={id=>updateSavedAddress(id,'astrophysics')}/>}
-    </Suspense></div>}
-  </>
-}
-
-function MechanicsWorkspace({search,active,updateSavedAddress}:{search:string;active:boolean;updateSavedAddress:(id:string)=>void}) {
-  const params=useRef(new URLSearchParams(search)).current
+  const params=useMemo(()=>new URLSearchParams(location.search),[])
   const id=params.get('id')
   const [scene,setScene]=useState<Experiment|null>(null)
   const [error,setError]=useState('')
   useEffect(()=>{
-    let mounted=true
-    if(id) void loadExperiment(id).then(value=>{if(mounted)setScene(value)}).catch(e=>{if(mounted)setError(message(e))})
+    let active=true
+    if(id) void loadExperiment(id).then(value=>{if(active)setScene(value)}).catch(e=>{if(active)setError(message(e))})
     else {
       const requested=params.get('template')
       const template=templates.find(t=>t.id===requested)
       setScene(params.has('new')?emptyExperiment():instantiate((template?.id??'projectile') as TemplateId))
     }
-    return ()=>{mounted=false}
+    return ()=>{active=false}
   },[id,params])
-  return scene?<Suspense fallback={<main className="page-width library"><p className="muted">正在打开实验台…</p></main>}><Lab initial={scene} initiallySaved={Boolean(id)} active={active} updateSavedAddress={updateSavedAddress}/></Suspense>:<main className="page-width library">
+  return <>{scene?<Suspense fallback={<main className="page-width library"><p className="muted">正在打开实验台…</p></main>}><Lab initial={scene} initiallySaved={Boolean(id)}/></Suspense>:<main className="page-width library">
     {error?<><p className="error-banner" role="alert">{error}</p><a className="button" href={appUrl('/experiments')}><ArrowLeft size={15}/> 返回实验库</a></>:<p className="muted">正在打开实验台…</p>}
-  </main>
+  </main>}</>
 }
 class ErrorBoundary extends Component<{children:ReactNode},{error:string}> {
   state={error:''}
@@ -262,7 +174,8 @@ class ErrorBoundary extends Component<{children:ReactNode},{error:string}> {
   render() {return this.state.error?<main className="page-width library"><h1>无法打开 PhysicLab</h1><p role="alert">{this.state.error}</p><a className="button" href={appUrl('/')}>返回首页</a></main>:this.props.children}
 }
 export function App() {
-  const page=appPath(location.pathname)
-  return <ErrorBoundary>{page==='/lab'?<Workspace/>:page==='/experiments'?<Library/>:page==='/geometry'?
-    <><Header page="geometry"/><Suspense fallback={<main className="page-width library"><p>正在打开几何工作室…</p></main>}><GeometryStudio/></Suspense></>:<Home/>}</ErrorBoundary>
+  const path=appPath(location.pathname)
+  const page:Page=path==='/lab'?'lab':path==='/experiments'?'library':'home'
+  const library=useLibrary()
+  return <ErrorBoundary><AppShell page={page} {...library}>{path==='/lab'?<Workspace/>:path==='/experiments'?<Library {...library}/>:<Home/>}</AppShell></ErrorBoundary>
 }
