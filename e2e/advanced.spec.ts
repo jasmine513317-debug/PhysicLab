@@ -17,7 +17,7 @@ test('compares the double pendulum trajectories and clears the run on editing',a
 
 test('keeps induced voltage when the loop is opened and exports the field data',async({page})=>{
   await page.goto('/lab?domain=electromagnetism')
-  await page.getByRole('link',{name:'电磁感应',exact:true}).click()
+  await page.getByRole('navigation',{name:'静电实验模板'}).getByRole('link',{name:'电磁感应',exact:true}).click()
   const rows=page.getByRole('region',{name:'测量读数'}).locator('dd')
   await expect(rows.nth(2)).toHaveText('-0.0866 V')
   await expect(rows.nth(3)).toHaveText('-0.0433 A')
@@ -32,7 +32,7 @@ test('keeps induced voltage when the loop is opened and exports the field data',
 
 test('edits a three-body initial condition and reopens it from the shared library',async({page})=>{
   await page.goto('/lab?domain=astrophysics')
-  await page.getByRole('link',{name:'三体引力',exact:true}).click()
+  await page.locator('#app-content').getByRole('link',{name:'三体引力',exact:true}).click()
   const body=page.getByRole('group',{name:'天体 3'})
   await body.getByRole('spinbutton',{name:/位置 X/}).fill('.015')
   await body.getByRole('spinbutton',{name:/位置 X/}).press('Enter')

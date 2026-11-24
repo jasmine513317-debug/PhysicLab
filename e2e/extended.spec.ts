@@ -6,7 +6,7 @@ test('shows spring theory and measures the finite-amplitude pendulum period',asy
   await page.getByRole('button',{name:'对比',exact:true}).click()
   await expect(page.getByRole('row',{name:/振动周期/})).toContainText('0.628 s')
   await page.getByRole('button',{name:'打开实验菜单'}).click()
-  await page.getByRole('link',{name:'单摆',exact:true}).click()
+  await page.locator('#app-content').getByRole('link',{name:'单摆',exact:true}).click()
   await page.getByLabel('扩展实验播放速度').selectOption('8')
   await expect(page.getByLabel('扩展实验画布')).toBeVisible()
   await page.getByRole('button',{name:'运行',exact:true}).click()

@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the local address printed by Vite. The overview is at `/`, the workspace at `/lab`, Geometry Studio at `/geometry`, and the experiment library at `/experiments`.
+Open the local address printed by Vite. The overview is at `/`, the workspace at `/lab`, Geometry Studio at `/geometry`, and the experiment library at `/experiments`. The responsive sidebar provides main navigation, recent experiments, and grouped template shortcuts; it becomes an icon rail on medium screens and a drawer with a mobile top bar on phones.
 
 ```sh
 npm run test
