@@ -130,53 +130,106 @@ const domainMeta:Record<Domain['id'],{index:string;count:string}>={
   electromagnetism:{index:'02',count:'4 个实验'},
   astrophysics:{index:'03',count:'5 个实验'},
 }
+const laws:readonly {formula:string;name:string}[]=[
+  {formula:'F = ma',name:'牛顿第二定律'},
+  {formula:'E = ½mv²',name:'动能'},
+  {formula:'T = 2π√(m/k)',name:'弹簧周期'},
+  {formula:'F = k q₁q₂ / r²',name:'库仑定律'},
+  {formula:'F = G m₁m₂ / r²',name:'万有引力'},
+  {formula:'v² = GM(2/r − 1/a)',name:'活力公式'},
+]
+const domainLaw:Record<Domain['id'],{formula:string;law:string}> = {
+  mechanics:{formula:'F = ma',law:'牛顿第二定律'},
+  electromagnetism:{formula:'F = k q₁q₂ / r²',law:'库仑定律'},
+  astrophysics:{formula:'F = G m₁m₂ / r²',law:'万有引力'},
+}
 function Home() {
-  return <><main className="home">
-    <div className="home-ambient" aria-hidden="true"/>
-    <div className="home-shell">
-      <div className="home-hud"><span><i/> SYSTEM ONLINE</span><span>PLANCK PHYSICS ENGINE</span><span>LOCAL NODE / 01</span></div>
-      <section className="hero" aria-labelledby="home-title">
-        <div className="hero-copy">
-          <div className="hero-eyebrow"><span>PHYSICLAB</span><span className="eyebrow-rule"/><span>EXPERIMENTAL INTERFACE</span></div>
-          <h1 id="home-title">让好奇心，<br/><span>突破边界。</span></h1>
-          <p className="hero-lead">构建场景，设定初始条件。<br/>让物理引擎运行，让数据揭示答案。</p>
-          <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={17}/> 开始实验 <ArrowRight size={15}/></a>
-            <a className="button outline" href="#domains">浏览领域 <ArrowUpRight size={14}/></a></div>
-          <div className="hero-signature"><span>SCROLL TO EXPLORE</span><i/></div>
+  return <div className="hp-page">
+    <main className="hp">
+      <div className="hp-shell">
+        <div className="hp-masthead">
+          <span className="hp-masthead-brand">PhysicLab · Studio</span>
+          <span className="hp-masthead-meta"><span>Planck 1.5</span><i aria-hidden="true"/><span>60 Hz</span><i aria-hidden="true"/><span>SI 单位</span></span>
         </div>
-        <div className="hero-visual">
-          <span className="visual-crosshair crosshair-one" aria-hidden="true">+</span>
-          <span className="visual-crosshair crosshair-two" aria-hidden="true">+</span>
-          <a className="hero-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
-            <div className="console-chrome"><span><i/> LIVE SIMULATION</span><span>EXP / 001</span><span>60 HZ</span></div>
-            <div className="sim-title"><div><span>PROJECTILE MOTION</span><strong>斜抛运动</strong></div><span className="sim-state">RUNNING</span></div>
-            <div className="sim-viewport"><HeroSimulation/><span className="sim-reticle reticle-one" aria-hidden="true"/><span className="sim-reticle reticle-two" aria-hidden="true"/><span className="sim-coordinate">X 08.42 &nbsp; Y 03.17</span></div>
-            <div className="console-metrics">
-              <div><span>最高点</span><strong>2.55<small>m</small></strong></div>
-              <div><span>滞空时间</span><strong>1.44<small>s</small></strong></div>
-              <div><span>水平射程</span><strong>10.19<small>m</small></strong></div>
+
+        <section className="hp-hero" aria-labelledby="home-title">
+          <div className="hp-hero-copy">
+            <p className="hp-eyebrow"><i aria-hidden="true"/>交互式物理实验室</p>
+            <h1 id="home-title" className="hp-title">先搭一个世界，<br/><span>再问它为什么。</span></h1>
+            <p className="hp-lead">搭建刚体、斜面与电荷，设定初始条件，让固定步长的求解器运行——<br className="hp-br"/>然后用曲线和数字回答你的假设。</p>
+            <div className="hp-actions">
+              <a className="hp-button hp-button-primary" href={newLab}>开始实验<ArrowRight size={15} aria-hidden="true"/></a>
+              <a className="hp-button" href="#domains">浏览三个领域</a>
             </div>
-            <div className="console-footer"><span>v₀ 10 m/s</span><span>θ 45°</span><span>g 9.81 m/s²</span><span className="console-launch">进入实验 <ArrowUpRight size={12}/></span></div>
-          </a>
-          <div className="visual-caption"><span>REAL-TIME PHYSICS</span><i/><span>PLANCK 1.5</span></div>
-        </div>
-      </section>
-      <section className="home-section domain-section" id="domains" aria-labelledby="domains-title">
-        <div className="section-heading"><div><span className="section-kicker">01 / DOMAINS</span><h2 id="domains-title">选择实验领域</h2></div><p>三个维度，同一套物理法则。</p></div>
-        <div className="domain-grid">{domains.map(domain=>{const meta=domainMeta[domain.id];return <a key={domain.id} className={'domain-card domain-'+domain.id} href={domainUrl(domain)}>
-          <div className="domain-card-top"><span className="domain-icon"><domain.icon size={21} strokeWidth={1.4} aria-hidden="true"/></span><span className="domain-index">{meta.index}</span></div>
-          <div className="domain-card-body"><span className="domain-label">DOMAIN / {meta.index}</span><h3>{domain.name}</h3><p>{domain.description}</p></div>
-          <div className="domain-card-footer"><span>{meta.count}</span><span className="domain-enter">进入 <ArrowUpRight size={13}/></span></div>
-        </a>})}</div>
-      </section>
-      <section className="capability-strip" aria-label="实验室能力">
-        <div><strong>60<small>Hz</small></strong><span>固定物理步长</span></div>
-        <div><strong>15<small>Hz</small></strong><span>数据采样频率</span></div>
-        <div><strong>SI</strong><span>国际标准单位</span></div>
-        <div className="capability-flow"><span>BUILD</span><i/><span>SIMULATE</span><i/><span>ANALYZE</span></div>
-      </section>
-    </div>
-  </main><footer className="site-footer home-footer"><div className="home-shell"><div className="footer-brand"><Atom size={15}/><span>PhysicLab Studio</span></div><span className="footer-status"><i/> LOCAL-FIRST · SI UNITS</span><a href={appUrl('/experiments')}>实验库 <ArrowUpRight size={12}/></a></div></footer></>
+            <p className="hp-note">无需账号 · 数据留在本地浏览器 · 全程 SI 单位</p>
+          </div>
+
+          <div className="hp-stage">
+            <a className="hp-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
+              <div className="hp-console-head">
+                <span className="hp-console-name">斜抛运动<small>Projectile motion</small></span>
+                <span className="hp-live"><i aria-hidden="true"/>Running</span>
+              </div>
+              <div className="hp-canvas-wrap"><HeroSimulation/></div>
+              <dl className="hp-metrics">
+                <div><dt>最高点</dt><dd>2.55<small>m</small></dd></div>
+                <div><dt>滞空时间</dt><dd>1.44<small>s</small></dd></div>
+                <div><dt>水平射程</dt><dd>10.19<small>m</small></dd></div>
+              </dl>
+              <div className="hp-console-foot">
+                <span>v₀ 10 m/s · θ 45° · g 9.81 m/s²</span>
+                <span className="hp-enter">进入实验<ArrowUpRight size={12} aria-hidden="true"/></span>
+              </div>
+            </a>
+          </div>
+        </section>
+
+        <section className="hp-laws" aria-label="实验涉及的物理定律">
+          {laws.map(law=><div className="hp-law" key={law.formula}>
+            <span className="hp-law-formula">{law.formula}</span>
+            <span className="hp-law-name">{law.name}</span>
+          </div>)}
+        </section>
+
+        <section className="hp-domains" id="domains" aria-labelledby="domains-title">
+          <div className="hp-section-head">
+            <p className="hp-index">01 — 领域</p>
+            <h2 id="domains-title">三个领域，同一套法则。</h2>
+            <p className="hp-section-lead">每一门都有自己的控制方程，也都跑在同一个固定步长求解器上。</p>
+          </div>
+          <div className="hp-grid">{domains.map(domain=>{
+            const meta=domainMeta[domain.id]
+            const law=domainLaw[domain.id]
+            return <a key={domain.id} className={'domain-card hp-card hp-card-'+domain.id} href={domainUrl(domain)}>
+              <div className="hp-card-top">
+                <span className="hp-card-icon"><domain.icon size={18} strokeWidth={1.4} aria-hidden="true"/></span>
+                <span className="hp-card-index">{meta.index}</span>
+              </div>
+              <p className="hp-card-formula" aria-hidden="true">{law.formula}</p>
+              <p className="hp-card-law">控制方程 · {law.law}</p>
+              <h3>{domain.name}</h3>
+              <p className="hp-card-text">{domain.description}</p>
+              <div className="hp-card-foot"><span>{meta.count}</span><span className="hp-card-enter">进入<ArrowUpRight size={13} aria-hidden="true"/></span></div>
+            </a>
+          })}</div>
+        </section>
+
+        <section className="hp-spec" aria-label="实验室规格">
+          <div><span className="hp-spec-value">60<small>Hz</small></span><span className="hp-spec-label">固定物理步长</span></div>
+          <div><span className="hp-spec-value">15<small>Hz</small></span><span className="hp-spec-label">数据采样</span></div>
+          <div><span className="hp-spec-value">SI</span><span className="hp-spec-label">国际单位制</span></div>
+          <div className="hp-spec-flow"><span>搭建</span><i aria-hidden="true"/><span>运行</span><i aria-hidden="true"/><span>分析</span></div>
+        </section>
+      </div>
+    </main>
+    <footer className="hp-footer">
+      <div className="hp-shell hp-footer-inner">
+        <span>PhysicLab Studio</span>
+        <span>本地优先 · 无账号 · 无上传</span>
+        <a href={appUrl('/experiments')}>实验库<ArrowUpRight size={12} aria-hidden="true"/></a>
+      </div>
+    </footer>
+  </div>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
