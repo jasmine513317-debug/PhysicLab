@@ -5,7 +5,7 @@ test('opens a real template, records data, compares runs, exports CSV and manage
   const errors:string[]=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:/让好奇心/,level:1})).toBeVisible()
+  await expect(page.getByRole('heading',{name:/先搭一个世界/,level:1})).toBeVisible()
   await page.getByRole('link',{name:'打开斜抛运动实验'}).click()
   await expect(page.getByRole('textbox',{name:'实验标题'})).toHaveValue('斜抛运动')
   const mass=page.getByRole('spinbutton',{name:'质量',exact:true})
@@ -185,7 +185,7 @@ test('opens a valid saved scene when the library also contains an unreadable rec
 
 test('switches domains without losing a mechanics draft and restores edit history',async({page})=>{
   await page.goto('/')
-  await page.getByRole('region',{name:'实验领域'}).getByRole('link',{name:/电磁学/}).click()
+  await page.getByRole('link',{name:/电磁学/}).first().click()
   await expect(page.getByRole('heading',{name:'电磁学',exact:true})).toBeVisible()
   await expect(page.getByLabel('电场画布')).toBeVisible()
   const domains=page.getByRole('navigation',{name:'实验领域'})

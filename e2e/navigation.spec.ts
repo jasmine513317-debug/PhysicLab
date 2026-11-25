@@ -9,7 +9,7 @@ test('opens templates and recent experiments from the sidebar', async ({ page })
   await expect(page.getByRole('link', { name: '打开斜抛运动实验' })).toBeVisible()
   await expect(page.locator('.hero-simulation')).toBeVisible()
   expect(await page.locator('.hero-simulation').evaluate((canvas: HTMLCanvasElement) => canvas.width > 0 && canvas.height > 0)).toBe(true)
-  await expect(page.locator('.domain-card')).toHaveCount(3)
+  await expect(page.locator('.hp-row')).toHaveCount(3)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440)
   await expect(
     page.getByRole('region', { name: '最近实验' })

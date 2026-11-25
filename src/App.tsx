@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Atom, Check, CircleDot, Clock3, Copy, FolderOpen, HardDrive, Home as HomeIcon, LibraryBig, Menu, Orbit, Pencil, Plus, Shapes, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
 import { emptyExperiment, type Experiment } from './model'
 import { instantiate, templates, type TemplateId } from './templates'
@@ -125,100 +125,83 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
     <main className="app-content" id="app-content">{children}</main>
   </>
 }
-const domainMeta:Record<Domain['id'],{index:string;count:string}>={
-  mechanics:{index:'01',count:'8 个实验'},
-  electromagnetism:{index:'02',count:'4 个实验'},
-  astrophysics:{index:'03',count:'5 个实验'},
+const domainCount:Record<Domain['id'],string>={
+  mechanics:'8 个实验',
+  electromagnetism:'4 个实验',
+  astrophysics:'5 个实验',
 }
-const laws:readonly {formula:string;name:string}[]=[
-  {formula:'F = ma',name:'牛顿第二定律'},
-  {formula:'E = ½mv²',name:'动能'},
-  {formula:'T = 2π√(m/k)',name:'弹簧周期'},
-  {formula:'F = k q₁q₂ / r²',name:'库仑定律'},
-  {formula:'F = G m₁m₂ / r²',name:'万有引力'},
-  {formula:'v² = GM(2/r − 1/a)',name:'活力公式'},
+const domainFormula:Record<Domain['id'],string>={
+  mechanics:'F = ma',
+  electromagnetism:'F = k q₁q₂ / r²',
+  astrophysics:'F = G m₁m₂ / r²',
+}
+type FieldFormula = {
+  tex:string;x:string;y:string;size:string;op:number
+  dur:string;delay:string;dx:string;dy:string;rot:string
+  tone?:'sand'|'cool';far?:boolean;optional?:boolean
+}
+/** 背景公式场：公式在这里是气氛，不是清单。位置为视口百分比。 */
+const formulaField:readonly FieldFormula[]=[
+  {tex:'F = ma',x:'59%',y:'6%',size:'40px',op:.22,dur:'46s',delay:'0s',dx:'30px',dy:'-38px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'85%',y:'26%',size:'23px',op:.17,dur:'38s',delay:'-7s',dx:'-26px',dy:'32px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'63%',y:'53%',size:'26px',op:.15,dur:'52s',delay:'-19s',dx:'-34px',dy:'-28px',rot:'-1deg'},
+  {tex:'F = G m₁m₂ / r²',x:'78%',y:'74%',size:'27px',op:.16,dur:'42s',delay:'-11s',dx:'22px',dy:'34px',rot:'1deg',optional:true},
+  {tex:'∮B·dl = μ₀I',x:'69%',y:'90%',size:'19px',op:.11,dur:'56s',delay:'-24s',dx:'-18px',dy:'-24px',rot:'.8deg',far:true,optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'45%',y:'2%',size:'18px',op:.11,dur:'60s',delay:'-30s',dx:'18px',dy:'22px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'92%',y:'60%',size:'16px',op:.13,dur:'40s',delay:'-5s',dx:'-14px',dy:'26px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'0%',y:'47%',size:'24px',op:.15,dur:'54s',delay:'-15s',dx:'24px',dy:'-30px',rot:'-1.4deg',optional:true},
+  {tex:'∇·E = ρ/ε₀',x:'73%',y:'63%',size:'21px',op:.12,dur:'48s',delay:'-26s',dx:'-22px',dy:'28px',rot:'1deg',far:true,optional:true},
+  {tex:'pV = nRT',x:'62%',y:'88%',size:'18px',op:.11,dur:'50s',delay:'-8s',dx:'18px',dy:'-22px',rot:'-.8deg',far:true,optional:true},
+  {tex:'S = k_B ln W',x:'90%',y:'11%',size:'16px',op:.10,dur:'62s',delay:'-34s',dx:'14px',dy:'26px',rot:'1.2deg',far:true,optional:true},
 ]
-const domainLaw:Record<Domain['id'],{formula:string;law:string}> = {
-  mechanics:{formula:'F = ma',law:'牛顿第二定律'},
-  electromagnetism:{formula:'F = k q₁q₂ / r²',law:'库仑定律'},
-  astrophysics:{formula:'F = G m₁m₂ / r²',law:'万有引力'},
-}
 function Home() {
   return <div className="hp-page">
+    <div className="hp-field" aria-hidden="true">{formulaField.map(f=><span
+      key={f.tex}
+      className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.optional?' hp-optional':'')}
+      style={{'--x':f.x,'--y':f.y,'--size':f.size,'--op':f.op,'--dur':f.dur,'--delay':f.delay,'--dx':f.dx,'--dy':f.dy,'--rot':f.rot} as CSSProperties}
+    >{f.tex}</span>)}</div>
+    <header className="hp-shell hp-top">
+      <a className="hp-brand" href={appUrl('/')}>PhysicLab · Studio</a>
+      <a className="hp-top-link" href={appUrl('/experiments')}>实验库<ArrowUpRight size={12} aria-hidden="true"/></a>
+    </header>
     <main className="hp">
       <div className="hp-shell">
-        <div className="hp-masthead">
-          <span className="hp-masthead-brand">PhysicLab · Studio</span>
-          <span className="hp-masthead-meta"><span>Planck 1.5</span><i aria-hidden="true"/><span>60 Hz</span><i aria-hidden="true"/><span>SI 单位</span></span>
-        </div>
 
         <section className="hp-hero" aria-labelledby="home-title">
           <div className="hp-hero-copy">
             <p className="hp-eyebrow"><i aria-hidden="true"/>交互式物理实验室</p>
             <h1 id="home-title" className="hp-title">先搭一个世界，<br/><span>再问它为什么。</span></h1>
-            <p className="hp-lead">搭建刚体、斜面与电荷，设定初始条件，让固定步长的求解器运行——<br className="hp-br"/>然后用曲线和数字回答你的假设。</p>
+            <p className="hp-lead">设定重力、斜面与电荷，让固定步长的求解器跑起来。再用曲线和数字回答你的假设。</p>
             <div className="hp-actions">
-              <a className="hp-button hp-button-primary" href={newLab}>开始实验<ArrowRight size={15} aria-hidden="true"/></a>
-              <a className="hp-button" href="#domains">浏览三个领域</a>
+              <a className="hp-button" href={newLab}>开始实验<ArrowRight size={15} aria-hidden="true"/></a>
+              <a className="hp-link" href="#domains">看三个领域<ArrowUpRight size={13} aria-hidden="true"/></a>
             </div>
-            <p className="hp-note">无需账号 · 数据留在本地浏览器 · 全程 SI 单位</p>
           </div>
-
-          <div className="hp-stage">
-            <a className="hp-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
-              <div className="hp-console-head">
-                <span className="hp-console-name">斜抛运动<small>Projectile motion</small></span>
-                <span className="hp-live"><i aria-hidden="true"/>Running</span>
-              </div>
-              <div className="hp-canvas-wrap"><HeroSimulation/></div>
-              <dl className="hp-metrics">
-                <div><dt>最高点</dt><dd>2.55<small>m</small></dd></div>
-                <div><dt>滞空时间</dt><dd>1.44<small>s</small></dd></div>
-                <div><dt>水平射程</dt><dd>10.19<small>m</small></dd></div>
-              </dl>
-              <div className="hp-console-foot">
-                <span>v₀ 10 m/s · θ 45° · g 9.81 m/s²</span>
-                <span className="hp-enter">进入实验<ArrowUpRight size={12} aria-hidden="true"/></span>
-              </div>
-            </a>
-          </div>
-        </section>
-
-        <section className="hp-laws" aria-label="实验涉及的物理定律">
-          {laws.map(law=><div className="hp-law" key={law.formula}>
-            <span className="hp-law-formula">{law.formula}</span>
-            <span className="hp-law-name">{law.name}</span>
-          </div>)}
+          <a className="hp-figure" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
+            <div className="hp-canvas-wrap"><HeroSimulation/></div>
+            <dl className="hp-readout">
+              <div><dt>最高点</dt><dd>2.55 m</dd></div>
+              <div><dt>滞空</dt><dd>1.44 s</dd></div>
+              <div><dt>射程</dt><dd>10.19 m</dd></div>
+              <div className="hp-readout-go"><dt>斜抛运动</dt><ArrowUpRight size={12} aria-hidden="true"/></div>
+            </dl>
+          </a>
         </section>
 
         <section className="hp-domains" id="domains" aria-labelledby="domains-title">
           <div className="hp-section-head">
-            <p className="hp-index">01 — 领域</p>
             <h2 id="domains-title">三个领域，同一套法则。</h2>
-            <p className="hp-section-lead">每一门都有自己的控制方程，也都跑在同一个固定步长求解器上。</p>
+            <p>01 — 领域</p>
           </div>
-          <div className="hp-grid">{domains.map(domain=>{
-            const meta=domainMeta[domain.id]
-            const law=domainLaw[domain.id]
-            return <a key={domain.id} className={'domain-card hp-card hp-card-'+domain.id} href={domainUrl(domain)}>
-              <div className="hp-card-top">
-                <span className="hp-card-icon"><domain.icon size={18} strokeWidth={1.4} aria-hidden="true"/></span>
-                <span className="hp-card-index">{meta.index}</span>
-              </div>
-              <p className="hp-card-formula" aria-hidden="true">{law.formula}</p>
-              <p className="hp-card-law">控制方程 · {law.law}</p>
+          <div className="hp-rows">{domains.map(domain=><a key={domain.id} className="hp-row" href={domainUrl(domain)}>
+            <span className="hp-row-eq" aria-hidden="true">{domainFormula[domain.id]}</span>
+            <div className="hp-row-body">
               <h3>{domain.name}</h3>
-              <p className="hp-card-text">{domain.description}</p>
-              <div className="hp-card-foot"><span>{meta.count}</span><span className="hp-card-enter">进入<ArrowUpRight size={13} aria-hidden="true"/></span></div>
-            </a>
-          })}</div>
-        </section>
-
-        <section className="hp-spec" aria-label="实验室规格">
-          <div><span className="hp-spec-value">60<small>Hz</small></span><span className="hp-spec-label">固定物理步长</span></div>
-          <div><span className="hp-spec-value">15<small>Hz</small></span><span className="hp-spec-label">数据采样</span></div>
-          <div><span className="hp-spec-value">SI</span><span className="hp-spec-label">国际单位制</span></div>
-          <div className="hp-spec-flow"><span>搭建</span><i aria-hidden="true"/><span>运行</span><i aria-hidden="true"/><span>分析</span></div>
+              <p>{domain.description}</p>
+            </div>
+            <div className="hp-row-go"><span>{domainCount[domain.id]}</span><ArrowUpRight size={16} aria-hidden="true"/></div>
+          </a>)}</div>
         </section>
       </div>
     </main>
