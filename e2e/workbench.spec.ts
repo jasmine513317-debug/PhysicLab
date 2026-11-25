@@ -5,7 +5,7 @@ test('opens a real template, records data, compares runs, exports CSV and manage
   const errors:string[]=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:/让想法/,level:1})).toBeVisible()
+  await expect(page.getByRole('heading',{name:/让好奇心/,level:1})).toBeVisible()
   await page.getByRole('link',{name:'打开斜抛运动实验'}).click()
   await expect(page.getByRole('textbox',{name:'实验标题'})).toHaveValue('斜抛运动')
   const mass=page.getByRole('spinbutton',{name:'质量',exact:true})

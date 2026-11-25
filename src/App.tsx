@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Atom, BarChart3, Boxes, Check, CircleDot, Clock3, Copy, FolderOpen, Gauge, HardDrive, Home as HomeIcon, LibraryBig, Menu, Orbit, Pencil, Play, Plus, Shapes, Sparkles, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Atom, Check, CircleDot, Clock3, Copy, FolderOpen, HardDrive, Home as HomeIcon, LibraryBig, Menu, Orbit, Pencil, Plus, Shapes, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
 import { emptyExperiment, type Experiment } from './model'
 import { instantiate, templates, type TemplateId } from './templates'
 import { deleteExperiment, duplicateExperiment, importExperiment, listExperiments, loadExperiment, renameExperiment, saveAstronomy, saveElectrostatic, saveExtended, storageFor } from './repository'
@@ -9,6 +9,7 @@ import { astronomyTemplates, type SavedExperiment } from './astronomy'
 import { extendedTemplates, extensionUrl, isExtension, type Extension } from './extended-experiments'
 import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
+import { HeroSimulation } from './HeroSimulation'
 import { appPath, appUrl } from './routes'
 import { domains, domainUrl, DomainNav, type Domain } from './domains'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
@@ -124,62 +125,58 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
     <main className="app-content" id="app-content">{children}</main>
   </>
 }
-const domainMeta:Record<Domain['id'],{index:string;label:string;count:string}>={
-  mechanics:{index:'01',label:'MECHANICS',count:'8 个实验'},
-  electromagnetism:{index:'02',label:'ELECTROMAGNETISM',count:'4 个实验'},
-  astrophysics:{index:'03',label:'ASTROPHYSICS',count:'5 个实验'},
+const domainMeta:Record<Domain['id'],{index:string;count:string}>={
+  mechanics:{index:'01',count:'8 个实验'},
+  electromagnetism:{index:'02',count:'4 个实验'},
+  astrophysics:{index:'03',count:'5 个实验'},
 }
 function Home() {
-  const [demo]=useState(()=>instantiate('projectile'))
-  return <><main className="home page-width">
+  return <><main className="home">
     <div className="home-ambient" aria-hidden="true"/>
-    <section className="hero" aria-labelledby="home-title">
-      <div className="hero-copy">
-        <div className="hero-eyebrow"><span className="eyebrow-dot"/><span>INTERACTIVE PHYSICS LAB</span><span className="eyebrow-rule"/><span>STUDIO 2.0</span></div>
-        <h1 id="home-title">让想法，<br/><span>成为实验。</span></h1>
-        <p className="hero-lead">从一条轨迹开始，把好奇心变成可验证的物理实验。搭建场景、运行模拟，让数据告诉你答案。</p>
-        <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={18}/> 创建实验 <ArrowRight size={16}/></a>
-          <a className="button outline" href="#domains">探索实验领域 <ArrowUpRight size={15}/></a></div>
-        <div className="hero-specs" aria-label="实验室能力">
-          <div><strong>60<small>Hz</small></strong><span>固定物理步长</span></div>
-          <div><strong>15<small>Hz</small></strong><span>数据采样频率</span></div>
-          <div><strong>SI</strong><span>国际标准单位</span></div>
+    <div className="home-shell">
+      <div className="home-hud"><span><i/> SYSTEM ONLINE</span><span>PLANCK PHYSICS ENGINE</span><span>LOCAL NODE / 01</span></div>
+      <section className="hero" aria-labelledby="home-title">
+        <div className="hero-copy">
+          <div className="hero-eyebrow"><span>PHYSICLAB</span><span className="eyebrow-rule"/><span>EXPERIMENTAL INTERFACE</span></div>
+          <h1 id="home-title">让好奇心，<br/><span>突破边界。</span></h1>
+          <p className="hero-lead">构建场景，设定初始条件。<br/>让物理引擎运行，让数据揭示答案。</p>
+          <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={17}/> 开始实验 <ArrowRight size={15}/></a>
+            <a className="button outline" href="#domains">浏览领域 <ArrowUpRight size={14}/></a></div>
+          <div className="hero-signature"><span>SCROLL TO EXPLORE</span><i/></div>
         </div>
-      </div>
-      <div className="hero-visual">
-        <span className="visual-crosshair crosshair-one" aria-hidden="true">+</span>
-        <span className="visual-crosshair crosshair-two" aria-hidden="true">+</span>
-        <a className="hero-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
-          <div className="console-chrome"><span className="console-dots" aria-hidden="true"><i/><i/><i/></span><span>SIMULATION / 001</span><span className="console-status"><i/> MODEL READY</span></div>
-          <div className="console-heading"><div><span>PROJECTILE MOTION</span><h2>斜抛运动</h2></div><span className="console-open"><ArrowUpRight size={18}/></span></div>
-          <div className="diagram-stage"><SceneDiagram scene={demo} scale={0.92}/><span className="diagram-axis">Y ↑ &nbsp; X →</span><span className="diagram-conditions">v₀ = 10 m/s &nbsp;·&nbsp; θ = 45°</span></div>
-          <div className="console-metrics">
-            <div><span>最高点</span><strong>2.55<small>m</small></strong></div>
-            <div><span>滞空时间</span><strong>1.44<small>s</small></strong></div>
-            <div><span>水平射程</span><strong>10.19<small>m</small></strong></div>
-          </div>
-          <div className="console-footer"><span><i/> 理论轨迹</span><span>g = 9.81 m/s²</span><span className="console-launch">打开实验 <ArrowRight size={12}/></span></div>
-        </a>
-        <div className="visual-caption"><Sparkles size={13}/><span>由 Planck 物理引擎实时驱动</span></div>
-      </div>
-    </section>
-    <section className="home-section domain-section" id="domains" aria-labelledby="domains-title">
-      <div className="section-heading"><div><span className="section-kicker">EXPLORE DOMAINS</span><h2 id="domains-title">选择你的实验领域</h2></div><p>从微观粒子到浩瀚轨道，<br/>在不同的物理世界中验证同一个问题。</p></div>
-      <div className="domain-grid">{domains.map(domain=>{const meta=domainMeta[domain.id];return <a key={domain.id} className={'domain-card domain-'+domain.id} href={domainUrl(domain)}>
-        <div className="domain-card-top"><span className="domain-icon"><domain.icon size={23} strokeWidth={1.5} aria-hidden="true"/></span><span className="domain-index">{meta.index}</span></div>
-        <div className="domain-card-body"><span className="domain-label">{meta.label}</span><h3>{domain.name}</h3><p>{domain.description}</p></div>
-        <div className="domain-card-footer"><span>{meta.count}</span><span className="domain-enter">进入领域 <ArrowUpRight size={14}/></span></div>
-      </a>})}</div>
-    </section>
-    <section className="workflow-section" aria-labelledby="workflow-title">
-      <div className="section-heading"><div><span className="section-kicker">ONE SEAMLESS WORKFLOW</span><h2 id="workflow-title">从假设到结论，只需三步</h2></div><span className="workflow-note"><Gauge size={14}/> 为探索而设计，而非试错</span></div>
-      <div className="feature-grid">
-        <article><div className="feature-top"><span className="feature-icon"><Boxes size={20}/></span><span className="feature-step">01 / BUILD</span></div><h3>搭建场景</h3><p>在坐标网格中放置物体、斜面和弹簧，自由定义初始条件。</p></article>
-        <article><div className="feature-top"><span className="feature-icon"><Play size={19}/></span><span className="feature-step">02 / SIMULATE</span></div><h3>观察运动</h3><p>运行、暂停或单步推进，查看运动轨迹、速度与受力矢量。</p></article>
-        <article><div className="feature-top"><span className="feature-icon"><BarChart3 size={20}/></span><span className="feature-step">03 / ANALYZE</span></div><h3>对比实验结果</h3><p>用图表分析采样数据，设置基准对照，并导出 CSV。</p></article>
-      </div>
-    </section>
-  </main><footer className="site-footer page-width"><div className="footer-brand"><Atom size={16}/><span>PhysicLab Studio <small>为好奇心而构建</small></span></div><span className="footer-status"><i/> LOCAL-FIRST · SI UNITS</span><a href={appUrl('/experiments')}>我的实验库 <ArrowUpRight size={13}/></a></footer></>
+        <div className="hero-visual">
+          <span className="visual-crosshair crosshair-one" aria-hidden="true">+</span>
+          <span className="visual-crosshair crosshair-two" aria-hidden="true">+</span>
+          <a className="hero-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
+            <div className="console-chrome"><span><i/> LIVE SIMULATION</span><span>EXP / 001</span><span>60 HZ</span></div>
+            <div className="sim-title"><div><span>PROJECTILE MOTION</span><strong>斜抛运动</strong></div><span className="sim-state">RUNNING</span></div>
+            <div className="sim-viewport"><HeroSimulation/><span className="sim-reticle reticle-one" aria-hidden="true"/><span className="sim-reticle reticle-two" aria-hidden="true"/><span className="sim-coordinate">X 08.42 &nbsp; Y 03.17</span></div>
+            <div className="console-metrics">
+              <div><span>最高点</span><strong>2.55<small>m</small></strong></div>
+              <div><span>滞空时间</span><strong>1.44<small>s</small></strong></div>
+              <div><span>水平射程</span><strong>10.19<small>m</small></strong></div>
+            </div>
+            <div className="console-footer"><span>v₀ 10 m/s</span><span>θ 45°</span><span>g 9.81 m/s²</span><span className="console-launch">进入实验 <ArrowUpRight size={12}/></span></div>
+          </a>
+          <div className="visual-caption"><span>REAL-TIME PHYSICS</span><i/><span>PLANCK 1.5</span></div>
+        </div>
+      </section>
+      <section className="home-section domain-section" id="domains" aria-labelledby="domains-title">
+        <div className="section-heading"><div><span className="section-kicker">01 / DOMAINS</span><h2 id="domains-title">选择实验领域</h2></div><p>三个维度，同一套物理法则。</p></div>
+        <div className="domain-grid">{domains.map(domain=>{const meta=domainMeta[domain.id];return <a key={domain.id} className={'domain-card domain-'+domain.id} href={domainUrl(domain)}>
+          <div className="domain-card-top"><span className="domain-icon"><domain.icon size={21} strokeWidth={1.4} aria-hidden="true"/></span><span className="domain-index">{meta.index}</span></div>
+          <div className="domain-card-body"><span className="domain-label">DOMAIN / {meta.index}</span><h3>{domain.name}</h3><p>{domain.description}</p></div>
+          <div className="domain-card-footer"><span>{meta.count}</span><span className="domain-enter">进入 <ArrowUpRight size={13}/></span></div>
+        </a>})}</div>
+      </section>
+      <section className="capability-strip" aria-label="实验室能力">
+        <div><strong>60<small>Hz</small></strong><span>固定物理步长</span></div>
+        <div><strong>15<small>Hz</small></strong><span>数据采样频率</span></div>
+        <div><strong>SI</strong><span>国际标准单位</span></div>
+        <div className="capability-flow"><span>BUILD</span><i/><span>SIMULATE</span><i/><span>ANALYZE</span></div>
+      </section>
+    </div>
+  </main><footer className="site-footer home-footer"><div className="home-shell"><div className="footer-brand"><Atom size={15}/><span>PhysicLab Studio</span></div><span className="footer-status"><i/> LOCAL-FIRST · SI UNITS</span><a href={appUrl('/experiments')}>实验库 <ArrowUpRight size={12}/></a></div></footer></>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
