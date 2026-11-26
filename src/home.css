@@ -115,40 +115,8 @@
   100% {opacity:calc(var(--op) * var(--om,1) * .38);filter:blur(var(--blur-max,0px))}
 }
 
-/* ---------- 场线与微粒：看不见的手在纸面下移动 ---------- */
-.hp-waves {
-  position:absolute;inset:-6%;z-index:1;overflow:hidden;pointer-events:none;user-select:none;
-  opacity:.5;
-}
-.hp-waves svg {width:100%;height:100%;display:block}
-.hp-wave {
-  fill:none;stroke:var(--hp-accent);stroke-width:1;opacity:.24;
-  stroke-dasharray:2 13;vector-effect:non-scaling-stroke;
-  animation:hp-wave-flow 26s linear infinite;
-}
-.hp-wave--two {opacity:.16;animation-duration:32s;animation-direction:reverse}
-.hp-wave--three {opacity:.1;animation-duration:38s}
-@keyframes hp-wave-flow {to {stroke-dashoffset:-300}}
-.hp-motes {
-  position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none;user-select:none;
-}
-.hp-motes span {
-  position:absolute;left:var(--x);top:var(--y);width:var(--size);height:var(--size);
-  border-radius:50%;background:var(--hp-accent-soft);
-  box-shadow:0 0 10px rgba(184,124,72,.45);
-  opacity:0;
-  animation:hp-mote-float var(--dur,11s) ease-in-out var(--delay,0s) infinite;
-  will-change:transform,opacity;
-}
-@keyframes hp-mote-float {
-  0%,100% {opacity:0;transform:translate3d(0,14px,0) scale(.55)}
-  45%     {opacity:.52;transform:translate3d(var(--mx,14px),-18px,0) scale(1)}
-  70%     {opacity:.3;transform:translate3d(calc(var(--mx,14px) * -.35),-8px,0) scale(.8)}
-}
-
-/* ---------- 第一屏：只有一句话，但这句话有重量 ---------- */
+/* ---------- 第一屏：只有一句话 + 极轻的轨道点缀 ---------- */
 .hp-hero {
-  --tilt-x:0deg;--tilt-y:0deg;
   position:relative;
   display:flex;align-items:center;
   min-height:100svh;
@@ -165,49 +133,24 @@
   letter-spacing:-.062em;
   color:var(--hp-ink);
   text-wrap:balance;
-  transform:perspective(1400px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
-  transform-style:preserve-3d;
-  transition:transform .5s cubic-bezier(.16,1,.3,1);
-  will-change:transform;
 }
 .hp-title-line {
-  position:relative;
   display:block;
-  white-space:nowrap;
-  padding-bottom:.1em;
-  margin-bottom:-.1em;
-  opacity:0;
-  transform:translate3d(0,.32em,0);
-  filter:blur(6px);
-  animation:hp-title-in 1.15s cubic-bezier(.16,1,.3,1) both;
-}
-.hp-title-line--second {animation-delay:.1s}
-/* 挤出层：文字像从纸里被压出来，边缘逐层加深。 */
-.hp-title-line::before {
-  content:attr(data-text);
-  position:absolute;left:0;top:0;z-index:0;
-  color:#746b60;
-  transform:translate3d(0,.04em,0);
-  text-shadow:0 1px 0 #918777,0 2px 0 #7a7164,0 3px 0 #645c51,0 4px 0 #504a41,
-              0 6px 1px rgba(29,27,24,.28),0 14px 22px rgba(29,27,24,.15);
+  overflow:hidden;
+  padding-bottom:.06em;
+  margin-bottom:-.06em;
 }
 .hp-title-line>span {
-  position:relative;z-index:1;display:block;
-  color:transparent;
-  background:linear-gradient(112deg,#1f1c18 0%,#26221d 38%,#b49e7e 47%,#2a251f 56%,#1a1815 100%);
-  background-size:220% 100%;
-  background-clip:text;-webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 1px 0 rgba(255,255,255,.42)) drop-shadow(0 12px 16px rgba(29,27,24,.12));
-  animation:hp-sheen 10s ease-in-out infinite;
+  display:block;
+  animation:hp-title-in 1.15s cubic-bezier(.16,1,.3,1) both;
+}
+.hp-title-line--second>span {
+  color:var(--hp-ink-2);
+  animation-delay:.1s;
 }
 @keyframes hp-title-in {
-  from {opacity:0;transform:translate3d(0,.32em,0);filter:blur(6px)}
+  from {opacity:0;transform:translate3d(0,.34em,0);filter:blur(6px)}
   to   {opacity:1;transform:none;filter:blur(0)}
-}
-@keyframes hp-sheen {
-  0%,100% {background-position:0% 50%}
-  50%     {background-position:100% 50%}
 }
 .hp-orbit {
   position:absolute;z-index:1;right:clamp(-48px,2vw,32px);top:50%;
@@ -379,13 +322,7 @@
   .hp-formula:first-child {left:58%;top:42%;font-size:44px;--om:.34}
   .hp-formula.is-flow:not(.hp-optional) {left:68%;top:52%;font-size:17px;--op:.11}
   .hp-hero {min-height:calc(100svh - 56px);padding:8vh 0 12vh}
-  .hp-title {font-size:clamp(38px,10.2vw,52px);line-height:1.22;letter-spacing:-.055em;transform:none!important}
-  .hp-title-line::before {
-    transform:translate3d(0,.026em,0);
-    text-shadow:0 1px 0 #857b6d,0 2px 0 #6b6258,0 4px 7px rgba(29,27,24,.22);
-  }
-  .hp-waves {opacity:.3}
-  .hp-motes span:nth-child(n+6) {display:none}
+  .hp-title {font-size:clamp(38px,10.2vw,52px);line-height:1.22;letter-spacing:-.055em}
   .hp-orbit {display:none}
   .hp-section-head h2 {font-size:28px}
   .hp-row {
@@ -405,13 +342,11 @@
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .hp-formula.is-flow,.hp-waves,.hp-motes {display:none}
+  .hp-formula.is-flow {display:none}
   .hp-field,.hp-field::before,.hp-field::after {animation:none!important;transform:none!important}
   .hp-formula,.hp-formula-ink,.hp-page * {animation:none!important;transition:none!important}
   .hp-formula-ink {opacity:calc(var(--op) * var(--om,1));filter:none}
   .hp-orbit-track {display:none}
-  .hp-title {transform:none!important}
-  .hp-title-line {opacity:1!important;transform:none!important;filter:none!important}
   .hp-section-head,.hp-row,.hp-tail {opacity:1!important;transform:none!important}
   .hp-row:hover {padding-left:clamp(6px,1.2vw,16px)}
 }

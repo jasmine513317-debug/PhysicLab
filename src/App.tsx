@@ -146,41 +146,27 @@ type FieldFormula = {
  */
 const formulaField:readonly FieldFormula[]=[
   /* 椭圆锚点 —— 首屏右侧与大标题错开，构成版式的骨架 */
-  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.26,dur:'13s',delay:'0s',dx:'46px',dy:'78px',rot:'-2deg'},
-  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.22,dur:'13s',delay:'-4s',dx:'-46px',dy:'88px',rot:'1.4deg',tone:'sand'},
-  {tex:'T = 2π√(l/g)',x:'63%',y:'58%',size:'28px',op:.19,dur:'16s',delay:'-9s',dx:'-52px',dy:'90px',rot:'-1deg'},
-  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.17,dur:'17s',delay:'-13s',dx:'32px',dy:'74px',rot:'-1.4deg',optional:true},
-  {tex:'Δx·Δp ≥ ℏ/2',x:'50%',y:'3%',size:'19px',op:.14,dur:'19s',delay:'-7s',dx:'32px',dy:'62px',rot:'-1.2deg',far:true,optional:true},
-  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.15,dur:'16s',delay:'-11s',dx:'-30px',dy:'72px',rot:'1.6deg',tone:'cool',far:true,optional:true},
-  {tex:'F = dp/dt',x:'70%',y:'92%',size:'76px',op:.07,dur:'24s',delay:'-19s',dx:'36px',dy:'56px',rot:'-1deg',tone:'sand',far:true},
+  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.20,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.17,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'63%',y:'58%',size:'28px',op:.15,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.14,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'50%',y:'3%',size:'19px',op:.11,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.12,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'F = dp/dt',x:'70%',y:'92%',size:'76px',op:.05,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
   /* 上升流 —— 极淡、贯穿两屏，让「漂浮」在余光里持续发生 */
-  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.10,dur:'34s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
+  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.08,dur:'38s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
   {tex:'pV = nRT',x:'58%',y:'100%',size:'19px',op:.07,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
   {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.08,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
   {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.07,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
   {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.08,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
   {tex:'½kx² = ½mv²',x:'64%',y:'100%',size:'18px',op:.07,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
 ]
-/* 背景微粒：纸面上缓慢浮动的微光，不用图片也能有空间感。 */
-const fieldMotes:readonly {x:string;y:string;size:string;drift:string;dur:string;delay:string}[]=[
-  {x:'58%',y:'16%',size:'3px',drift:'18px',dur:'9s',delay:'-1s'},
-  {x:'76%',y:'12%',size:'2px',drift:'-14px',dur:'11s',delay:'-5s'},
-  {x:'91%',y:'24%',size:'4px',drift:'12px',dur:'13s',delay:'-8s'},
-  {x:'66%',y:'41%',size:'2px',drift:'20px',dur:'10s',delay:'-3s'},
-  {x:'84%',y:'47%',size:'3px',drift:'-18px',dur:'12s',delay:'-6s'},
-  {x:'96%',y:'61%',size:'2px',drift:'14px',dur:'9s',delay:'-2s'},
-  {x:'61%',y:'72%',size:'3px',drift:'-16px',dur:'14s',delay:'-9s'},
-  {x:'79%',y:'84%',size:'2px',drift:'18px',dur:'11s',delay:'-4s'},
-  {x:'93%',y:'90%',size:'3px',drift:'-12px',dur:'13s',delay:'-7s'},
-]
 function Home() {
   const fieldRef = useRef<HTMLDivElement>(null)
-  const heroRef = useRef<HTMLElement>(null)
   const domainsRef = useRef<HTMLElement>(null)
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce), (hover: none)').matches) return
     const field = fieldRef.current
-    const hero = heroRef.current
     if (!field) return
     let raf = 0
     let tx = 0, ty = 0, cx = 0, cy = 0
@@ -197,14 +183,8 @@ function Home() {
     }
     const schedule = () => { if (!raf) raf = requestAnimationFrame(tick) }
     const onMove = (e: MouseEvent) => {
-      const px = e.clientX / window.innerWidth - .5
-      const py = e.clientY / window.innerHeight - .5
-      tx = px * -36
-      ty = py * -24
-      if (hero) {
-        hero.style.setProperty('--tilt-y', (px * 3.2).toFixed(2) + 'deg')
-        hero.style.setProperty('--tilt-x', (py * -2.2).toFixed(2) + 'deg')
-      }
+      tx = (e.clientX / window.innerWidth - .5) * -36
+      ty = (e.clientY / window.innerHeight - .5) * -24
       schedule()
     }
     const onScroll = () => {
@@ -242,28 +222,17 @@ function Home() {
       className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.flow?' is-flow':'')+(f.optional?' hp-optional':'')}
       style={{'--x':f.x,'--y':f.y,'--size':f.size,'--op':f.op,'--dur':f.dur,'--delay':f.delay,'--dx':f.dx,'--dy':f.dy,'--rot':f.rot} as CSSProperties}
     ><span className="hp-formula-ink">{f.tex}</span></span>)}</div>
-    <div className="hp-waves" aria-hidden="true">
-      <svg viewBox="0 0 1440 1000" preserveAspectRatio="none" focusable="false">
-        <path className="hp-wave" d="M620 -40 C790 150 570 340 770 530 S710 790 910 1040"/>
-        <path className="hp-wave hp-wave--two" d="M790 -40 C960 150 740 340 940 530 S880 790 1080 1040"/>
-        <path className="hp-wave hp-wave--three" d="M960 -40 C1130 150 910 340 1110 530 S1050 790 1250 1040"/>
-      </svg>
-    </div>
-    <div className="hp-motes" aria-hidden="true">{fieldMotes.map((m,i)=><span
-      key={i}
-      style={{'--x':m.x,'--y':m.y,'--size':m.size,'--mx':m.drift,'--dur':m.dur,'--delay':m.delay} as CSSProperties}
-    />)}</div>
     <main className="hp">
-      <section className="hp-hero" ref={heroRef} aria-labelledby="home-title">
+      <section className="hp-hero" aria-labelledby="home-title">
         <div className="hp-orbit" aria-hidden="true">
           <span className="hp-orbit-ring"/>
           <span className="hp-orbit-ring hp-orbit-ring--inner"/>
           <span className="hp-orbit-track"><i className="hp-orbit-dot"/></span>
         </div>
         <div className="hp-shell hp-hero-inner">
-          <h1 id="home-title" className="hp-title" aria-label="先搭一个世界，再问它为什么。">
-            <span className="hp-title-line" data-text="先搭一个世界，"><span>先搭一个世界，</span></span>
-            <span className="hp-title-line hp-title-line--second" data-text="再问它为什么。"><span>再问它为什么。</span></span>
+          <h1 id="home-title" className="hp-title">
+            <span className="hp-title-line"><span>先搭一个世界，</span></span>
+            <span className="hp-title-line hp-title-line--second"><span>再问它为什么。</span></span>
           </h1>
         </div>
         <a className="hp-scroll" href="#domains" aria-label="向下查看三个实验领域"><span className="hp-scroll-track" aria-hidden="true"/></a>
