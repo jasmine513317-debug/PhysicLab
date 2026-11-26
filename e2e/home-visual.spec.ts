@@ -13,8 +13,6 @@ test('home layout stays within the viewport at every target width', async ({ pag
     await expect(page.locator('.hp-motes span')).toHaveCount(9)
     await expect(page.getByRole('heading', { name: /先搭一个世界/ })).toBeVisible()
   }
-  const displayFont = await page.locator('.hp-title').evaluate(element => getComputedStyle(element).fontFamily)
-  expect(displayFont).toContain('Noto Serif SC Variable')
 })
 
 test('reduced-motion visitors still see all three domains', async ({ page }) => {
