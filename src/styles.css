@@ -551,7 +551,7 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
   .sidebar-recent a {justify-content:center;padding:7px 0}
   .sidebar-templates a {justify-content:center;padding:6px 0}
   .sidebar-template-group+.sidebar-template-group {margin-top:10px;padding-top:10px}
-  .sidebar-message {display:none}
+  .sidebar-message,.sidebar-empty {display:none}
 }
 @media (max-width:900px) {
   :root {--sidebar-width:min(84vw,292px)}

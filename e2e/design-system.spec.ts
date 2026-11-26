@@ -174,7 +174,7 @@ for (const viewport of viewports) {
   test(`keeps workspaces and core controls accessible at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     const routes = [
-      { path: '/', ready: page.getByRole('heading', { level: 1, name: '让想法，成为实验' }) },
+      { path: '/', ready: page.getByRole('heading', { level: 1, name: /先搭一个世界/ }) },
       { path: '/lab?new=1', ready: page.getByLabel('物理场景') },
       { path: '/experiments', ready: page.getByRole('link', { name: '创建实验', exact: true }) },
       { path: '/geometry', ready: page.getByLabel('二维几何画布') },
@@ -216,7 +216,7 @@ for (const viewport of viewports) {
 
 test('captures the production visual review matrix', async ({ page }) => {
   const shots = [
-    { name: 'home-390x844', path: '/', viewport: viewports[0], ready: page.getByRole('heading', { level: 1, name: '让想法，成为实验' }) },
+    { name: 'home-390x844', path: '/', viewport: viewports[0], ready: page.getByRole('heading', { level: 1, name: /先搭一个世界/ }) },
     { name: 'workbench-844x390', path: '/lab?new=1', viewport: viewports[1], ready: page.getByLabel('物理场景') },
     { name: 'properties-768x1024', path: '/lab?new=1', viewport: viewports[2], ready: page.getByLabel('物理场景'), panel: 'properties' as const },
     { name: 'analysis-1366x768', path: '/lab?new=1', viewport: viewports[3], ready: page.getByLabel('物理场景'), panel: 'analysis' as const },

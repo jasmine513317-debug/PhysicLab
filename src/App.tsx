@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Atom, Check, CircleDot, Clock3, Copy, FolderOpen, HardDrive, Home as HomeIcon, LibraryBig, Menu, Orbit, Pencil, Plus, Shapes, Trash2, Triangle, Upload, Waves, X, Zap, type LucideIcon } from 'lucide-react'
 import { emptyExperiment, type Experiment } from './model'
 import { instantiate, templates, type TemplateId } from './templates'
@@ -10,8 +10,7 @@ import { extendedTemplates, extensionUrl, isExtension, type Extension } from './
 import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
 import { appPath, appUrl } from './routes'
-import { domains, type Domain } from './domains'
-import { PHYSICS_HZ, SAMPLE_HZ } from './simulation'
+import { domains, domainUrl, type Domain } from './domains'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
 const GeometryStudio = lazy(() => import('./GeometryStudio').then(module => ({default:module.GeometryStudio})))
 const ElectrostaticLab = lazy(() => import('./ElectrostaticLab').then(module => ({default:module.ElectrostaticLab})))
@@ -125,17 +124,145 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
     <main className="app-content" id="app-content">{children}</main>
   </>
 }
+const domainCount:Record<Domain['id'],string>={
+  mechanics:'8 个实验',
+  electromagnetism:'4 个实验',
+  astrophysics:'5 个实验',
+}
+const domainFormula:Record<Domain['id'],string>={
+  mechanics:'F = ma',
+  electromagnetism:'F = k q₁q₂ / r²',
+  astrophysics:'F = G m₁m₂ / r²',
+}
+type FieldFormula = {
+  tex:string;x:string;y:string;size:string;op:number
+  dur:string;delay:string;dx:string;dy:string;rot:string
+  tone?:'sand'|'cool';far?:boolean;optional?:boolean;flow?:boolean
+}
+/**
+ * 背景公式场：公式在这里是气氛，不是清单。
+ * 两层运动：dur/dy 驱动的椭圆锚点（清晰、慢），以及 flow 驱动的上升流（极淡、持续）。
+ * x 全部避开左侧正文栏（17%–42%），上升流只在右侧留白与图表区穿过。
+ */
+const formulaField:readonly FieldFormula[]=[
+  /* 椭圆锚点 —— 全部落在右侧页边区，像写在稿纸旁的关系批注 */
+  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.18,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.15,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'72%',y:'58%',size:'28px',op:.14,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.13,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'70%',y:'3%',size:'19px',op:.1,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.11,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'F = dp/dt',x:'74%',y:'92%',size:'76px',op:.045,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
+  /* 上升流 —— 极淡、贯穿两屏，让「漂浮」在余光里持续发生 */
+  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.07,dur:'38s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
+  {tex:'pV = nRT',x:'66%',y:'100%',size:'19px',op:.06,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
+  {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.07,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
+  {tex:'S = k_B ln W',x:'80%',y:'100%',size:'17px',op:.06,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
+  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.07,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
+  {tex:'½kx² = ½mv²',x:'68%',y:'100%',size:'18px',op:.06,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
+]
 function Home() {
-  return <div className="home">
-    <div className="home-shell">
-      <h1>让想法，成为实验</h1>
-      <a className="button primary home-create" href={newLab}><Plus size={17}/>创建实验<ArrowRight size={15}/></a>
-      <div className="home-metrics" aria-label="实验配置">
-        <div><strong>{PHYSICS_HZ}<small>Hz</small></strong><span>固定物理步长</span></div>
-        <div><strong>{SAMPLE_HZ}<small>Hz</small></strong><span>数据采样频率</span></div>
-        <div><strong>SI</strong><span>国际标准单位</span></div>
-      </div>
-    </div>
+  const fieldRef = useRef<HTMLDivElement>(null)
+  const domainsRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce), (hover: none)').matches) return
+    const field = fieldRef.current
+    if (!field) return
+    let raf = 0
+    let tx = 0, ty = 0, cx = 0, cy = 0
+    let targetScroll = 0, currentScroll = 0
+    const tick = () => {
+      cx += (tx - cx) * .06
+      cy += (ty - cy) * .06
+      currentScroll += (targetScroll - currentScroll) * .08
+      field.style.setProperty('--par-x', cx.toFixed(2) + 'px')
+      field.style.setProperty('--par-y', cy.toFixed(2) + 'px')
+      field.style.setProperty('--scroll-shift', currentScroll.toFixed(2) + 'px')
+      raf = Math.abs(tx - cx) > .1 || Math.abs(ty - cy) > .1 || Math.abs(targetScroll - currentScroll) > .1
+        ? requestAnimationFrame(tick) : 0
+    }
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(tick) }
+    const onMove = (e: MouseEvent) => {
+      tx = (e.clientX / window.innerWidth - .5) * -36
+      ty = (e.clientY / window.innerHeight - .5) * -24
+      schedule()
+    }
+    const onScroll = () => {
+      targetScroll = window.scrollY * .07
+      schedule()
+    }
+    onScroll()
+    window.addEventListener('mousemove', onMove, { passive: true })
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+  useEffect(() => {
+    const section = domainsRef.current
+    if (!section) return
+    if (!('IntersectionObserver' in window)) {
+      section.classList.add('is-visible')
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        section.classList.add('is-visible')
+        observer.disconnect()
+      }
+    }, { threshold: .12, rootMargin: '0px 0px -6% 0px' })
+    observer.observe(section)
+    return () => observer.disconnect()
+  }, [])
+  return <div className="hp-page">
+    <div className="hp-field" ref={fieldRef} aria-hidden="true">{formulaField.map(f=><span
+      key={f.tex}
+      className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.flow?' is-flow':'')+(f.optional?' hp-optional':'')}
+      style={{'--x':f.x,'--y':f.y,'--size':f.size,'--op':f.op,'--dur':f.dur,'--delay':f.delay,'--dx':f.dx,'--dy':f.dy,'--rot':f.rot} as CSSProperties}
+    ><span className="hp-formula-ink">{f.tex}</span></span>)}</div>
+    <main className="hp">
+      <section className="hp-hero" aria-labelledby="home-title">
+        <div className="hp-orbit" aria-hidden="true">
+          <span className="hp-orbit-ring"/>
+          <span className="hp-orbit-ring hp-orbit-ring--inner"/>
+        </div>
+        <div className="hp-shell hp-hero-inner">
+          <h1 id="home-title" className="hp-title">
+            <span className="hp-title-line"><span>先搭一个世界，</span></span>
+            <span className="hp-title-line hp-title-line--second"><span>再问它为什么。</span></span>
+          </h1>
+        </div>
+        <a className="hp-scroll" href="#domains" aria-label="向下查看三个实验领域"><span className="hp-scroll-track" aria-hidden="true"/></a>
+      </section>
+
+      <section className="hp-domains" id="domains" ref={domainsRef} aria-labelledby="domains-title">
+        <div className="hp-shell">
+          <div className="hp-section-head">
+            <p className="hp-chapter">01 — 领域</p>
+            <h2 id="domains-title">从一条定律开始。</h2>
+          </div>
+          <div className="hp-rows-head" aria-hidden="true">
+            <span>编号</span><span>基本关系</span><span>领域</span><span>实验</span>
+          </div>
+          <div className="hp-rows">{domains.map((domain,i)=><a key={domain.id} className="hp-row" href={domainUrl(domain)}>
+            <span className="hp-row-index" aria-hidden="true">0{i+1}</span>
+            <span className="hp-row-eq" aria-hidden="true">{domainFormula[domain.id]}</span>
+            <div className="hp-row-body">
+              <h3>{domain.name}</h3>
+              <p>{domain.description}</p>
+            </div>
+            <div className="hp-row-go"><span>{domainCount[domain.id]}</span><ArrowUpRight size={17} aria-hidden="true"/></div>
+          </a>)}</div>
+          <div className="hp-tail">
+            <a className="hp-tail-link" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">打开斜抛运动实验<ArrowUpRight size={13} aria-hidden="true"/></a>
+            <span className="hp-tail-note">本地优先 · 无账号 · 无上传</span>
+            <a className="hp-tail-link" href={appUrl('/experiments')}>实验库<ArrowUpRight size={13} aria-hidden="true"/></a>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
@@ -266,6 +393,7 @@ class ErrorBoundary extends Component<{children:ReactNode},{error:string}> {
 export function App() {
   const path=appPath(location.pathname)
   const page:Page=path==='/lab'?'lab':path==='/experiments'?'library':path==='/geometry'?'geometry':'home'
+  useEffect(()=>{document.documentElement.dataset.page=page},[page])
   const library=useLibrary()
   return <ErrorBoundary><AppShell page={page} entries={library.entries} error={library.error} loading={library.loading}>
     {page==='lab'?<Workspace/>:page==='library'?<Library {...library}/>:page==='geometry'?

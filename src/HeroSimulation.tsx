@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react'
 
-type Particle={x:number;y:number;size:number;speed:number;phase:number}
-
 const velocity=10
 const angle=Math.PI/4
 const gravity=9.81
@@ -10,6 +8,10 @@ const vy=velocity*Math.sin(angle)
 const flight=2*vy/gravity
 const range=vx*flight
 const apex=vy*vy/(2*gravity)
+
+const INK='rgba(244,242,236,'
+const SAND='rgba(201,174,132,'
+const QUIET='rgba(138,133,125,'
 
 export function HeroSimulation() {
   const canvasRef=useRef<HTMLCanvasElement>(null)
@@ -21,22 +23,11 @@ export function HeroSimulation() {
     if(!context)return
     const ctx=context
     const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const particles:Particle[]=Array.from({length:46},(_,index)=>({
-      x:((index*47+19)%101)/101,
-      y:((index*67+31)%103)/103,
-      size:.45+(index%4)*.32,
-      speed:.35+(index%7)*.08,
-      phase:index*.73,
-    }))
     let width=0
     let height=0
     let frame=0
     let last=0
     let start=performance.now()
-    let pointerX=0
-    let pointerY=0
-    let smoothX=0
-    let smoothY=0
 
     function resize() {
       const rect=canvas!.getBoundingClientRect()
@@ -51,137 +42,107 @@ export function HeroSimulation() {
 
     function draw(now:number) {
       if(!width||!height)return
-      ctx.setTransform(Math.min(2,window.devicePixelRatio||1),0,0,Math.min(2,window.devicePixelRatio||1),0,0)
+      const dpr=Math.min(2,window.devicePixelRatio||1)
+      ctx.setTransform(dpr,0,0,dpr,0,0)
       ctx.clearRect(0,0,width,height)
-      smoothX+=(pointerX-smoothX)*.045
-      smoothY+=(pointerY-smoothY)*.045
-      const seconds=reduced?1.05:(now-start)/1000
 
-      const glow=ctx.createRadialGradient(width*.57,height*.43,0,width*.57,height*.43,width*.52)
-      glow.addColorStop(0,'rgba(55,132,190,.13)')
-      glow.addColorStop(.5,'rgba(22,70,110,.055)')
-      glow.addColorStop(1,'rgba(4,9,15,0)')
-      ctx.fillStyle=glow
-      ctx.fillRect(0,0,width,height)
-
-      ctx.lineWidth=1
-      ctx.strokeStyle='rgba(126,179,218,.052)'
-      const grid=44
-      const offsetX=(smoothX*7)%grid
-      const offsetY=(smoothY*5)%grid
-      ctx.beginPath()
-      for(let x=-grid+offsetX;x<width+grid;x+=grid){ctx.moveTo(x,0);ctx.lineTo(x,height)}
-      for(let y=-grid+offsetY;y<height+grid;y+=grid){ctx.moveTo(0,y);ctx.lineTo(width,y)}
-      ctx.stroke()
-
-      for(const particle of particles){
-        const px=particle.x*width+smoothX*10*particle.size
-        const py=((particle.y*height-seconds*particle.speed*9)%height+height)%height
-        const alpha=.12+.22*(.5+.5*Math.sin(seconds*.8+particle.phase))
-        ctx.fillStyle=`rgba(144,213,241,${alpha})`
-        ctx.beginPath()
-        ctx.arc(px,py,particle.size,0,Math.PI*2)
-        ctx.fill()
-      }
-
-      const cx=width*.58+smoothX*12
-      const cy=height*.44+smoothY*9
-      ctx.save()
-      ctx.translate(cx,cy)
-      ctx.rotate(-.22+seconds*.018)
-      for(let ring=0;ring<3;ring++){
-        const rx=width*(.25+ring*.075)
-        const ry=height*(.19+ring*.06)
-        ctx.strokeStyle=`rgba(116,203,235,${.11-ring*.022})`
-        ctx.lineWidth=1
-        ctx.setLineDash(ring===1?[2,7]:[])
-        ctx.beginPath()
-        ctx.ellipse(0,0,rx,ry,0,Math.PI*.08,Math.PI*(1.72+ring*.06))
-        ctx.stroke()
-        const orbit=seconds*(.24+ring*.08)+ring*2.1
-        const ox=Math.cos(orbit)*rx
-        const oy=Math.sin(orbit)*ry
-        ctx.setLineDash([])
-        ctx.fillStyle=`rgba(157,232,255,${.65-ring*.14})`
-        ctx.shadowColor='#72d7ff'
-        ctx.shadowBlur=9
-        ctx.beginPath()
-        ctx.arc(ox,oy,ring===0?2.2:1.4,0,Math.PI*2)
-        ctx.fill()
-        ctx.shadowBlur=0
-      }
-      ctx.restore()
-
-      const left=Math.max(42,width*.075)
-      const right=width-Math.max(30,width*.055)
-      const top=height*.17
-      const ground=height*.76
+      const left=Math.max(38,width*.07)
+      const right=width-Math.max(22,width*.045)
+      const top=height*.2
+      const ground=height*.77
       const plotWidth=right-left
       const plotHeight=ground-top
-      const point=(t:number)=>({x:left+(vx*t/range)*plotWidth,y:ground-((vy*t-.5*gravity*t*t)/apex)*plotHeight})
+      const plotHeightSafe=plotHeight||1
+      const point=(t:number)=>({x:left+(vx*t/range)*plotWidth,y:ground-((vy*t-.5*gravity*t*t)/apex)*plotHeightSafe})
+      const axisY=ground+.5
 
-      ctx.strokeStyle='rgba(133,190,222,.16)'
+      // 坐标轴：一条底线、一条细竖线
       ctx.lineWidth=1
+      ctx.strokeStyle=INK+'.22)'
       ctx.beginPath()
-      ctx.moveTo(left-12,ground+.5)
-      ctx.lineTo(right+10,ground+.5)
+      ctx.moveTo(left-14,axisY)
+      ctx.lineTo(right+10,axisY)
       ctx.stroke()
-      ctx.strokeStyle='rgba(133,190,222,.08)'
+      ctx.strokeStyle=INK+'.12)'
       ctx.beginPath()
-      ctx.moveTo(left,top-16)
-      ctx.lineTo(left,ground+12)
+      ctx.moveTo(left,top-18)
+      ctx.lineTo(left,ground+8)
       ctx.stroke()
+
+      // 刻度
       for(let tick=0;tick<=10;tick++){
         const x=left+plotWidth*tick/10
-        ctx.strokeStyle='rgba(133,190,222,.13)'
+        ctx.strokeStyle=INK+(tick%5===0?'.26)':'.14)')
         ctx.beginPath()
         ctx.moveTo(x,ground)
-        ctx.lineTo(x,ground+(tick%5===0?7:4))
+        ctx.lineTo(x,ground+(tick%5===0?6:3))
+        ctx.stroke()
+      }
+      for(let tick=0;tick<=4;tick++){
+        const y=ground-plotHeight*tick/4
+        ctx.strokeStyle=INK+'.14)'
+        ctx.beginPath()
+        ctx.moveTo(left,y)
+        ctx.lineTo(left-(tick%2===0?6:3),y)
         ctx.stroke()
       }
 
-      ctx.setLineDash([3,6])
-      ctx.strokeStyle='rgba(139,197,227,.25)'
+      // 预测轨迹：细虚线
+      ctx.setLineDash([2,5])
+      ctx.strokeStyle=INK+'.26)'
       ctx.beginPath()
-      for(let step=0;step<=90;step++){
-        const p=point(flight*step/90)
+      for(let step=0;step<=110;step++){
+        const p=point(flight*step/110)
         if(step===0)ctx.moveTo(p.x,p.y)
         else ctx.lineTo(p.x,p.y)
       }
       ctx.stroke()
       ctx.setLineDash([])
 
+      // 最高点：空心标记 + 引线 + 读数
+      const apexPoint=point(flight/2)
+      ctx.strokeStyle=INK+'.18)'
+      ctx.beginPath()
+      ctx.moveTo(apexPoint.x,apexPoint.y+6)
+      ctx.lineTo(apexPoint.x,ground)
+      ctx.stroke()
+      ctx.strokeStyle=INK+'.5)'
+      ctx.beginPath()
+      ctx.arc(apexPoint.x,apexPoint.y,3,0,Math.PI*2)
+      ctx.stroke()
+      ctx.font='italic 11px "Newsreader Variable", Georgia, serif'
+      ctx.fillStyle=QUIET+'.95)'
+      ctx.textAlign='center'
+      ctx.fillText('h = 2.55 m',apexPoint.x,Math.max(12,apexPoint.y-12))
+      ctx.textAlign='left'
+
+      // 已运动轨迹
       const cycle=reduced?0:(now-start)%5200
       const progress=reduced?.72:Math.min(cycle/3600,1)
       const time=flight*progress
-      const fade=reduced?1:Math.min(1,cycle/220,(5200-cycle)/320)
+      const fade=reduced?1:Math.min(1,cycle/200,(5200-cycle)/320)
       const current=point(time)
-      const trail=ctx.createLinearGradient(left,ground,current.x,current.y)
-      trail.addColorStop(0,'rgba(83,157,205,.12)')
-      trail.addColorStop(.55,'rgba(112,211,248,.72)')
-      trail.addColorStop(1,'rgba(224,249,255,.98)')
+
       ctx.save()
       ctx.globalAlpha=fade
-      ctx.strokeStyle=trail
-      ctx.lineWidth=1.7
-      ctx.shadowColor='#67d5ff'
-      ctx.shadowBlur=9
+      ctx.strokeStyle=INK+'.92)'
+      ctx.lineWidth=1.5
       ctx.beginPath()
-      for(let step=0;step<=80;step++){
-        const p=point(time*step/80)
+      for(let step=0;step<=90;step++){
+        const p=point(time*step/90)
         if(step===0)ctx.moveTo(p.x,p.y)
         else ctx.lineTo(p.x,p.y)
       }
       ctx.stroke()
-      ctx.shadowBlur=0
 
-      const arrowScale=Math.min(30,plotWidth*.055)
+      // 速度矢量
+      const arrowLength=Math.min(30,plotWidth*.055)
       const speedX=vx
       const speedY=vy-gravity*time
       const speed=Math.hypot(speedX,speedY)||1
-      const arrowX=current.x+speedX/speed*arrowScale
-      const arrowY=current.y-speedY/speed*arrowScale
-      ctx.strokeStyle='rgba(174,232,250,.62)'
+      const arrowX=current.x+speedX/speed*arrowLength
+      const arrowY=current.y-speedY/speed*arrowLength
+      ctx.strokeStyle=SAND+'.85)'
       ctx.lineWidth=1
       ctx.beginPath()
       ctx.moveTo(current.x,current.y)
@@ -190,68 +151,54 @@ export function HeroSimulation() {
       const direction=Math.atan2(arrowY-current.y,arrowX-current.x)
       ctx.beginPath()
       ctx.moveTo(arrowX,arrowY)
-      ctx.lineTo(arrowX-Math.cos(direction-.5)*5,arrowY-Math.sin(direction-.5)*5)
+      ctx.lineTo(arrowX-Math.cos(direction-.42)*5,arrowY-Math.sin(direction-.42)*5)
       ctx.moveTo(arrowX,arrowY)
-      ctx.lineTo(arrowX-Math.cos(direction+.5)*5,arrowY-Math.sin(direction+.5)*5)
+      ctx.lineTo(arrowX-Math.cos(direction+.42)*5,arrowY-Math.sin(direction+.42)*5)
       ctx.stroke()
 
-      const ballGlow=ctx.createRadialGradient(current.x,current.y,0,current.x,current.y,19)
-      ballGlow.addColorStop(0,'rgba(224,250,255,.95)')
-      ballGlow.addColorStop(.2,'rgba(112,215,255,.65)')
-      ballGlow.addColorStop(1,'rgba(76,182,240,0)')
-      ctx.fillStyle=ballGlow
+      // 小球：实心点 + 一圈留白
+      ctx.fillStyle='#0b0b0d'
       ctx.beginPath()
-      ctx.arc(current.x,current.y,19,0,Math.PI*2)
+      ctx.arc(current.x,current.y,5.6,0,Math.PI*2)
       ctx.fill()
-      ctx.fillStyle='#e9fbff'
-      ctx.shadowColor='#8be4ff'
-      ctx.shadowBlur=14
+      ctx.fillStyle=INK+'1)'
       ctx.beginPath()
-      ctx.arc(current.x,current.y,3.4,0,Math.PI*2)
+      ctx.arc(current.x,current.y,2.6,0,Math.PI*2)
       ctx.fill()
-      ctx.shadowBlur=0
 
-      ctx.fillStyle='rgba(164,214,237,.64)'
-      ctx.font='9px "JetBrains Mono Variable", monospace'
-      ctx.fillText(`${time.toFixed(2)} s`,current.x+13,current.y-12)
-      const apexPoint=point(flight/2)
-      ctx.fillStyle='rgba(135,192,219,.42)'
-      ctx.fillText('APEX',apexPoint.x-11,apexPoint.y-15)
-      ctx.strokeStyle='rgba(135,192,219,.25)'
-      ctx.beginPath()
-      ctx.moveTo(apexPoint.x,apexPoint.y-7)
-      ctx.lineTo(apexPoint.x,apexPoint.y-2)
-      ctx.stroke()
+      // 时间读数
+      ctx.font='10px "JetBrains Mono Variable", Consolas, monospace'
+      ctx.fillStyle=QUIET+'.95)'
+      const readout=time.toFixed(2)+' s'
+      if(current.x>width-58){
+        ctx.textAlign='right'
+        ctx.fillText(readout,current.x-12,current.y-11)
+        ctx.textAlign='left'
+      }
+      else ctx.fillText(readout,current.x+12,current.y-11)
       ctx.restore()
 
-      ctx.fillStyle='rgba(126,174,201,.38)'
-      ctx.font='8px "JetBrains Mono Variable", monospace'
-      ctx.fillText('X / m',right-24,ground+22)
-      ctx.fillText('Y / m',left-27,top-19)
+      // 轴名
+      ctx.font='9px "JetBrains Mono Variable", Consolas, monospace'
+      ctx.fillStyle=QUIET+'.75)'
+      ctx.textAlign='right'
+      ctx.fillText('x / m',right+8,ground+21)
+      ctx.textAlign='left'
+      ctx.fillText('y / m',left-30,top-20)
     }
 
     function loop(now:number) {
       if(now-last>=32){draw(now);last=now}
       frame=requestAnimationFrame(loop)
     }
-    function onPointerMove(event:PointerEvent) {
-      const rect=canvas!.getBoundingClientRect()
-      pointerX=(event.clientX-rect.left)/rect.width-.5
-      pointerY=(event.clientY-rect.top)/rect.height-.5
-    }
-    function onPointerLeave() {pointerX=0;pointerY=0}
     const observer=new ResizeObserver(resize)
     observer.observe(canvas)
-    canvas.addEventListener('pointermove',onPointerMove)
-    canvas.addEventListener('pointerleave',onPointerLeave)
     resize()
     start=performance.now()
     if(!reduced)frame=requestAnimationFrame(loop)
     return ()=>{
       observer.disconnect()
       cancelAnimationFrame(frame)
-      canvas.removeEventListener('pointermove',onPointerMove)
-      canvas.removeEventListener('pointerleave',onPointerLeave)
     }
   },[])
 
