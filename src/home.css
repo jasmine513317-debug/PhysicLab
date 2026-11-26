@@ -32,6 +32,7 @@
   --hp-accent-soft:#b87c48;
   --hp-cool:#31666c;
   --hp-sans:"Inter Variable","Microsoft YaHei UI","PingFang SC","Noto Sans CJK SC",sans-serif;
+  --hp-display:"Noto Serif SC Variable","Songti SC","STSong","Noto Serif CJK SC",serif;
   --hp-serif:"Newsreader Variable","Iowan Old Style",Georgia,"Times New Roman",serif;
   --hp-mono:"JetBrains Mono Variable","SFMono-Regular",Consolas,monospace;
   position:relative;
@@ -146,23 +147,33 @@
   70%     {opacity:.3;transform:translate3d(calc(var(--mx,14px) * -.35),-8px,0) scale(.8)}
 }
 
-/* ---------- 第一屏：只有一句话，但这句话有重量 ---------- */
+/* ---------- 第一屏：只有一句话，但这句话有光、有重量 ---------- */
 .hp-hero {
-  --tilt-x:0deg;--tilt-y:0deg;
+  --tilt-x:0deg;--tilt-y:0deg;--light-x:68%;--light-y:32%;
   position:relative;
   display:flex;align-items:center;
   min-height:100svh;
   padding:10vh 0 12vh;
 }
+.hp-hero::before {
+  content:"";position:absolute;inset:-12%;z-index:0;pointer-events:none;
+  background:radial-gradient(circle at var(--light-x) var(--light-y),
+    rgba(255,249,231,.78),rgba(255,249,231,0) 42%);
+  opacity:.85;
+}
+.hp-hero::after {
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse at 42% 60%,rgba(72,52,32,.14),rgba(72,52,32,0) 52%);
+}
 .hp-hero-inner {position:relative;z-index:2;width:100%}
 .hp-title {
   margin:0;
   max-width:15ch;
-  font-family:var(--hp-sans);
-  font-size:clamp(50px,7.6vw,108px);
-  font-weight:300;
-  line-height:1.12;
-  letter-spacing:-.062em;
+  font-family:var(--hp-display);
+  font-size:clamp(52px,7.2vw,104px);
+  font-weight:520;
+  line-height:1.2;
+  letter-spacing:-.025em;
   color:var(--hp-ink);
   text-wrap:balance;
   transform:perspective(1400px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
@@ -174,36 +185,49 @@
   position:relative;
   display:block;
   white-space:nowrap;
-  padding-bottom:.1em;
-  margin-bottom:-.1em;
+  padding-bottom:.14em;
+  margin-bottom:-.14em;
   opacity:0;
   transform:translate3d(0,.32em,0);
   filter:blur(6px);
   animation:hp-title-in 1.15s cubic-bezier(.16,1,.3,1) both;
 }
 .hp-title-line--second {animation-delay:.1s}
-/* 挤出层：文字像从纸里被压出来，边缘逐层加深。 */
+/* 柔光层：字背后缓慢呼吸的暖色光晕。 */
 .hp-title-line::before {
   content:attr(data-text);
-  position:absolute;left:0;top:0;z-index:0;
-  color:#746b60;
-  transform:translate3d(0,.04em,0);
-  text-shadow:0 1px 0 #918777,0 2px 0 #7a7164,0 3px 0 #645c51,0 4px 0 #504a41,
-              0 6px 1px rgba(29,27,24,.28),0 14px 22px rgba(29,27,24,.15);
+  position:absolute;left:0;top:.03em;z-index:0;
+  color:rgba(196,142,82,.3);
+  filter:blur(18px);
+  animation:hp-title-glow 6.5s ease-in-out infinite alternate;
+}
+/* 挤出层：只留两毫米厚度，边缘逐层加深。 */
+.hp-title-line::after {
+  content:attr(data-text);
+  position:absolute;left:0;top:0;z-index:1;
+  color:#8a7358;
+  transform:translate3d(0,.028em,0);
+  text-shadow:0 1px 0 #b49c78,0 2px 0 #967c5d,0 3px 0 #745c43,
+              0 5px 1px rgba(48,33,20,.26),0 18px 26px rgba(48,33,20,.18);
 }
 .hp-title-line>span {
-  position:relative;z-index:1;display:block;
+  position:relative;z-index:2;display:block;
   color:transparent;
-  background:linear-gradient(112deg,#1f1c18 0%,#26221d 38%,#b49e7e 47%,#2a251f 56%,#1a1815 100%);
-  background-size:220% 100%;
+  background:linear-gradient(116deg,#2c2319 0%,#4b3b28 24%,#c6a371 39%,#fff2d2 45%,#d9b783 51%,#6e5438 67%,#241c14 100%);
+  background-size:240% 100%;
   background-clip:text;-webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 1px 0 rgba(255,255,255,.42)) drop-shadow(0 12px 16px rgba(29,27,24,.12));
-  animation:hp-sheen 10s ease-in-out infinite;
+  -webkit-text-stroke:.35px rgba(255,244,220,.28);
+  filter:drop-shadow(-1px -1px 0 rgba(255,245,220,.4)) drop-shadow(0 14px 22px rgba(48,33,20,.22));
+  animation:hp-sheen 8s ease-in-out infinite;
 }
 @keyframes hp-title-in {
   from {opacity:0;transform:translate3d(0,.32em,0);filter:blur(6px)}
   to   {opacity:1;transform:none;filter:blur(0)}
+}
+@keyframes hp-title-glow {
+  from {opacity:.55;transform:translate3d(0,.03em,0) scale(1)}
+  to   {opacity:1;transform:translate3d(0,.05em,0) scale(1.012)}
 }
 @keyframes hp-sheen {
   0%,100% {background-position:0% 50%}
@@ -275,7 +299,8 @@
 }
 .hp-section-head h2 {
   margin:0;
-  font-size:clamp(30px,3.8vw,52px);font-weight:320;line-height:1.15;letter-spacing:-.04em;color:var(--hp-ink);
+  font-family:var(--hp-display);
+  font-size:clamp(30px,3.8vw,52px);font-weight:450;line-height:1.2;letter-spacing:-.03em;color:var(--hp-ink);
 }
 .hp-rows {border-top:1px solid var(--hp-line)}
 .hp-row {
@@ -380,9 +405,10 @@
   .hp-formula.is-flow:not(.hp-optional) {left:68%;top:52%;font-size:17px;--op:.11}
   .hp-hero {min-height:calc(100svh - 56px);padding:8vh 0 12vh}
   .hp-title {font-size:clamp(38px,10.2vw,52px);line-height:1.22;letter-spacing:-.055em;transform:none!important}
-  .hp-title-line::before {
-    transform:translate3d(0,.026em,0);
-    text-shadow:0 1px 0 #857b6d,0 2px 0 #6b6258,0 4px 7px rgba(29,27,24,.22);
+  .hp-title-line::before {filter:blur(12px)}
+  .hp-title-line::after {
+    transform:translate3d(0,.018em,0);
+    text-shadow:0 1px 0 #a98d6c,0 2px 0 #82694f,0 4px 7px rgba(48,33,20,.24);
   }
   .hp-waves {opacity:.3}
   .hp-motes span:nth-child(n+6) {display:none}
@@ -407,7 +433,7 @@
 @media (prefers-reduced-motion:reduce) {
   .hp-formula.is-flow,.hp-waves,.hp-motes {display:none}
   .hp-field,.hp-field::before,.hp-field::after {animation:none!important;transform:none!important}
-  .hp-formula,.hp-formula-ink,.hp-page * {animation:none!important;transition:none!important}
+  .hp-formula,.hp-formula-ink,.hp-page *,.hp-title-line::before,.hp-title-line::after {animation:none!important;transition:none!important}
   .hp-formula-ink {opacity:calc(var(--op) * var(--om,1));filter:none}
   .hp-orbit-track {display:none}
   .hp-title {transform:none!important}

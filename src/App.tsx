@@ -204,6 +204,11 @@ function Home() {
       if (hero) {
         hero.style.setProperty('--tilt-y', (px * 3.2).toFixed(2) + 'deg')
         hero.style.setProperty('--tilt-x', (py * -2.2).toFixed(2) + 'deg')
+        const bounds = hero.getBoundingClientRect()
+        const lx = Math.max(0, Math.min(100, ((e.clientX - bounds.left) / bounds.width) * 100))
+        const ly = Math.max(0, Math.min(100, ((e.clientY - bounds.top) / bounds.height) * 100))
+        hero.style.setProperty('--light-x', lx.toFixed(1) + '%')
+        hero.style.setProperty('--light-y', ly.toFixed(1) + '%')
       }
       schedule()
     }

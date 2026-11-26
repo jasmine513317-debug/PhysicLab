@@ -1,0 +1,37 @@
+/* Noto Serif SC Variable —— 只加载首页标题实际用到的 6 个子集。 */
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-113-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+642d;
+}
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-115-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+5b83;
+}
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-116-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+5148,U+4e16,U+754c,U+518d,U+4ec0,U+5f8b,U+59cb;
+}
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-117-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+4e48,U+4ece,U+6761;
+}
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-118-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+4e2a,U+95ee,U+4e3a,U+5b9a,U+5f00;
+}
+@font-face {
+  font-family:"Noto Serif SC Variable";
+  font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("../node_modules/@fontsource-variable/noto-serif-sc/files/noto-serif-sc-119-wght-normal.woff2") format("woff2-variations");
+  unicode-range:U+4e00,U+ff0c,U+3002;
+}
