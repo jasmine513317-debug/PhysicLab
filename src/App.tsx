@@ -154,7 +154,7 @@ const formulaField:readonly FieldFormula[]=[
   {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.12,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
   {tex:'F = dp/dt',x:'70%',y:'92%',size:'76px',op:.05,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
   /* 上升流 —— 极淡、贯穿两屏，让「漂浮」在余光里持续发生 */
-  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.08,dur:'38s',delay:'-5s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true,optional:true},
+  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.08,dur:'38s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
   {tex:'pV = nRT',x:'58%',y:'100%',size:'19px',op:.07,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
   {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.08,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
   {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.07,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
@@ -163,26 +163,58 @@ const formulaField:readonly FieldFormula[]=[
 ]
 function Home() {
   const fieldRef = useRef<HTMLDivElement>(null)
+  const domainsRef = useRef<HTMLElement>(null)
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce), (hover: none)').matches) return
     const field = fieldRef.current
     if (!field) return
     let raf = 0
     let tx = 0, ty = 0, cx = 0, cy = 0
+    let targetScroll = 0, currentScroll = 0
     const tick = () => {
       cx += (tx - cx) * .06
       cy += (ty - cy) * .06
+      currentScroll += (targetScroll - currentScroll) * .08
       field.style.setProperty('--par-x', cx.toFixed(2) + 'px')
       field.style.setProperty('--par-y', cy.toFixed(2) + 'px')
-      raf = Math.abs(tx - cx) > .1 || Math.abs(ty - cy) > .1 ? requestAnimationFrame(tick) : 0
+      field.style.setProperty('--scroll-shift', currentScroll.toFixed(2) + 'px')
+      raf = Math.abs(tx - cx) > .1 || Math.abs(ty - cy) > .1 || Math.abs(targetScroll - currentScroll) > .1
+        ? requestAnimationFrame(tick) : 0
     }
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(tick) }
     const onMove = (e: MouseEvent) => {
       tx = (e.clientX / window.innerWidth - .5) * -36
       ty = (e.clientY / window.innerHeight - .5) * -24
-      if (!raf) raf = requestAnimationFrame(tick)
+      schedule()
     }
+    const onScroll = () => {
+      targetScroll = window.scrollY * .07
+      schedule()
+    }
+    onScroll()
     window.addEventListener('mousemove', onMove, { passive: true })
-    return () => { window.removeEventListener('mousemove', onMove); if (raf) cancelAnimationFrame(raf) }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+  useEffect(() => {
+    const section = domainsRef.current
+    if (!section) return
+    if (!('IntersectionObserver' in window)) {
+      section.classList.add('is-visible')
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        section.classList.add('is-visible')
+        observer.disconnect()
+      }
+    }, { threshold: .12, rootMargin: '0px 0px -6% 0px' })
+    observer.observe(section)
+    return () => observer.disconnect()
   }, [])
   return <div className="hp-page">
     <div className="hp-field" ref={fieldRef} aria-hidden="true">{formulaField.map(f=><span
@@ -192,13 +224,21 @@ function Home() {
     ><span className="hp-formula-ink">{f.tex}</span></span>)}</div>
     <main className="hp">
       <section className="hp-hero" aria-labelledby="home-title">
-        <div className="hp-shell hp-hero-inner">
-          <h1 id="home-title" className="hp-title">先搭一个世界，<br/>再问它为什么。</h1>
+        <div className="hp-orbit" aria-hidden="true">
+          <span className="hp-orbit-ring"/>
+          <span className="hp-orbit-ring hp-orbit-ring--inner"/>
+          <span className="hp-orbit-track"><i className="hp-orbit-dot"/></span>
         </div>
-        <a className="hp-scroll" href="#domains" aria-label="向下查看三个实验领域"><span className="hp-scroll-line" aria-hidden="true"/></a>
+        <div className="hp-shell hp-hero-inner">
+          <h1 id="home-title" className="hp-title">
+            <span className="hp-title-line"><span>先搭一个世界，</span></span>
+            <span className="hp-title-line hp-title-line--second"><span>再问它为什么。</span></span>
+          </h1>
+        </div>
+        <a className="hp-scroll" href="#domains" aria-label="向下查看三个实验领域"><span className="hp-scroll-track" aria-hidden="true"/></a>
       </section>
 
-      <section className="hp-domains" id="domains" aria-labelledby="domains-title">
+      <section className="hp-domains" id="domains" ref={domainsRef} aria-labelledby="domains-title">
         <div className="hp-shell">
           <div className="hp-section-head">
             <p className="hp-chapter">01 — 领域</p>
@@ -366,6 +406,7 @@ class ErrorBoundary extends Component<{children:ReactNode},{error:string}> {
 export function App() {
   const path=appPath(location.pathname)
   const page:Page=path==='/lab'?'lab':path==='/experiments'?'library':path==='/geometry'?'geometry':'home'
+  useEffect(()=>{document.documentElement.dataset.page=page},[page])
   const library=useLibrary()
   return <ErrorBoundary><AppShell page={page} entries={library.entries} error={library.error} loading={library.loading}>
     {page==='lab'?<Workspace/>:page==='library'?<Library {...library}/>:page==='geometry'?
