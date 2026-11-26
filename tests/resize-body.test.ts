@@ -32,6 +32,19 @@ it('resizes a circle at any point on its rim while retaining its center',()=>{
   expect(result.body.position).toEqual(circle.position)
 })
 
+it('resizes an ellipse from axis and diagonal handles without swapping its axes',()=>{
+  const ellipse=body('椭圆',{kind:'ellipse',radiusX:2,radiusY:1},0,0)
+  const axis=resizeHandleAt(ellipse,{x:2,y:0},.05)!
+  const stretched=resizeBody(ellipse,axis,{x:2,y:0},{x:3,y:0})
+  expect(stretched.body.geometry).toEqual({kind:'ellipse',radiusX:3,radiusY:1})
+  expect(stretched.body.position).toEqual({x:.5,y:0})
+  const cornerPoint={x:Math.SQRT2,y:Math.SQRT1_2}
+  const corner=resizeHandleAt(ellipse,cornerPoint,.05)!
+  const resized=resizeBody(ellipse,corner,cornerPoint,{x:2*Math.SQRT2,y:2*Math.SQRT1_2})
+  expect(resized.body.geometry).toEqual({kind:'ellipse',radiusX:2*Math.SQRT2,radiusY:Math.SQRT2})
+  expect(resized.body.position).toEqual({x:0,y:0})
+})
+
 it('moves a polygon edge with its orientation preserved in either winding order',()=>{
   const vertices=[{x:0,y:0},{x:4,y:0},{x:0,y:2}]
   for(const corners of [vertices,[...vertices].reverse()]) {

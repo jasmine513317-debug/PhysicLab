@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
+import { openAnalysis } from './helpers'
 
 test('shows spring theory and measures the finite-amplitude pendulum period',async({page})=>{
   await page.goto('/lab?template=spring')
+  await openAnalysis(page)
   await page.getByRole('button',{name:'对比',exact:true}).click()
   await expect(page.getByRole('row',{name:/振动周期/})).toContainText('0.628 s')
   await page.getByRole('button',{name:'打开实验菜单'}).click()

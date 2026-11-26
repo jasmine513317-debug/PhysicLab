@@ -1,209 +1,100 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, drawStroke } from './helpers'
+import { emptyExperiment } from '../src/model'
+import { openImportedScene, pixelOf } from './helpers'
 
-test('opens a real template, records data, compares runs, exports CSV and manages a saved experiment',async({page})=>{
-  const errors:string[]=[]
-  page.on('pageerror',e=>errors.push(e.message))
-  await page.goto('/')
-  await expect(page.getByRole('heading',{name:/让好奇心/,level:1})).toBeVisible()
-  await page.getByRole('link',{name:'打开斜抛运动实验'}).click()
-  await expect(page.getByRole('textbox',{name:'实验标题'})).toHaveValue('斜抛运动')
-  const mass=page.getByRole('spinbutton',{name:'质量',exact:true})
-  await mass.fill('-1')
-  await mass.press('Enter')
-  await expect(page.getByText('请输入 0.001 至 100000 之间的数值。')).toBeVisible()
-  await mass.fill('2')
-  await mass.press('Enter')
-  await page.getByRole('button',{name:'运行',exact:true}).click()
-  const baseline=page.getByRole('button',{name:'设为基准'})
-  await expect(baseline).toBeEnabled()
-  await page.getByRole('button',{name:'暂停',exact:true}).click()
-  await baseline.click()
-  await expect(page.getByRole('columnheader',{name:'基准',exact:true})).toBeVisible()
-  const csvPromise=page.waitForEvent('download')
-  await page.getByRole('button',{name:'导出 CSV'}).click()
-  const csv=await csvPromise
-  expect(csv.suggestedFilename()).toBe('斜抛运动.csv')
-  await page.getByRole('button',{name:'重置模拟'}).click()
-  await page.getByRole('button',{name:'单步运行'}).click()
-  await expect(page.getByText('0.017 s',{exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'保存实验'}).click()
-  await expect(page.getByRole('button',{name:'已保存',exact:true})).toBeVisible()
-  await page.reload()
-  await expect(page.getByRole('spinbutton',{name:'质量',exact:true})).toHaveValue('2')
-  await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:'实验库',exact:true}).click()
-  await page.getByRole('button',{name:'复制：斜抛运动'}).click()
-  await expect(page.getByRole('heading',{name:'斜抛运动（副本）',exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'重命名：斜抛运动（副本）',exact:true}).click()
-  await page.getByRole('textbox',{name:'实验名称'}).fill('第二次实验')
-  await page.getByRole('button',{name:'确认重命名'}).click()
-  await expect(page.getByRole('heading',{name:'第二次实验',exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'删除：第二次实验'}).click()
-  await page.getByRole('button',{name:'删除',exact:true}).click()
-  await expect(page.getByRole('heading',{name:'第二次实验',exact:true})).toHaveCount(0)
-  expect(errors).toEqual([])
-})
-
-test('constructs a scene with the drawing tools, connects a spring, moves, rotates, and deletes',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  const bounds=(await canvas.boundingBox())!
-  const toolsBox=(await tools.boundingBox())!
-  expect(toolsBox.y+toolsBox.height).toBeLessThanOrEqual(bounds.y+1)
-  const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await drawStroke(page,[px(130,230),px(260,228),px(400,231),px(520,229)])
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
-
-  const rectCenter=px(320,130)
-  await drawStroke(page,[
-    px(260,95),px(380,95),px(380,165),px(260,165),px(261,97),
-  ],1700)
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘矩形')
-  await expect(page.getByRole('spinbutton',{name:'宽度'})).toBeVisible()
-
-  const circleCenter=px(180,150)
-  await drawStroke(page,circlePixels(circleCenter.x,circleCenter.y,38,28),1700)
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘圆')
-  await expect(page.getByRole('spinbutton',{name:'半径'})).toBeVisible()
-
-  await tools.getByRole('button',{name:'弹簧',exact:true}).click()
-  await canvas.click({position:{x:circleCenter.x-bounds.x,y:circleCenter.y-bounds.y}})
-  await canvas.click({position:{x:rectCenter.x-bounds.x,y:rectCenter.y-bounds.y}})
-  await expect(page.getByRole('spinbutton',{name:'刚度'})).toHaveValue('40')
-  await tools.getByRole('button',{name:'选择',exact:true}).click()
-  await page.mouse.move(circleCenter.x,circleCenter.y)
-  await page.mouse.down()
-  await page.mouse.move(circleCenter.x+15,circleCenter.y+22,{steps:6})
-  await page.mouse.up()
-  await canvas.press('r')
-  await expect(page.getByRole('spinbutton',{name:'旋转角'})).toHaveValue('15')
-  await page.getByRole('button',{name:'放大',exact:true}).click()
-  await expect(page.getByText('125%',{exact:true})).toBeVisible()
-  await canvas.press('Delete')
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:/^手绘圆$/})).toHaveCount(0)
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:/^弹簧 1$/})).toHaveCount(0)
-})
-
-test('fits the viewport and exposes playback and parameter editing on a phone',async({page})=>{
-  await page.setViewportSize({width:390,height:844})
-  await page.goto('/lab?template=fall')
+test('uses the three-region workbench with optional panels closed', async ({ page }) => {
+  await openImportedScene(page, emptyExperiment())
+  await expect(page.locator('.lab-top')).toBeVisible()
   await expect(page.getByLabel('物理场景')).toBeVisible()
-  await expect(page.getByRole('button',{name:'运行',exact:true})).toBeVisible()
-  const analysis=page.getByRole('region',{name:'数据分析'})
-  await expect(analysis.getByRole('button',{name:'设为基准'})).toBeVisible()
-  await expect(analysis.getByRole('button',{name:'导出 CSV'})).toBeVisible()
-  await page.getByRole('button',{name:'环境',exact:true}).click()
-  const gravity=page.getByRole('spinbutton',{name:'重力加速度',exact:true})
-  await gravity.fill('4')
-  await gravity.press('Enter')
-  await expect(gravity).toHaveValue('4')
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBe(390)
+  await expect(page.locator('.workbench > .work-center > .tools')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '实验领域' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '定时运行' })).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '参数面板' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '数据分析' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '分析', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '环境', exact: true })).toBeVisible()
 })
 
+test('opens environment and analysis without stopping the simulation', async ({ page }) => {
+  await openImportedScene(page, emptyExperiment())
+  const topbar = page.locator('.lab-top')
+  await topbar.getByRole('button', { name: '环境', exact: true }).click()
+  await expect(page.getByRole('spinbutton', { name: '重力加速度' })).toHaveValue('9.81')
+  await topbar.getByRole('button', { name: '属性', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: '当前物体' })).toBeVisible()
+  await topbar.getByRole('button', { name: '环境', exact: true }).click()
+  await expect(page.getByRole('spinbutton', { name: '重力加速度' })).toHaveValue('9.81')
+  await page.getByRole('button', { name: '关闭参数面板' }).click()
+  await expect(page.getByRole('complementary', { name: '参数面板' })).toHaveCount(0)
 
-test('compares two inclined-plane runs after changing only block friction',async({page})=>{
-  await page.goto('/lab?template=friction')
-  const friction=page.getByRole('spinbutton',{name:'摩擦系数',exact:true})
-  const playback=page.getByRole('combobox',{name:'播放速度'})
-  await playback.selectOption('0.5')
-  async function runAndPause(){
-    await page.getByRole('button',{name:'运行',exact:true}).click()
-    await expect.poll(async()=>parseFloat((await page.getByLabel('模拟时间',{exact:true}).textContent())??'0'), {intervals:[50]}).toBeGreaterThanOrEqual(0.7)
-    await page.getByRole('button',{name:'暂停',exact:true}).click()
-  }
-  await friction.fill('0.1')
-  await friction.press('Enter')
-  await runAndPause()
-  await page.getByRole('button',{name:'设为基准'}).click()
-  await friction.fill('0.9')
-  await friction.press('Enter')
-  await runAndPause()
-  const speeds=await page.getByRole('row',{name:/末速/}).getByRole('cell').allTextContents()
-  expect(parseFloat(speeds[1])).toBeGreaterThan(parseFloat(speeds[0])+0.3)
+  await page.getByRole('button', { name: '分析', exact: true }).click()
+  await expect(page.getByRole('region', { name: '数据分析' })).toBeVisible()
+  await page.getByRole('button', { name: '运行', exact: true }).click()
+  await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '关闭分析面板' }).click()
+  await expect(page.getByRole('region', { name: '数据分析' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
 })
 
-
-test('exports a scene file, imports an independent copy, and rejects invalid JSON',async({page})=>{
-  await page.goto('/lab?template=spring')
-  await page.getByRole('button',{name:'打开实验菜单'}).click()
-  const download=page.waitForEvent('download')
-  await page.getByRole('button',{name:'导出场景 JSON'}).click()
-  const file=await download
-  expect(file.suggestedFilename()).toBe('弹簧振子.json')
-  await page.goto('/experiments')
-  const picker=page.getByLabel('导入实验 JSON')
-  await picker.setInputFiles(await file.path())
-  await expect(page.getByRole('article').getByRole('heading',{name:'弹簧振子',exact:true})).toBeVisible()
-  await picker.setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from('{"version":2}')})
-  await expect(page.getByRole('alert')).toContainText('有效的 PhysicLab 版本 1 或版本 2 实验文件')
-  await expect(page.getByRole('article').getByRole('heading',{name:'弹簧振子',exact:true})).toHaveCount(1)
-})
-
-test('exports a complete backup and imports its historical recording',async({page})=>{
-  await page.goto('/lab?template=collision')
-  for(let i=0;i<6;i++)await page.getByRole('button',{name:'单步运行'}).click()
-  await page.getByRole('button',{name:'历史回放'}).click()
-  await page.getByRole('button',{name:'退出回放'}).click()
-  await page.getByRole('button',{name:'打开实验菜单'}).click()
-  const download=page.waitForEvent('download')
-  await page.getByRole('button',{name:'导出实验备份'}).click()
-  const file=await download
-  expect(file.suggestedFilename()).toBe('弹性碰撞-备份.json')
-  await page.goto('/experiments')
-  await page.getByLabel('导入实验 JSON').setInputFiles(await file.path())
-  await page.getByRole('article').filter({has:page.getByRole('heading',{name:'弹性碰撞',exact:true})}).getByRole('link',{name:'打开',exact:true}).click()
-  await page.getByRole('button',{name:'历史回放'}).click()
-  await page.getByRole('slider',{name:'回放时间轴'}).press('End')
-  await expect(page.getByRole('region',{name:'历史回放'}).getByLabel('回放时间',{exact:true})).toHaveText('0.100 s')
-})
-
-test('opens a valid saved scene when the library also contains an unreadable record',async({page})=>{
-  await page.goto('/lab?template=fall')
-  await page.getByRole('button',{name:'保存实验'}).click()
-  await expect(page.getByRole('button',{name:'已保存'})).toBeVisible()
-  await page.evaluate(()=>new Promise<void>((resolve,reject)=>{
-    const request=indexedDB.open('physiclab',2)
-    request.onerror=()=>reject(request.error)
-    request.onsuccess=()=>{
-      const db=request.result
-      const tx=db.transaction('experiments','readwrite')
-      tx.objectStore('experiments').add({id:'unsupported-format',version:99})
-      tx.oncomplete=()=>{db.close();resolve()}
-      tx.onabort=()=>{db.close();reject(tx.error)}
+test('keeps drawing tools usable when analysis opens on short desktops', async ({ page }) => {
+  for (const viewport of [{ width: 1366, height: 600 }, { width: 1366, height: 568 }, { width: 1024, height: 600 }]) {
+    await page.setViewportSize(viewport)
+    const scene = emptyExperiment()
+    scene.title = `短桌面实验 ${viewport.width}x${viewport.height}`
+    await openImportedScene(page, scene)
+    await page.locator('.lab-top').getByRole('button', { name: '分析', exact: true }).click()
+    await expect(page.getByRole('region', { name: '数据分析' })).toBeVisible()
+    const tools = page.getByRole('complementary', { name: '场景工具' })
+    const box = await tools.boundingBox()
+    if (!box) throw new Error('tools have no box')
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+    for (const name of ['绘制', '橡皮', '弹簧']) {
+      const tool = tools.getByRole('button', { name, exact: true })
+      await tool.click()
+      await expect(tool).toHaveAttribute('aria-pressed', 'true')
     }
-  }))
-  await page.goto('/experiments')
-  await expect(page.getByRole('status')).toContainText('1 条记录无法打开')
-  const download=page.waitForEvent('download')
-  await page.getByRole('button',{name:'导出原始记录'}).click()
-  expect((await download).suggestedFilename()).toBe('无法打开的实验.json')
-  await page.getByRole('link',{name:'预览：自由落体'}).click()
-  await expect(page.getByLabel('实验标题')).toHaveValue('自由落体')
+  }
 })
 
-test('switches domains without losing a mechanics draft and restores edit history',async({page})=>{
-  await page.goto('/')
-  await page.getByRole('region',{name:'实验领域'}).getByRole('link',{name:/电磁学/}).click()
-  await expect(page.getByRole('heading',{name:'电磁学',exact:true})).toBeVisible()
-  await expect(page.getByLabel('电场画布')).toBeVisible()
-  const domains=page.getByRole('navigation',{name:'实验领域'})
-  await domains.getByRole('link',{name:'经典力学'}).click()
-  const title=page.getByLabel('实验标题')
-  await title.fill('保留的力学草稿')
-  await title.press('Enter')
-  await page.getByRole('button',{name:'撤销',exact:true}).click()
-  await expect(title).toHaveValue('斜抛运动')
-  await page.getByRole('button',{name:'重做',exact:true}).click()
-  await expect(title).toHaveValue('保留的力学草稿')
-  await page.getByRole('button',{name:'运行',exact:true}).click()
-  await domains.getByRole('link',{name:'天体物理'}).click()
-  await expect(page.getByRole('heading',{name:'天体物理',exact:true})).toBeVisible()
-  await expect(page.getByLabel('轨道画布')).toBeVisible()
-  await expect(page.getByRole('button',{name:'运行',exact:true})).toHaveCount(0)
-  await page.goBack()
-  await expect(title).toHaveValue('保留的力学草稿')
-  await expect(page.getByRole('button',{name:'运行',exact:true})).toBeEnabled()
-  await expect(domains.getByRole('link',{name:'经典力学'})).toHaveAttribute('aria-current','page')
+test('double click opens properties without removing transform handles', async ({ page }) => {
+  const scene = emptyExperiment()
+  scene.bodies = [{ id: 'ball', name: '测试球', type: 'dynamic', position: { x: 0, y: 2 },
+    angle: 0, velocity: { x: 0, y: 0 }, angularVelocity: 0, mass: 1, friction: 0.3,
+    restitution: 0.5, geometry: { kind: 'circle', radius: 0.4 }, color: 'mint' }]
+  const canvas = await openImportedScene(page, scene)
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('canvas has no box')
+  const point = pixelOf(box, scene.camera, scene.bodies[0].position)
+  await expect(page.getByRole('complementary', { name: '参数面板' })).toHaveCount(0)
+  await page.mouse.dblclick(point.x, point.y)
+  await expect(page.getByRole('complementary', { name: '参数面板' })).toBeVisible()
+  await expect(page.getByRole('spinbutton', { name: '质量' })).toHaveValue('1')
+  await page.getByRole('button', { name: '关闭参数面板' }).click()
+  await page.mouse.click(point.x, point.y, { button: 'right' })
+  await expect(page.getByRole('button', { name: '变换物体' })).toBeVisible()
+})
+
+test('immersion hides tools without resetting the camera or physics', async ({ page }) => {
+  await openImportedScene(page, emptyExperiment())
+  const time = page.getByLabel('模拟时间', { exact: true })
+  await page.getByRole('button', { name: '运行', exact: true }).click()
+  await expect(time).not.toHaveText('0.000 s')
+  const before = await time.textContent()
+  await page.getByRole('button', { name: '进入沉浸模式' }).click()
+  await expect(page.locator('.workbench')).toHaveClass(/immersive/)
+  await expect(page.getByLabel('物理场景')).toBeVisible()
+  await expect(page.getByRole('button', { name: '退出沉浸模式' })).toBeVisible()
+  await expect(time).not.toHaveText(before ?? '')
+  await page.getByRole('button', { name: '退出沉浸模式' }).click()
+  await expect(page.locator('.workbench')).not.toHaveClass(/immersive/)
+})
+
+test('keeps core playback and save controls available on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openImportedScene(page, emptyExperiment())
+  for (const name of ['运行', '单步运行', '重置模拟', '保存实验', '更多']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
 })

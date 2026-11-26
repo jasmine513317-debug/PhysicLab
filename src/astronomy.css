@@ -2,7 +2,7 @@
 .astronomy-heading {display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:16px}
 .astronomy-heading h1 {font-size:clamp(30px,4vw,47px);line-height:1.15;font-weight:720;letter-spacing:-.04em}
 .astronomy-name {display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--dim);font-size:12px}
-.astronomy-name input,.astronomy-field input {min-width:0;padding:7px 9px;color:var(--text);background:var(--canvas);border:1px solid var(--line);border-radius:6px}
+.astronomy-name input,.astronomy-field input {min-width:0;height:var(--control-height-sm);padding:5px 8px;color:var(--text);background:var(--canvas);border:1px solid var(--line);border-radius:var(--radius-sm)}
 .astronomy-name input {width:min(34vw,280px)}
 .astronomy-actions,.astronomy-presets,.astronomy-toolbar,.astronomy-add {display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .astronomy-presets {margin-bottom:12px}
@@ -27,7 +27,7 @@
 .astronomy-sidebar section>button {justify-self:start}
 .astronomy-sidebar p,.astronomy-analysis p {font-size:12px;line-height:1.6}
 .astronomy-field {display:grid;gap:4px;min-width:0;font-size:12px}
-.astronomy-field input {width:100%;font:12px var(--mono)}
+.astronomy-field input {width:100%;font:12px var(--numeric-font);font-variant-numeric:var(--numeric-variant)}
 .astronomy-field select {width:100%;min-width:0}
 .astronomy-field input[aria-invalid=true] {border-color:var(--warning)}
 .astronomy-field-error {color:var(--warning);font-size:11px}

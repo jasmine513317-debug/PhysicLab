@@ -7,6 +7,7 @@ import { downloadText } from './download'
 import { appUrl } from './routes'
 import { extendedTemplates, extensionUrl } from './extended-experiments'
 import type { Point } from './model'
+import { formatNumber } from './numberFormat'
 import './electrostatic.css'
 
 const tools=[
@@ -27,11 +28,11 @@ function format(value:number) {
 }
 
 function Numeric({label,unit,value,min,max,change}:{label:string;unit:string;value:number;min:number;max:number;change:(value:number)=>void}) {
-  const rounded=Number(value.toFixed(6))
+  const display=formatNumber(value)
   const id=useId()
   const [error,setError]=useState(false)
   return <div className="electric-field"><label htmlFor={id}>{label} <small>{unit}</small></label>
-    <input id={id} key={value} type="number" step="any" min={min} max={max} defaultValue={rounded}
+    <input id={id} key={value} type="number" step="any" min={min} max={max} defaultValue={display}
       aria-invalid={error} aria-describedby={error?id+'-error':undefined} onChange={()=>setError(false)}
       onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}}
       onBlur={event=>{
@@ -40,7 +41,7 @@ function Numeric({label,unit,value,min,max,change}:{label:string;unit:string;val
           setError(true)
           return
         }
-        if(numeric!==rounded)change(numeric)
+        if(numeric!==Number(display))change(numeric)
       }}/>{error&&<small id={id+'-error'} className="electric-input-error">请输入 {min} 至 {max} {unit}。</small>}
   </div>
 }
@@ -143,9 +144,9 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
             moveCharge={(id,point)=>changeCharge(id,{position:bounded(point)})}
             moveCamera={point=>setScene(current=>({...current,camera:{...current.camera,...bounded(point)}}))}/>
           <div className="electric-scale" role="group" aria-label="视图缩放">
-            <button className="icon framed" aria-label="缩小电场视图" onClick={()=>changeZoom(1/1.3)}><Minus size={17}/></button>
-            <button className="icon framed" aria-label="放大电场视图" onClick={()=>changeZoom(1.3)}><Plus size={17}/></button>
-            <button className="icon framed" aria-label="重置电场视图" onClick={()=>setScene(current=>({...current,camera:{x:0,y:0,scale:82}}))}><RotateCcw size={16}/></button>
+            <button className="icon framed" aria-label="缩小电场视图" title="缩小电场视图" onClick={()=>changeZoom(1/1.3)}><Minus size={17}/></button>
+            <button className="icon framed" aria-label="放大电场视图" title="放大电场视图" onClick={()=>changeZoom(1.3)}><Plus size={17}/></button>
+            <button className="icon framed" aria-label="重置电场视图" title="重置电场视图" onClick={()=>setScene(current=>({...current,camera:{x:0,y:0,scale:82}}))}><RotateCcw size={16}/></button>
           </div>
         </div>
         <div className="electric-legend" aria-label="电场图例">

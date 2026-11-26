@@ -97,6 +97,58 @@ it('regularizes held strokes into lines, circles, rectangles and convex polygons
   }
 })
 
+const ellipsePath=(rx:number,ry:number,cx=0,cy=0):Point[]=>
+  Array.from({length:80},(_,i)=>{const a=i*2*Math.PI/80;return {x:cx+rx*Math.cos(a),y:cy+ry*Math.sin(a)}})
+
+it('recognizes ellipses without confusing them with circles',()=>{
+  const ellipse=createInk(ellipsePath(1.4,.55,2,3),'#5b8dff',true)
+  expect(ellipse).toMatchObject({kind:'ellipse',label:'规整为椭圆'})
+  if('body' in ellipse&&ellipse.body.geometry.kind==='ellipse') {
+    expect([ellipse.body.geometry.radiusX,ellipse.body.geometry.radiusY]).toEqual([1.4,.55])
+    expect(ellipse.body.position.x).toBeCloseTo(2,8)
+    expect(ellipse.body.position.y).toBeCloseTo(3,8)
+  }
+})
+
+it('preserves polyline corners instead of smoothing them into a curve',()=>{
+  const raw=[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:2,y:1}]
+  const result=createInk(raw,'#ffffff',true)
+  expect(result).toMatchObject({kind:'polyline',label:'规整为折线'})
+  if('body' in result&&result.body.geometry.kind==='freeform') {
+    expect(result.body.geometry.closed).toBe(false)
+    expect(result.body.geometry.vertices.map(p=>({x:p.x+result.body.position.x,y:p.y+result.body.position.y}))).toEqual(raw)
+  }
+})
+
+it('retains uncertain raw strokes and reports recognition evidence',()=>{
+  const raw=Array.from({length:90},(_,i)=>({x:i*.025,y:.18*Math.sin(i*.73)+.04*Math.sin(i*2.11)}))
+  const result=createInk(raw,'#ff5a5a',true)
+  expect(result).toMatchObject({kind:'curve',regularized:false})
+  const evidence=(result as {recognition?:{raw:Point[];confidence:number;fitError:number;sampleDensity:number}}).recognition!
+  expect(evidence.raw).toEqual(raw)
+  expect(evidence.confidence).toBeLessThan(.9)
+  expect(evidence.fitError).toBeGreaterThan(0)
+  expect(evidence.sampleDensity).toBeGreaterThan(0)
+
+  const circle=createInk(circlePath(.5,1,1),'#ffffff',true)
+  const recognized=(circle as {recognition?:{confidence:number;sampleCount:number}}).recognition!
+  expect(recognized.confidence).toBeGreaterThanOrEqual(.9)
+  expect(recognized.sampleCount).toBeGreaterThan(10)
+})
+
+it('creates the role selected by the current drawing tool',()=>{
+  const raw=circlePath(.5,1,1)
+  for(const role of ['marker','body','boundary','track','field'] as const) {
+    const result=createInk(raw,'#ff5a5a',false,2.4,role)
+    expect(result).toHaveProperty('body.role',role)
+    if('body' in result) {
+      expect(result.body.role).toBe(role)
+      expect(result.body.type).toBe(role==='body'?'dynamic':'static')
+    }
+  }
+  expect(()=>decodeExperiment({...emptyExperiment(),version:2,bodies:[createInk(raw,'#ff5a5a',false,2.4,'marker').body]})).toThrow('版本 3')
+})
+
 it('accepts custom ink colors only as #RRGGBB and upgrades scenes that use freeform geometry',()=>{
   const scene=emptyExperiment()
   const custom=body('彩色物块',{kind:'freeform',vertices:[{x:-.5,y:-.5},{x:.5,y:-.5},{x:.5,y:.5},{x:-.5,y:.5}],closed:true},0,2,{color:'#12ab34'})
@@ -131,6 +183,33 @@ it('erases whole strokes or splits dragged static curves without touching other 
 
   const covered=eraseBodies([line],[{x:-1.2,y:0},{x:1.2,y:0}],.15,'drag')
   expect(covered.bodies).toHaveLength(0)
+})
+
+it('preserves semantic roles, charge and recognition provenance when splitting curves',()=>{
+  const provenance={source:'ink' as const,raw:[{x:-1,y:0},{x:0,y:0},{x:1,y:0}],regularized:false,confidence:.72,fitError:.03,sampleDensity:20}
+  for(const role of ['body','marker','boundary','field'] as const) {
+    const original=body('语义曲线',{kind:'freeform',vertices:[{x:-1,y:0},{x:1,y:0}],closed:false},0,0,{
+      type:'static',role,color:'#5b8dff',strokeWidth:3.6,friction:.65,restitution:.2,provenance,
+      ...(role==='field'?{charge:-25}:{}),
+    })
+    const split=eraseBodies([original],[{x:0,y:-.2},{x:0,y:.2}],.15,'drag')
+    expect(split.bodies).toHaveLength(2)
+    for(const part of split.bodies) {
+      expect(part).toMatchObject({role,color:'#5b8dff',strokeWidth:3.6,friction:.65,restitution:.2,provenance,
+        ...(role==='field'?{charge:-25}:{})})
+      expect(part.geometry.kind).toBe('freeform')
+      expect(part.id).not.toBe(original.id)
+    }
+    expect(()=>decodeExperiment({...emptyExperiment(),version:3,bodies:split.bodies})).not.toThrow()
+  }
+
+  const track=body('语义轨道',{kind:'track',vertices:[{x:-1,y:0},{x:1,y:0}],closed:false},0,0,{role:'track',provenance})
+  const splitTrack=eraseBodies([track],[{x:0,y:-.2},{x:0,y:.2}],.15,'drag')
+  expect(splitTrack.bodies).toHaveLength(2)
+  for(const part of splitTrack.bodies)expect(part).toMatchObject({role:'track',geometry:{kind:'track',closed:false},provenance})
+
+  const dynamic=body('动态刚体',{kind:'freeform',vertices:[{x:-.5,y:-.5},{x:.5,y:-.5},{x:.5,y:.5},{x:-.5,y:.5}],closed:true},0,0,{role:'body',provenance})
+  expect(eraseBodies([dynamic],[{x:0,y:0}],.2,'drag').bodies).toEqual([])
 })
 
 it('splits closed static curves and always deletes rigid bodies whole',()=>{
@@ -206,6 +285,29 @@ it('decodes optional stroke width and rejects values outside the visual range',(
   expect(decoded.strokeWidth).toBe(3.6)
   expect(()=>decodeExperiment({...scene,version:2,bodies:[{...wide,strokeWidth:12}]})).toThrow()
   expect(()=>decodeExperiment({...scene,version:2,bodies:[{...wide,strokeWidth:0.2}]})).toThrow()
+})
+
+it('uses nanocoulombs and live positions when calculating and displaying electric forces',()=>{
+  const source=body('场源',{kind:'circle',radius:.2},0,0,{type:'static',role:'field',charge:100})
+  const charged=body('带电球',{kind:'circle',radius:.1},1,0,{role:'body',charge:100})
+  const lab=new Physics({...emptyExperiment(),version:3,bodies:[source,charged]})
+  const initial=lab.forceVectors(charged.id).find(force=>force.name==='电场力')!.vector.x
+  lab.bodies.get(charged.id)!.setPosition({x:2,y:0})
+  const moved=lab.forceVectors(charged.id).find(force=>force.name==='电场力')!.vector.x
+  expect(initial).toBeCloseTo(8.98755179e-5,12)
+  expect(moved).toBeCloseTo(initial/4,12)
+})
+
+it('keeps markers and field sources collision-free and applies real Coulomb forces',()=>{
+  const marker=body('标记',{kind:'circle',radius:.3},0,1,{type:'static',role:'marker'})
+  const source=body('场源',{kind:'circle',radius:.2},0,0,{type:'static',role:'field',charge:1000})
+  const charged=body('带电球',{kind:'circle',radius:.1},1,0,{role:'body',charge:100})
+  const lab=new Physics({...emptyExperiment(),version:3,bodies:[marker,source,charged]})
+  expect(lab.bodies.get(marker.id)!.getFixtureList()).toBeNull()
+  expect(lab.bodies.get(source.id)!.getFixtureList()).toBeNull()
+  lab.step()
+  expect(lab.bodies.get(charged.id)!.getLinearVelocity().x).toBeGreaterThan(0)
+  expect(lab.forceVectors(charged.id).some(force=>force.name==='电场力')).toBe(true)
 })
 
 it('treats stroke width as visual-only and never changes simulated motion',()=>{

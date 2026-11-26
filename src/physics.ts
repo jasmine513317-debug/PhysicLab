@@ -1,10 +1,13 @@
 import { Box, Chain, Circle, DistanceJoint, Polygon, Vec2, World, type Body } from 'planck'
 import { area, decodeExperiment, DEFAULT_WORLD_BOUNDS, springFrequency, type Experiment, type Point } from './model'
 import { energies } from './analysis'
-import { convexHull, triangulate } from './freeform'
+import { COULOMB_CONSTANT } from './electrostatics'
+import { triangulate } from './freeform'
+import { polygonArea } from './track'
 import { REPLAY_SAMPLE_LIMIT, type RecordedSample, type Replay } from './replay'
+import { SAMPLE_EVERY } from './simulation'
 
-export const SAMPLE_EVERY = 4
+export { SAMPLE_EVERY } from './simulation'
 export class Physics {
   readonly world: World
   readonly bodies = new Map<string,Body>()
@@ -28,6 +31,8 @@ export class Physics {
         linearVelocity:config.type==='dynamic' ? config.velocity : Vec2(),
         angularVelocity:config.type==='dynamic' ? config.angularVelocity : 0,
       })
+      this.bodies.set(config.id,b)
+      if(config.role==='marker'||config.role==='field')continue
       const g = config.geometry
       const fixtures={friction:config.friction,restitution:config.restitution}
       if(g.kind==='freeform') {
@@ -36,13 +41,16 @@ export class Physics {
         } else {
           const density=config.mass/area(g)
           const triangles=triangulate(g.vertices)
-          if(!triangles.length) {
-            const hull=convexHull(g.vertices)
-            if(hull.length<3)throw new Error('无法为手绘物块生成碰撞形状。')
-            triangles.push(hull)
-          }
+          if(!triangles.length)throw new Error('无法为手绘物块生成与轮廓一致的碰撞形状。')
           for(const triangle of triangles)b.createFixture(new Polygon(triangle),{...fixtures,density})
         }
+      } else if(g.kind==='ellipse') {
+        const vertices=Array.from({length:64},(_,i)=>{
+          const angle=i*Math.PI/32
+          return {x:g.radiusX*Math.cos(angle),y:g.radiusY*Math.sin(angle)}
+        })
+        const density=config.mass/Math.abs(polygonArea(vertices))
+        for(let i=1;i<vertices.length-1;i++)b.createFixture(new Polygon([vertices[0],vertices[i],vertices[i+1]]),{...fixtures,density})
       } else {
         const shape = g.kind==='circle' ? new Circle(g.radius)
           : g.kind==='polygon' ? new Polygon(g.vertices)
@@ -50,7 +58,6 @@ export class Physics {
           : new Box(g.width/2,g.height/2)
         b.createFixture(shape,{...fixtures,density:g.kind==='track'?0:config.mass/area(g)})
       }
-      this.bodies.set(config.id,b)
       if (config.type==='dynamic') {
         this.samples.set(config.id,[])
         this.lastVelocity.set(config.id,{...b.getLinearVelocity()})
@@ -104,11 +111,32 @@ export class Physics {
     if (this.bodies.get(id)?.isDynamic()) this.applied.set(id,force)
   }
 
+  private electricForce(config:Experiment['bodies'][number]):Point {
+    const force={x:0,y:0}
+    if(!config.charge)return force
+    for(const source of this.scene.bodies) {
+      if(source.id===config.id||source.role!=='field'||!source.charge)continue
+      const position=this.bodies.get(config.id)!.getPosition()
+      const dx=position.x-source.position.x,dy=position.y-source.position.y
+      const radius=Math.hypot(dx,dy)
+      if(radius===0)continue
+      const magnitude=COULOMB_CONSTANT*1e-18*config.charge*source.charge/(radius*radius)
+      force.x+=magnitude*dx/radius
+      force.y+=magnitude*dy/radius
+    }
+    return force
+  }
+
   step() {
     const dt = this.scene.environment.timeStep
     for (const [id,f] of this.applied) {
       if(f.x!==0||f.y!==0)this.appliedForceDuringRun=true
       this.bodies.get(id)?.applyForceToCenter(f,true)
+    }
+    for(const config of this.scene.bodies) {
+      if(config.type!=='dynamic')continue
+      const force=this.electricForce(config)
+      if(force.x!==0||force.y!==0)this.bodies.get(config.id)!.applyForceToCenter(force,true)
     }
     this.world.step(dt,8,3)
     this.ticks++
@@ -128,6 +156,9 @@ export class Physics {
     const vectors = [{name:'重力',vector:{x:0,y:-b.getMass()*this.scene.environment.gravity},color:'#eecb82'}]
     const external = this.applied.get(id)
     if (external) vectors.push({name:'外力',vector:external,color:'#f1a0ca'})
+    const config=this.scene.bodies.find(body=>body.id===id)!
+    const electric=this.electricForce(config)
+    if(electric.x!==0||electric.y!==0)vectors.push({name:'电场力',vector:electric,color:'#a9d7ff'})
     for (const j of this.scene.joints) {
       if (j.a!==id && j.b!==id) continue
       const joint = this.springJoints.get(j.id)!

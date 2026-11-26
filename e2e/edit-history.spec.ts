@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, drawStroke } from './helpers'
+import { circlePixels, drawStroke, openProperties } from './helpers'
 
 test('undo restores a deleted body and its spring, and a new edit replaces the redo branch', async ({page})=>{
   await page.goto('/lab?template=spring')
+  await openProperties(page)
   const canvas=page.getByLabel('物理场景')
   const objects=page.getByRole('combobox',{name:'当前物体'})
   const undo=page.getByRole('button',{name:'撤销',exact:true})
@@ -32,6 +33,7 @@ test('undo restores a deleted body and its spring, and a new edit replaces the r
 
 test('a drag creates one edit regardless of pointer movement count',async({page})=>{
   await page.goto('/lab?new=1')
+  await openProperties(page)
   const tools=page.getByRole('complementary',{name:'场景工具'})
   const canvas=page.getByLabel('物理场景')
   const bounds=(await canvas.boundingBox())!
@@ -57,6 +59,7 @@ test('a drag creates one edit regardless of pointer movement count',async({page}
 
 test('committed notes follow edit history and preserve native typing shortcuts', async ({page})=>{
   await page.goto('/lab?new=1')
+  await openProperties(page)
   const notes=page.getByRole('textbox',{name:'实验笔记'})
   await notes.fill('第一次观察')
   await notes.press('Tab')

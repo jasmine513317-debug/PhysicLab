@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { freeformError, polygonArea, TRACK_VERTEX_LIMIT, trackError } from './track'
+import { PHYSICS_HZ } from './simulation'
+
+export const FIXED_TIME_STEP = 1 / PHYSICS_HZ
 
 z.config(z.locales.zhCN())
 
@@ -13,6 +16,7 @@ export const bodyColorSchema = z.union([paletteColorSchema,z.string().regex(/^#[
 export type BodyColor = z.infer<typeof bodyColorSchema>
 const geometry = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('circle'), radius: positive }),
+  z.object({ kind: z.literal('ellipse'), radiusX: positive, radiusY: positive }),
   z.object({ kind: z.literal('rectangle'), width: positive, height: positive }),
   z.object({ kind: z.literal('surface'), width: positive, height: positive }),
   z.object({ kind:z.literal('track'), vertices:z.array(pointSchema).min(2).max(TRACK_VERTEX_LIMIT), closed:z.boolean() })
@@ -44,6 +48,12 @@ export function isConvexPolygon(vertices:Point[]) {
 function turn(a: Point, b: Point, c: Point) {
   return (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x)
 }
+export const objectRoleSchema=z.enum(['marker','body','boundary','track','constraint','field'])
+export type ObjectRole=z.infer<typeof objectRoleSchema>
+export const inkProvenanceSchema=z.object({
+  source:z.literal('ink'),raw:z.array(pointSchema).max(1200),regularized:z.boolean(),
+  confidence:z.number().min(0).max(1),fitError:z.number().min(0),sampleDensity:z.number().min(0),
+})
 export const bodySchema = z.object({
   id, name: z.string().trim().min(1).max(80), type: z.enum(['static','dynamic']),
   position: pointSchema, angle: finite, velocity: pointSchema, angularVelocity: finite,
@@ -51,12 +61,19 @@ export const bodySchema = z.object({
   restitution: z.number().min(0).max(1), geometry,
   color: bodyColorSchema,
   strokeWidth: z.number().min(1).max(8).optional(),
-}).refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
+  role:objectRoleSchema.optional(),charge:z.number().min(-1000).max(1000).optional(),provenance:inkProvenanceSchema.optional(),
+}).refine(b => b.role!=='constraint','约束必须使用弹簧连接，不能作为独立物体。')
+.refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
+.refine(b => b.type==='static' || !b.role || b.role==='body','标记、边界、轨道和场源必须设为静态。')
+.refine(b => !b.role || !['marker','boundary','track','field'].includes(b.role) || !['surface'].includes(b.geometry.kind),'此角色不支持表面几何。')
+.refine(b => b.geometry.kind!=='ellipse'||b.role==='body','椭圆刚体需要版本 3 的物体角色。')
+.refine(b => b.role!=='track'||b.geometry.kind==='track','轨道角色必须使用链式轨道几何。')
   .refine(b => b.geometry.kind!=='freeform' || b.geometry.closed || b.type==='static', '开放式手绘曲线必须设为静态。')
   .refine(b => b.geometry.kind!=='freeform' || b.type!=='dynamic' || !freeformError(b.geometry.vertices,b.geometry.closed,true), '动态物块必须使用无自相交的封闭曲线。')
 export const springSchema = z.object({
   id, a: id, b: id, anchorA: pointSchema, anchorB: pointSchema,
   stiffness: z.number().min(0.01).max(100000), damping: z.number().min(0).max(5), restLength: positive,
+  role:z.literal('constraint').optional(),
 })
 export const DEFAULT_WORLD_BOUNDS={minX:-11.9,maxX:11.9,minY:-0.9,maxY:18.9}
 // Presets only fill in the gravity field; they are not a separate simulation mode.
@@ -72,19 +89,29 @@ const worldBoundsSchema=z.object({minX:finite,maxX:finite,minY:finite,maxY:finit
 export const environmentSchema = z.object({
   gravity: z.number().min(0).max(100), speed: z.number().min(0.1).max(4),
   boundaries: z.boolean(), worldBounds:worldBoundsSchema.optional(),
-  collisions: z.boolean(), timeStep: z.literal(1 / 60),
+  collisions: z.boolean(), timeStep: z.literal(FIXED_TIME_STEP),
 })
 export const cameraSchema = z.object({ x: finite, y: finite, scale: z.number().min(5).max(400) })
+export const coordinatesSchema = z.object({
+  mode: z.enum(['cartesian','polar','none']),
+  origin: pointSchema,
+})
+export type Coordinates = z.infer<typeof coordinatesSchema>
+export const defaultCoordinates: Coordinates = {mode:'cartesian',origin:{x:0,y:0}}
 export const experimentSchema = z.object({
-  id, version: z.union([z.literal(1),z.literal(2)]), title: z.string().trim().min(1).max(100), description: z.string(),
+  id, version: z.union([z.literal(1),z.literal(2),z.literal(3)]), title: z.string().trim().min(1).max(100), description: z.string(),
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), notes: z.string().max(10000),
   kind: z.enum(['custom','projectile','spring','collision','friction','fall']),
-  environment: environmentSchema, camera: cameraSchema,
+  environment: environmentSchema, camera: cameraSchema, coordinates: coordinatesSchema.default(defaultCoordinates),
   bodies: z.array(bodySchema).max(100), joints: z.array(springSchema).max(200),
 }).superRefine((scene, ctx) => {
   if(scene.version===1&&scene.bodies.some(body=>body.geometry.kind==='track'||body.geometry.kind==='freeform')) {
     ctx.addIssue({code:'custom',message:'手绘图形和曲线轨道需要使用版本 2 的实验文件。'})
   }
+  if(scene.version<3&&(scene.bodies.some(body=>body.role||body.provenance||body.charge!==undefined||body.geometry.kind==='ellipse')||scene.joints.some(joint=>joint.role))) {
+    ctx.addIssue({code:'custom',message:'对象角色、场源和识别来源需要使用版本 3 的实验文件。'})
+  }
+  if(scene.version===3&&scene.bodies.some(body=>body.role==='field'&&body.charge===undefined))ctx.addIssue({code:'custom',message:'场源必须设置电荷量。'})
   const bodies = new Map(scene.bodies.map(body => [body.id, body]))
   if (bodies.size !== scene.bodies.length || new Set(scene.joints.map(j => j.id)).size !== scene.joints.length) {
     ctx.addIssue({code:'custom', message:'物体和弹簧各自的标识必须唯一。'})
@@ -110,6 +137,7 @@ export function springFrequency(k: number, a: BodyConfig, b: BodyConfig) {
 
 export function area(g: BodyConfig['geometry']) {
   if (g.kind === 'track') return 0
+  if (g.kind === 'ellipse') return Math.PI*g.radiusX*g.radiusY
   if (g.kind === 'freeform') return g.closed?polygonArea(g.vertices):0
   if (g.kind === 'circle') return Math.PI * g.radius ** 2
   if (g.kind !== 'polygon') return g.width * g.height
@@ -128,10 +156,20 @@ export function emptyExperiment(): Experiment {
   return {
     id: crypto.randomUUID(), version:1, title:'未命名实验', description:'', notes:'',
     kind:'custom', createdAt:now, updatedAt:now, bodies:[], joints:[],
-    environment:{gravity:9.81, speed:1, boundaries:false, collisions:true, timeStep:1/60},
-    camera:{x:0,y:2.2,scale:80},
+    environment:{gravity:9.81, speed:1, boundaries:false, collisions:true, timeStep:FIXED_TIME_STEP},
+    camera:{x:0,y:2.2,scale:80}, coordinates:{...defaultCoordinates,origin:{...defaultCoordinates.origin}},
   }
 }
+const experimentDecoders: Record<number, (value: unknown) => Experiment> = {
+  1: value => experimentSchema.parse(value),
+  2: value => experimentSchema.parse(value),
+  3: value => experimentSchema.parse(value),
+}
+
 export function decodeExperiment(value: unknown): Experiment {
-  return experimentSchema.parse(value)
+  const version=value&&typeof value==='object'?(value as {version?:unknown}).version:undefined
+  if(!Number.isInteger(version))throw new Error('实验文件缺少有效版本号。')
+  const decode=experimentDecoders[version as number]
+  if(!decode)throw new Error(`暂不支持实验文件版本 ${String(version)}。请升级 PhysicLab Studio。`)
+  return decode(value)
 }

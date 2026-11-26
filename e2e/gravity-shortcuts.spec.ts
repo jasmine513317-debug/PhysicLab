@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test'
+import { openProperties } from './helpers'
 
 const time = (page: import('@playwright/test').Page) => page.getByLabel('模拟时间', { exact: true })
 
 test('fills gravity from a preset and restarts the simulation', async ({ page }) => {
   await page.goto('/lab?template=fall')
-  await page.getByRole('button', { name: '环境', exact: true }).click()
+  await openProperties(page, 'world')
+  await page.getByRole('complementary', { name: '参数面板' })
+    .getByRole('button', { name: '环境', exact: true }).click()
   const gravity = page.getByLabel('重力加速度')
   await expect(gravity).toHaveValue('9.81')
 
@@ -25,7 +28,7 @@ test('fills gravity from a preset and restarts the simulation', async ({ page })
 
 test('plays, pauses, steps and resets from the keyboard', async ({ page }) => {
   await page.goto('/lab?template=fall')
-  await page.locator('canvas').first().click({ position: { x: 40, y: 40 } })
+  await page.locator('canvas').first().focus()
 
   await page.keyboard.press('p')
   await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
@@ -42,6 +45,7 @@ test('plays, pauses, steps and resets from the keyboard', async ({ page }) => {
 
 test('keeps native keyboard behaviour inside form controls', async ({ page }) => {
   await page.goto('/lab?template=fall')
+  await openProperties(page)
   const title = page.getByLabel('实验标题')
   await title.click()
   await page.keyboard.press('p')
@@ -50,7 +54,7 @@ test('keeps native keyboard behaviour inside form controls', async ({ page }) =>
 
 test('leaves Space available for drag-to-pan', async ({ page }) => {
   await page.goto('/lab?template=fall')
-  await page.locator('canvas').first().click({ position: { x: 40, y: 40 } })
+  await page.locator('canvas').first().focus()
   await page.keyboard.press('Space')
   await expect(page.getByRole('button', { name: '运行', exact: true })).toBeVisible()
   await expect(time(page)).toHaveText('0.000 s')

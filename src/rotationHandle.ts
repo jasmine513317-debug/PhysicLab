@@ -5,7 +5,7 @@ export function rotationGuide(body:BodyConfig,scale:number) {
   const g=body.geometry
   const top=g.kind==='polygon'||g.kind==='track'||g.kind==='freeform'
     ? g.vertices.reduce((highest,p)=>p.y>highest.y?p:highest)
-    : {x:0,y:g.kind==='circle'?g.radius:g.height/2}
+    : {x:0,y:g.kind==='circle'?g.radius:g.kind==='ellipse'?g.radiusY:g.height/2}
   const toWorld=(p:Point)=>{
     const offset=rotate(p,body.angle)
     return {x:body.position.x+offset.x,y:body.position.y+offset.y}

@@ -9,9 +9,9 @@ import { astronomyTemplates, type SavedExperiment } from './astronomy'
 import { extendedTemplates, extensionUrl, isExtension, type Extension } from './extended-experiments'
 import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
-import { HeroSimulation } from './HeroSimulation'
 import { appPath, appUrl } from './routes'
-import { domains, domainUrl, DomainNav, type Domain } from './domains'
+import { domains, type Domain } from './domains'
+import { PHYSICS_HZ, SAMPLE_HZ } from './simulation'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
 const GeometryStudio = lazy(() => import('./GeometryStudio').then(module => ({default:module.GeometryStudio})))
 const ElectrostaticLab = lazy(() => import('./ElectrostaticLab').then(module => ({default:module.ElectrostaticLab})))
@@ -88,7 +88,7 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
     <aside id="app-sidebar" className={'app-sidebar'+(open?' open':'')} aria-label="实验导航" onClick={event=>{if((event.target as Element).closest('a'))setOpen(false)}}>
       <div className="sidebar-brand-row">
         <a className="brand" href={appUrl('/')} aria-label="PhysicLab Studio 首页"><span className="brand-mark"><Atom size={23} strokeWidth={1.5} aria-hidden="true"/></span><span className="sidebar-brand-text">PhysicLab <span className="brand-studio">Studio</span></span></a>
-        <button className="icon sidebar-close" aria-label="关闭侧边栏" onClick={()=>setOpen(false)}><X size={18}/></button>
+        <button className="icon sidebar-close" aria-label="关闭侧边栏" title="关闭侧边栏" onClick={()=>setOpen(false)}><X size={18}/></button>
       </div>
       <a className="button primary sidebar-new" href={newLab} aria-label="新建实验"><Plus size={17}/><span>新建实验</span></a>
       <nav className="sidebar-nav" aria-label="主导航">
@@ -118,65 +118,25 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
       <div className="sidebar-footer"><HardDrive size={14} aria-hidden="true"/><span>数据保存在当前浏览器</span></div>
     </aside>
     <header className="mobile-topbar">
-      <button className="icon mobile-menu" aria-label="打开侧边栏" aria-controls="app-sidebar" aria-expanded={open} onClick={()=>setOpen(true)}><Menu size={21}/></button>
+      <button className="icon mobile-menu" aria-label="打开侧边栏" title="打开侧边栏" aria-controls="app-sidebar" aria-expanded={open} onClick={()=>setOpen(true)}><Menu size={21}/></button>
       <a className="mobile-brand" href={appUrl('/')} aria-label="PhysicLab Studio 首页"><Atom size={20} strokeWidth={1.5} aria-hidden="true"/><span>PhysicLab</span></a>
-      <a className="icon" href={page==='library'?newLab:appUrl('/experiments')} aria-label={page==='library'?'新建实验':'打开实验库'}>{page==='library'?<Plus size={19}/>:<FolderOpen size={18}/>}</a>
+      <a className="icon" href={page==='library'?newLab:appUrl('/experiments')} aria-label={page==='library'?'新建实验':'打开实验库'} title={page==='library'?'新建实验':'打开实验库'}>{page==='library'?<Plus size={19}/>:<FolderOpen size={18}/>}</a>
     </header>
     <main className="app-content" id="app-content">{children}</main>
   </>
 }
-const domainMeta:Record<Domain['id'],{index:string;count:string}>={
-  mechanics:{index:'01',count:'8 个实验'},
-  electromagnetism:{index:'02',count:'4 个实验'},
-  astrophysics:{index:'03',count:'5 个实验'},
-}
 function Home() {
-  return <><main className="home">
-    <div className="home-ambient" aria-hidden="true"/>
+  return <div className="home">
     <div className="home-shell">
-      <div className="home-hud"><span><i/> SYSTEM ONLINE</span><span>PLANCK PHYSICS ENGINE</span><span>LOCAL NODE / 01</span></div>
-      <section className="hero" aria-labelledby="home-title">
-        <div className="hero-copy">
-          <div className="hero-eyebrow"><span>PHYSICLAB</span><span className="eyebrow-rule"/><span>EXPERIMENTAL INTERFACE</span></div>
-          <h1 id="home-title">让好奇心，<br/><span>突破边界。</span></h1>
-          <p className="hero-lead">构建场景，设定初始条件。<br/>让物理引擎运行，让数据揭示答案。</p>
-          <div className="hero-actions"><a className="button primary" href={newLab}><Plus size={17}/> 开始实验 <ArrowRight size={15}/></a>
-            <a className="button outline" href="#domains">浏览领域 <ArrowUpRight size={14}/></a></div>
-          <div className="hero-signature"><span>SCROLL TO EXPLORE</span><i/></div>
-        </div>
-        <div className="hero-visual">
-          <span className="visual-crosshair crosshair-one" aria-hidden="true">+</span>
-          <span className="visual-crosshair crosshair-two" aria-hidden="true">+</span>
-          <a className="hero-console" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
-            <div className="console-chrome"><span><i/> LIVE SIMULATION</span><span>EXP / 001</span><span>60 HZ</span></div>
-            <div className="sim-title"><div><span>PROJECTILE MOTION</span><strong>斜抛运动</strong></div><span className="sim-state">RUNNING</span></div>
-            <div className="sim-viewport"><HeroSimulation/><span className="sim-reticle reticle-one" aria-hidden="true"/><span className="sim-reticle reticle-two" aria-hidden="true"/><span className="sim-coordinate">X 08.42 &nbsp; Y 03.17</span></div>
-            <div className="console-metrics">
-              <div><span>最高点</span><strong>2.55<small>m</small></strong></div>
-              <div><span>滞空时间</span><strong>1.44<small>s</small></strong></div>
-              <div><span>水平射程</span><strong>10.19<small>m</small></strong></div>
-            </div>
-            <div className="console-footer"><span>v₀ 10 m/s</span><span>θ 45°</span><span>g 9.81 m/s²</span><span className="console-launch">进入实验 <ArrowUpRight size={12}/></span></div>
-          </a>
-          <div className="visual-caption"><span>REAL-TIME PHYSICS</span><i/><span>PLANCK 1.5</span></div>
-        </div>
-      </section>
-      <section className="home-section domain-section" id="domains" aria-labelledby="domains-title">
-        <div className="section-heading"><div><span className="section-kicker">01 / DOMAINS</span><h2 id="domains-title">选择实验领域</h2></div><p>三个维度，同一套物理法则。</p></div>
-        <div className="domain-grid">{domains.map(domain=>{const meta=domainMeta[domain.id];return <a key={domain.id} className={'domain-card domain-'+domain.id} href={domainUrl(domain)}>
-          <div className="domain-card-top"><span className="domain-icon"><domain.icon size={21} strokeWidth={1.4} aria-hidden="true"/></span><span className="domain-index">{meta.index}</span></div>
-          <div className="domain-card-body"><span className="domain-label">DOMAIN / {meta.index}</span><h3>{domain.name}</h3><p>{domain.description}</p></div>
-          <div className="domain-card-footer"><span>{meta.count}</span><span className="domain-enter">进入 <ArrowUpRight size={13}/></span></div>
-        </a>})}</div>
-      </section>
-      <section className="capability-strip" aria-label="实验室能力">
-        <div><strong>60<small>Hz</small></strong><span>固定物理步长</span></div>
-        <div><strong>15<small>Hz</small></strong><span>数据采样频率</span></div>
+      <h1>让想法，成为实验</h1>
+      <a className="button primary home-create" href={newLab}><Plus size={17}/>创建实验<ArrowRight size={15}/></a>
+      <div className="home-metrics" aria-label="实验配置">
+        <div><strong>{PHYSICS_HZ}<small>Hz</small></strong><span>固定物理步长</span></div>
+        <div><strong>{SAMPLE_HZ}<small>Hz</small></strong><span>数据采样频率</span></div>
         <div><strong>SI</strong><span>国际标准单位</span></div>
-        <div className="capability-flow"><span>BUILD</span><i/><span>SIMULATE</span><i/><span>ANALYZE</span></div>
-      </section>
+      </div>
     </div>
-  </main><footer className="site-footer home-footer"><div className="home-shell"><div className="footer-brand"><Atom size={15}/><span>PhysicLab Studio</span></div><span className="footer-status"><i/> LOCAL-FIRST · SI UNITS</span><a href={appUrl('/experiments')}>实验库 <ArrowUpRight size={12}/></a></div></footer></>
+  </div>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
@@ -242,46 +202,31 @@ function readExtension(search:string|undefined) {
 }
 
 function Workspace() {
-  const [domain,setDomain]=useState(currentDomain)
-  const [searches,setSearches]=useState<Partial<Record<Domain['id'],string>>>(()=>({[currentDomain().id]:location.search}))
-  const addresses=useRef<Partial<Record<Domain['id'],string>>>({})
-
-  function activate(next:Domain) {
-    const search=location.search
-    setSearches(previous=>previous[next.id]===undefined?{...previous,[next.id]:search}:previous)
-    setDomain(next)
-  }
+  const domain=currentDomain()
+  const [searches,setSearches]=useState<Partial<Record<Domain['id'],string>>>(()=>({[domain.id]:location.search}))
 
   useEffect(()=>{
     function onBackOrForward() {
-      const next=currentDomain()
-      addresses.current[next.id]=location.pathname+location.search
-      activate(next)
+      const next=currentDomain(),search=location.search
+      setSearches(previous=>previous[next.id]===undefined?{...previous,[next.id]:search}:previous)
     }
     window.addEventListener('popstate',onBackOrForward)
     return ()=>window.removeEventListener('popstate',onBackOrForward)
   },[])
 
-  function selectDomain(next:Domain) {
-    if(next.id===domain.id)return
-    addresses.current[domain.id]=location.pathname+location.search
-    history.pushState(null,'',addresses.current[next.id]??domainUrl(next))
-    activate(next)
-  }
   function updateSavedAddress(id:string,scope:Domain['id']='mechanics',extension?:Extension) {
+    if(currentDomain().id!==scope)return
     const url=new URL(extension?extensionUrl(extension,id):appUrl('/lab'),location.origin)
     if(!extension) {
       if(scope!=='mechanics')url.searchParams.set('domain',scope)
       url.searchParams.set('id',id)
     }
-    const address=url.pathname+url.search
-    addresses.current[scope]=address
-    if(currentDomain().id===scope)history.replaceState(null,'',address)
+    history.replaceState(null,'',url.pathname+url.search)
   }
 
   const inMechanics=domain.id==='mechanics'
   const mechanicsExtension=readExtension(searches.mechanics),electricExtension=readExtension(searches.electromagnetism),astronomyExtension=readExtension(searches.astrophysics)
-  return <><DomainNav active={domain} select={selectDomain}/>
+  return <>
     {searches.mechanics!==undefined&&<div hidden={!inMechanics}>{mechanicsExtension?<Suspense fallback={<main className="page-width library"><p>正在打开实验…</p></main>}>
       <ExtendedLab search={searches.mechanics} extension={mechanicsExtension} active={inMechanics} updateSavedAddress={id=>updateSavedAddress(id,'mechanics',mechanicsExtension)}/>
     </Suspense>:<MechanicsWorkspace search={searches.mechanics} active={inMechanics} updateSavedAddress={updateSavedAddress}/>}</div>}

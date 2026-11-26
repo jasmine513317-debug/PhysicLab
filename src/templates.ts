@@ -33,7 +33,8 @@ export function instantiate(id: TemplateId): Experiment {
       const anchor = body('固定点',{kind:'rectangle',width:0.46,height:0.46},-3,2,{type:'static',color:'slate'})
       const mass = body('振动物体',{kind:'rectangle',width:0.75,height:0.75},1,2,{color:'amber'})
       scene.bodies = [mass,anchor]
-      scene.joints = [{id:crypto.randomUUID(),a:anchor.id,b:mass.id,anchorA:{x:0,y:0},anchorB:{x:0,y:0},stiffness:100,damping:0,restLength:3}]
+      scene.version=3
+      scene.joints = [{id:crypto.randomUUID(),a:anchor.id,b:mass.id,anchorA:{x:0,y:0},anchorB:{x:0,y:0},stiffness:100,damping:0,restLength:3,role:'constraint'}]
       break
     }
     case 'friction': {

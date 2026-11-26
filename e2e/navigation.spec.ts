@@ -3,13 +3,10 @@ import { expect, test } from '@playwright/test'
 test('opens templates and recent experiments from the sidebar', async ({ page }) => {
   await page.goto('/lab?template=fall')
   await page.getByRole('button', { name: '保存实验' }).click()
-  await expect(page.getByRole('button', { name: '已保存', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '保存实验', exact: true })).toContainText('已保存')
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /让好奇心/ })).toBeVisible()
-  await expect(page.getByRole('link', { name: '打开斜抛运动实验' })).toBeVisible()
-  await expect(page.locator('.hero-simulation')).toBeVisible()
-  expect(await page.locator('.hero-simulation').evaluate((canvas: HTMLCanvasElement) => canvas.width > 0 && canvas.height > 0)).toBe(true)
-  await expect(page.locator('.domain-card')).toHaveCount(3)
+  await expect(page.getByRole('heading', { name: '让想法，成为实验' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '创建实验', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440)
   await expect(
     page.getByRole('region', { name: '最近实验' })
@@ -40,14 +37,17 @@ test('opens the mobile sidebar drawer and navigates without overflow', async ({ 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
 })
 
-test('keeps Studio navigation and every domain available in the compact rail', async ({ page }) => {
+test('keeps Studio navigation and sidebar templates available in the compact rail', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 })
   await page.goto('/')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024)
+  await expect(page.getByRole('navigation', { name: '实验领域' })).toHaveCount(0)
   await page.getByRole('navigation', { name: '主导航' })
     .getByRole('link', { name: '几何工作室', exact: true }).click()
   await expect(page.getByLabel('二维几何画布')).toBeVisible()
-  await page.goto('/lab?domain=astrophysics')
-  await expect(page.getByLabel('轨道画布')).toBeVisible()
+  await page.goto('/')
+  await page.getByRole('region', { name: '实验模板' })
+    .getByRole('link', { name: '弹簧振子', exact: true }).click()
+  await expect(page.getByLabel('实验标题')).toHaveValue('弹簧振子')
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024)
 })

@@ -12,6 +12,15 @@ export function resizeHandles(g:Geometry):Handle[] {
   if(g.kind==='circle')return [{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].map(direction=>({
     point:{x:direction.x*g.radius,y:direction.y*g.radius},direction,
   }))
+  if(g.kind==='ellipse') {
+    const handles:Handle[]=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}].map(direction=>({
+      point:{x:direction.x*g.radiusX,y:direction.y*g.radiusY},direction,
+    }))
+    for(const x of [-1,1])for(const y of [-1,1])handles.push({
+      point:{x:x*g.radiusX/Math.SQRT2,y:y*g.radiusY/Math.SQRT2},direction:{x,y},corner:true,
+    })
+    return handles
+  }
   const box=g.kind!=='polygon'
   const vertices=box?[
     {x:-g.width/2,y:-g.height/2},{x:g.width/2,y:-g.height/2},
@@ -38,6 +47,14 @@ export function resizeHandleAt(body:BodyConfig,world:Point,tolerance:number) {
     return
   }
   if(g.kind==='track'||g.kind==='freeform')return
+  if(g.kind==='ellipse') {
+    const radial=Math.hypot(p.x/g.radiusX,p.y/g.radiusY)
+    for(const handle of resizeHandles(g)) {
+      const point=handle.point,distance=Math.hypot(p.x-point.x,p.y-point.y)
+      if(distance<=tolerance&&(handle.corner||Math.abs(radial-1)*Math.min(g.radiusX,g.radiusY)<=tolerance))return handle
+    }
+    return
+  }
   const handles=resizeHandles(g)
   // Keep the middle of narrow objects available for moving.
   if(g.kind!=='polygon')tolerance=Math.min(tolerance,Math.min(g.width,g.height)*.32)
@@ -73,6 +90,16 @@ export function resizeBody(body:BodyConfig,handle:Handle,from:Point,to:Point) {
     const radius=limit(g.radius+dot(delta,n))
     geometry={...g,radius}
     scaleAnchor=p=>({x:p.x*radius/g.radius,y:p.y*radius/g.radius})
+  } else if(g.kind==='ellipse') {
+    let radiusX=g.radiusX,radiusY=g.radiusY
+    if(handle.corner) {
+      const factor=limit(Math.max(Math.abs(to.x)/g.radiusX,Math.abs(to.y)/g.radiusY),.01,500)
+      radiusX=limit(g.radiusX*factor),radiusY=limit(g.radiusY*factor)
+    } else if(n.x) radiusX=limit(g.radiusX+delta.x*n.x)
+    else radiusY=limit(g.radiusY+delta.y*n.y)
+    geometry={...g,radiusX,radiusY}
+    offset=handle.corner?{x:0,y:0}:{x:(radiusX-g.radiusX)*n.x/2,y:(radiusY-g.radiusY)*n.y/2}
+    scaleAnchor=p=>({x:p.x*radiusX/g.radiusX,y:p.y*radiusY/g.radiusY})
   } else if(g.kind==='polygon') {
     // Scale perpendicular to the moving edge and leave its opposite support line fixed.
     const back=Math.min(...g.vertices.map(p=>dot(p,n)))

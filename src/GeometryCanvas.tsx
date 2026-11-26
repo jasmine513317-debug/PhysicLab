@@ -172,8 +172,8 @@ export function CurveCanvas({paths,nodes,closed,selected,tool,dashed,select,edit
         setView(v=>({...v,center:{x:v.center.x+direction.x*v.width/v.zoom*.035,y:v.center.y-direction.y*v.width/v.zoom*.035}}))
       }}/>
     <div className="geometry-camera" role="group" aria-label="二维视图">
-      <button className="icon framed" aria-label="缩小视图" onClick={()=>setView(v=>({...v,zoom:Math.max(.1,v.zoom/1.3)}))}><Minus size={17}/></button>
-      <button className="icon framed" aria-label="放大视图" onClick={()=>setView(v=>({...v,zoom:Math.min(30,v.zoom*1.3)}))}><Plus size={17}/></button>
+      <button className="icon framed" aria-label="缩小视图" title="缩小视图" onClick={()=>setView(v=>({...v,zoom:Math.max(.1,v.zoom/1.3)}))}><Minus size={17}/></button>
+      <button className="icon framed" aria-label="放大视图" title="放大视图" onClick={()=>setView(v=>({...v,zoom:Math.min(30,v.zoom*1.3)}))}><Plus size={17}/></button>
       <button className="button compact" onClick={fit}>适应画布</button>
     </div>
   </>
@@ -243,9 +243,9 @@ export function SurfaceCanvas({mesh,grid,shade,normals,pan}:{mesh?:Mesh;grid:boo
           {...v,yaw:v.yaw+direction.x*.12,pitch:Math.max(-1.53,Math.min(1.53,v.pitch-direction.y*.12))})
       }}/>
     <div className="geometry-camera" role="group" aria-label="三维视图">
-      <button className="icon framed" aria-label="缩小曲面" onClick={()=>setView(v=>({...v,zoom:Math.max(.2,v.zoom/1.3)}))}><Minus size={17}/></button>
-      <button className="icon framed" aria-label="放大曲面" onClick={()=>setView(v=>({...v,zoom:Math.min(6,v.zoom*1.3)}))}><Plus size={17}/></button>
-      <button className="icon framed" aria-label="重置三维视图" onClick={()=>setView(defaultView)}><RotateCcw size={17}/></button>
+      <button className="icon framed" aria-label="缩小曲面" title="缩小曲面" onClick={()=>setView(v=>({...v,zoom:Math.max(.2,v.zoom/1.3)}))}><Minus size={17}/></button>
+      <button className="icon framed" aria-label="放大曲面" title="放大曲面" onClick={()=>setView(v=>({...v,zoom:Math.min(6,v.zoom*1.3)}))}><Plus size={17}/></button>
+      <button className="icon framed" aria-label="重置三维视图" title="重置三维视图" onClick={()=>setView(defaultView)}><RotateCcw size={17}/></button>
     </div>
   </>
 }

@@ -8,7 +8,7 @@ const STORE = 'experiments'
 const REPLAYS = 'replays'
 type SceneVersion=Experiment['version']
 type StorageScope=SceneVersion|'electrostatic'|'astronomy'|'extended'
-const databases={1:'physiclab',2:'physiclab-studio',electrostatic:'physiclab-electrostatics',astronomy:'physiclab-astronomy',extended:'physiclab-extended'} as const
+const databases={1:'physiclab',2:'physiclab-studio',3:'physiclab-semantic',electrostatic:'physiclab-electrostatics',astronomy:'physiclab-astronomy',extended:'physiclab-extended'} as const
 export function storageFor(scene:SavedExperiment):StorageScope {
   if('extension' in scene)return 'extended'
   if(isElectrostatic(scene))return 'electrostatic'
@@ -54,7 +54,7 @@ async function transaction<T>(mode: IDBTransactionMode, operation: (store:IDBObj
   } finally { db.close() }
 }
 export async function listExperiments() {
-  const scopes=[1,2,'electrostatic','astronomy','extended'] as const
+  const scopes=[1,2,3,'electrostatic','astronomy','extended'] as const
   const results = await Promise.allSettled(scopes.map(scope=>transaction('readonly',store=>store.getAll(),STORE,scope)))
   if(results.every(result=>result.status==='rejected'))throw results[0].reason
   const experiments:SavedExperiment[]=[]
@@ -70,18 +70,29 @@ export async function listExperiments() {
       } catch {unreadable.push(entry)}
     }
   })
-  experiments.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))
-  return {experiments,unreadable,incomplete:results.some(result=>result.status==='rejected')}
+  const latest=new Map<string,Experiment>()
+  for(const scene of experiments)if('environment' in scene) {
+    const previous=latest.get(scene.id)
+    if(!previous||scene.version>previous.version)latest.set(scene.id,scene)
+  }
+  const unique=experiments.filter(scene=>!('environment' in scene)||latest.get(scene.id)===scene)
+  unique.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))
+  return {experiments:unique,unreadable,incomplete:results.some(result=>result.status==='rejected')}
 }
 async function findRecord(id:string) {
-  const [legacy,studio]=await Promise.allSettled([
-    transaction('readonly',store=>store.get(id)),
-    transaction('readonly',store=>store.get(id),STORE,2),
-  ])
-  if(legacy.status==='fulfilled'&&legacy.value!==undefined)return {value:legacy.value,version:1 as const}
-  if(studio.status==='fulfilled'&&studio.value!==undefined)return {value:studio.value,version:2 as const}
-  if(legacy.status==='rejected')throw legacy.reason
-  if(studio.status==='rejected')throw studio.reason
+  const versions=[1,2,3] as const
+  const results=await Promise.allSettled(versions.map(version=>transaction('readonly',store=>store.get(id),STORE,version)))
+  let failure:unknown
+  for(let i=results.length-1;i>=0;i--) {
+    const result=results[i]
+    if(result.status==='rejected') {failure??=result.reason;continue}
+    if(result.value===undefined)continue
+    try {
+      const scene=decodeExperiment(result.value)
+      if(scene.version===versions[i])return {value:result.value,version:versions[i]}
+    } catch(error) {failure??=error}
+  }
+  if(failure!==undefined)throw failure
 }
 export async function loadExperiment(id:string) {
   const record=await findRecord(id)
@@ -126,10 +137,10 @@ export async function saveExtended(scene:ExtendedExperiment,asCopy=false) {
   return result
 }
 export async function loadReplay(id:string,version?:SceneVersion) {
-  const value=await transaction('readonly',store=>store.get(id),REPLAYS,version??1)
-    ??(version===undefined?await transaction('readonly',store=>store.get(id),REPLAYS,2):undefined)
-  if(value===undefined)return
-  return decodeReplay(value)
+  const resolved=version??(await findRecord(id))?.version
+  if(resolved===undefined)return
+  const value=await transaction('readonly',store=>store.get(id),REPLAYS,resolved)
+  return value===undefined?undefined:decodeReplay(value)
 }
 
 export async function importExperiment(scene:Experiment,replay?:Replay) {
@@ -179,16 +190,21 @@ export async function saveReplay(scene:Experiment,replay:Replay) {
 }
 
 export async function deleteExperiment(id:string,scope?:StorageScope) {
-  const db=await openDatabase(scope??(await findRecord(id))?.version)
-  try {
-    await new Promise<void>((resolve,reject)=>{
-      const tx=db.transaction([STORE,REPLAYS],'readwrite')
-      tx.objectStore(STORE).delete(id)
-      tx.objectStore(REPLAYS).delete(id)
-      tx.oncomplete=()=>resolve()
-      tx.onabort=()=>reject(tx.error??new Error('删除操作已中断。'))
-    })
-  } finally {db.close()}
+  const scopes:StorageScope[]=scope===undefined||typeof scope==='number'?[1,2,3]:[scope]
+  const results=await Promise.allSettled(scopes.map(async version=>{
+    const db=await openDatabase(version)
+    try {
+      await new Promise<void>((resolve,reject)=>{
+        const tx=db.transaction([STORE,REPLAYS],'readwrite')
+        tx.objectStore(STORE).delete(id)
+        tx.objectStore(REPLAYS).delete(id)
+        tx.oncomplete=()=>resolve()
+        tx.onabort=()=>reject(tx.error??new Error('删除操作已中断。'))
+      })
+    } finally {db.close()}
+  }))
+  const failure=results.find(result=>result.status==='rejected')
+  if(failure?.status==='rejected')throw failure.reason
 }
 export async function duplicateExperiment(scene:SavedExperiment) {
   const title=scene.title.slice(0,96)+'（副本）', createdAt=new Date().toISOString()

@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import { body, decodeExperiment, emptyExperiment, pointSchema, type Point } from './model'
 import { compileExpression } from './geometry-expression'
-import { segmentDistance, simplifyPath, trackError } from './track'
+import { triangulate } from './freeform'
+import { withObjectRole, type EditableRole } from './objectRole'
+import { freeformError, segmentDistance, simplifyPath, trackError } from './track'
 
 const nodeSchema=z.object({point:pointSchema,in:pointSchema,out:pointSchema})
 const rangeValue=z.number().min(-100).max(100)
@@ -201,18 +203,57 @@ export function makeTrack(project:GeometryProject,tolerance:number) {
   return {kind:'track' as const,vertices,closed}
 }
 
-export function trackExperiment(project:GeometryProject,tolerance:number,withBall=false) {
-  const geometry=makeTrack(project,tolerance)
+export type GeometryImportOptions={role:EditableRole;mass:number;friction:number;restitution:number;charge:number;gravity:number;withBall:boolean}
+export const defaultGeometryImport:GeometryImportOptions={role:'track',mass:1,friction:.18,restitution:0,charge:10,gravity:9.81,withBall:true}
+
+function boundedNumber(value:number,min:number,max:number,label:string) {
+  if(!Number.isFinite(value)||value<min||value>max)throw new Error(label+'超出允许范围。')
+  return value
+}
+
+export function geometryExperiment(project:GeometryProject,tolerance:number,options:Partial<GeometryImportOptions>={}) {
+  const settings={...defaultGeometryImport,...options}
+  const mass=boundedNumber(settings.mass,.001,100000,'质量')
+  const friction=boundedNumber(settings.friction,0,10,'摩擦系数')
+  const restitution=boundedNumber(settings.restitution,0,1,'恢复系数')
+  const charge=boundedNumber(settings.charge,-1000,1000,'电荷量')
+  const gravity=boundedNumber(settings.gravity,0,100,'重力加速度')
+  const role=settings.role
+  if(!['marker','body','boundary','track','field'].includes(role))throw new Error('请选择有效的对象角色。')
+  const isTrack=role==='track'
+  const geometry=isTrack?makeTrack(project,tolerance):(()=>{
+    const paths=geometryPaths(project,tolerance/2,true)
+    if(paths.length!==1||paths[0].length<2)throw new Error('请使用一条连续且至少含两个不同点的二维曲线。')
+    const closed=project.mode==='bezier'?project.closed:project.mode==='parametric'||project.mode==='polar'?project[project.mode].closed:false
+    const raw=paths[0]
+    if(closed&&distance(raw[0],raw.at(-1)!)>tolerance/2)throw new Error('要生成闭合轮廓，曲线起点与终点必须重合。')
+    const vertices=simplifyPath(closed?[...raw.slice(0,-1),raw[0]]:raw,tolerance/2)
+    const simplified=closed?vertices.slice(0,-1):vertices
+    const error=freeformError(simplified,closed,role==='body')
+    if(error)throw new Error(error)
+    if(role==='body'&&triangulate(simplified).length!==simplified.length-2)throw new Error('无法为封闭轮廓生成与视觉一致的碰撞形状。请调整曲线或提高离散容差。')
+    return {kind:'freeform' as const,vertices:simplified,closed}
+  })()
   const min=geometry.vertices.reduce((a,b)=>({x:Math.min(a.x,b.x),y:Math.min(a.y,b.y)}),geometry.vertices[0])
   const max=geometry.vertices.reduce((a,b)=>({x:Math.max(a.x,b.x),y:Math.max(a.y,b.y)}),geometry.vertices[0])
   const x=(min.x+max.x)/2,y=(min.y+max.y)/2
   const vertices=geometry.vertices.map(p=>({x:p.x-x,y:p.y-y}))
-  const track=body('曲线轨道',{...geometry,vertices},x,y,{friction:0.18,restitution:0})
+  const names={marker:'几何标记',body:'几何刚体',boundary:'几何边界',track:'曲线轨道',field:'几何场源'} as const
+  const colors={marker:'blue',body:'mint',boundary:'amber',track:'slate',field:'amber'} as const
+  const object=withObjectRole(body(names[role],{...geometry,vertices},x,y,{
+    color:colors[role],mass,friction,restitution,...(role==='field'?{charge}:{}),
+  }),role)
+  const withBall=settings.withBall&&(role==='track'||role==='boundary')
+  const bodies=withBall?[object,body('测试小球',{kind:'circle',radius:0.24},x,max.y+1.25,{friction:.12,restitution:0})]:[object]
   const experiment=emptyExperiment()
-  const bodies=withBall?[track,body('测试小球',{kind:'circle',radius:0.24},x,max.y+1.25,{friction:0.12,restitution:0})]:[track]
-  return decodeExperiment({...experiment,version:2,title:project.title==='未命名几何'?'曲线轨道实验':project.title+' · 轨道',
+  return decodeExperiment({...experiment,version:3,title:project.title==='未命名几何'?'曲线轨道实验':project.title+' · '+(isTrack?'轨道':'实验'),
     bodies,camera:{x,y:y+(withBall?0.4:0),scale:Math.max(5,Math.min(80,490/Math.max(1,max.x-min.x,max.y-min.y)))},
-    notes:'曲线已离散为 Planck 静态链式边界。离散容差 '+tolerance+' m。可在轨道上方放置刚体进行实验。'})
+    environment:{...experiment.environment,gravity},
+    notes:'来源：几何工作室。离散容差 '+tolerance+' m，几何已按此容差有损离散，碰撞与显示轮廓以顶点折线为准；对象角色：'+names[role]+'。'})
+}
+
+export function trackExperiment(project:GeometryProject,tolerance:number,withBall=false) {
+  return geometryExperiment(project,tolerance,{withBall})
 }
 
 export function makeMesh(settings:GeometryProject['surface']):Mesh {

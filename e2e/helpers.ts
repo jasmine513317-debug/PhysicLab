@@ -13,6 +13,20 @@ export async function openImportedScene(page: Page, scene: Experiment) {
   return canvas
 }
 
+export async function openWorkbenchPanel(page: Page, name: '属性' | '环境' | '分析') {
+  const more = page.locator('.mobile-more')
+  if (await more.isVisible() && await more.getAttribute('aria-expanded') !== 'true') await more.click()
+  await page.locator('.lab-top, .workbench-more').getByRole('button', { name, exact: true }).click()
+}
+
+export async function openProperties(page: Page, tab: 'object' | 'world' = 'object') {
+  await openWorkbenchPanel(page, tab === 'world' ? '环境' : '属性')
+}
+
+export async function openAnalysis(page: Page) {
+  await openWorkbenchPanel(page, '分析')
+}
+
 export function pixelOf(box: {x: number; y: number; width: number; height: number}, camera: Camera, point: Point): Point {
   return {x: box.x + box.width / 2 + (point.x - camera.x) * camera.scale, y: box.y + box.height / 2 - (point.y - camera.y) * camera.scale}
 }

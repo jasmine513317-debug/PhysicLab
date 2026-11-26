@@ -21,14 +21,14 @@ const units={Position:'m',Velocity:'m/s',Acceleration:'m/s²',Energy:'J',Momentu
 export type Baseline = {scene:Experiment;body:BodyConfig;samples:Sample[]}
 interface Props {
   scene:Experiment; results:Map<string,Sample[]>; selected:string; select:(id:string)=>void
-  baseline?:Baseline; setBaseline:(b:Baseline|undefined)=>void; replay?:boolean; externalForceApplied?:boolean
+  baseline?:Baseline; setBaseline:(b:Baseline|undefined)=>void; replay?:boolean; externalForceApplied?:boolean; onClose?:()=>void
 }
 function landing(scene:Experiment,body:BodyConfig) {
   if(!scene.environment.collisions||body.geometry.kind!=='circle')return
   const ground=scene.bodies.find(b=>b.geometry.kind==='surface'&&b.angle===0)
   if(ground?.geometry.kind==='surface') return ground.position.y+ground.geometry.height/2+body.geometry.radius
 }
-export function AnalysisPanel({scene,results,selected,select,baseline,setBaseline,replay,externalForceApplied}:Props) {
+export function AnalysisPanel({scene,results,selected,select,baseline,setBaseline,replay,externalForceApplied,onClose}:Props) {
   const [tab,setTab]=useState<Tab>('Position')
   const [systemMomentum,setSystemMomentum]=useState(true)
   const [collapsed,setCollapsed]=useState(false)
@@ -96,7 +96,7 @@ export function AnalysisPanel({scene,results,selected,select,baseline,setBaselin
     <div className="analysis-heading"><div className="panel-title"><Activity size={16}/> 数据分析</div><div className="analysis-actions">
       <button className="button compact subtle" aria-label="设为基准" title={viewingSystem?'选择单个物体以设置基准':undefined} disabled={replay||viewingSystem||!body||samples.length<2} onClick={()=>{setBaseline({scene,body:body!,samples:samples.slice()});setTab('Compare');setCollapsed(false)}}><Pin size={14}/><span>设为基准</span></button>
       <button className="button compact" aria-label={viewingMomentum?'导出动量 CSV':'导出 CSV'} disabled={viewingMomentum?!momentum.length:!samples.length} onClick={exportCsv}><Download size={14}/><span>{viewingMomentum?'导出动量 CSV':'导出 CSV'}</span></button>
-      <button className="icon" aria-label={collapsed?'展开分析面板':'收起分析面板'} onClick={()=>setCollapsed(!collapsed)}>{collapsed?<ChevronsUp size={16}/>:<ChevronsDown size={16}/>}</button>
+      <button className="icon" aria-label={onClose?'关闭分析面板':collapsed?'展开分析面板':'收起分析面板'} title={onClose?'关闭分析面板':collapsed?'展开分析面板':'收起分析面板'} onClick={onClose??(()=>setCollapsed(!collapsed))}>{collapsed?<ChevronsUp size={16}/>:<ChevronsDown size={16}/>}</button>
     </div></div>
     {!collapsed&&<>
       <div className="analysis-tabs-row"><div className="tabs analysis-tabs">

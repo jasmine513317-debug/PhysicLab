@@ -3,6 +3,7 @@ import { Ruler } from 'lucide-react'
 import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, ZIndexLayer, usePlotArea } from 'recharts'
 import type { Sample } from './analysis'
 import { measureInterval, nearestSample, type MeasuredQuantity } from './chartMeasurement'
+import { formatNumber } from './numberFormat'
 import './measurementChart.css'
 
 export const groups = {
@@ -67,7 +68,9 @@ export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSerie
           <CartesianGrid stroke="#273651" vertical={false} strokeDasharray="3 4"/>
           <XAxis dataKey="time" type="number" domain={[start,end]} allowDataOverflow tickFormatter={x=>Number(x.toFixed(2))+' s'} tick={{fill:'#a2b3cb',fontSize:10}} tickLine={false} axisLine={{stroke:'#3a4b67'}}/>
           <YAxis width={55} tickFormatter={x=>Number(x.toFixed(2))+' '+unit} tick={{fill:'#a2b3cb',fontSize:10}} tickLine={false} axisLine={false}/>
-          <Tooltip labelFormatter={t=>Number(t).toFixed(3)+' s'} formatter={value=>typeof value==='number'?value.toFixed(3)+' '+unit:String(value)} contentStyle={{background:'#1b263c',border:'1px solid #415575',borderRadius:8,fontSize:12}}/>
+          <Tooltip labelFormatter={t=>Number(t).toFixed(3)+' s'} formatter={value=>typeof value==='number'?value.toFixed(3)+' '+unit:String(value)}
+            contentStyle={{background:'var(--raised)',border:'1px solid var(--line)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--text)'}}
+            itemStyle={{color:'var(--text)'}} labelStyle={{color:'var(--soft)'}}/>
           {groups[group].map(([key,label,color])=><Line key={key} type="linear" name={label} dataKey={key} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} hide={hidden.includes(key)}/>)}
           {active && series && markers.map(marker=>{
             const point = marker==='A'?a:b
@@ -96,14 +99,14 @@ export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSerie
           {markers.map(marker=>{
             const point = marker==='A'?a:b
             return <label key={marker} className="marker-field"><span style={{color:markerColors[marker]}}>{marker}</span>
-              <input key={point?.time??'empty'} type="number" inputMode="decimal" min={start} max={lastTime} step="any" aria-label={marker+' 点时间（秒）'} placeholder="时间" defaultValue={point?rounded(point.time):''}
+              <input key={point?.time??'empty'} type="number" inputMode="decimal" min={start} max={lastTime} step="any" aria-label={marker+' 点时间（秒）'} placeholder="时间" defaultValue={point?formatNumber(point.time):''}
                 onKeyDown={e=>{if(e.key==='Enter') e.currentTarget.blur()}}
                 onBlur={e=>{
                   const input = e.currentTarget
                   if (input.value!=='' && Number.isFinite(input.valueAsNumber)) {
                     const time = nearestSample(samples,input.valueAsNumber)?.time
-                    if(time!==undefined) {input.value=rounded(time);pick(time,marker)}
-                  } else input.value=point?rounded(point.time):''
+                    if(time!==undefined) {input.value=formatNumber(time);pick(time,marker)}
+                  } else input.value=point?formatNumber(point.time):''
                 }}/> s
               {point && <span className="marker-value">{rounded(point[series[0]])} {unit}</span>}
             </label>

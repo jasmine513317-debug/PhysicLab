@@ -203,7 +203,7 @@ describe('timestep, units and scene validation',()=>{
     const run=new Physics(s)
     advance(run,21)
     expect(new Physics(s).bodies.get(s.bodies[0].id)!.getPosition().x).toBe(s.bodies[0].position.x)
-    expect(()=>decodeExperiment({...s,version:3})).toThrow()
+    expect(()=>decodeExperiment({...s,version:4})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],mass:-1}]})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],restitution:1.2}]})).toThrow()
     expect(()=>decodeExperiment({...s,bodies:[{...s.bodies[0],velocity:{x:NaN,y:1}}]})).toThrow()

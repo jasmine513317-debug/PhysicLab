@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { Check, ChevronsUpDown, Crosshair, Eraser, Grid2X2, LocateFixed, Magnet, Minus, MousePointer2, MoveUpRight, Orbit, PenLine, Plus, Spline, Trash2, Waves, Zap } from 'lucide-react'
-import { rotate, screenPoint, worldPoint, zoomAt } from './coordinates'
-import { type BodyConfig, type Camera, type Experiment, type Point, type Spring } from './model'
+import { displayPoint, polarPosition, rotate, screenPoint, worldPoint, zoomAt } from './coordinates'
+import { coordinateGridStep } from './coordinateOverlay'
+import { type BodyConfig, type Camera, type Coordinates, type Experiment, type Point, type Spring } from './model'
 import { defaultDisplay, drawScene, type Display, type EraseView, type Overlay, type ReplayView } from './render'
 import type { Sample } from './analysis'
 import type { Physics } from './physics'
 import { containsPoint } from './freeform'
 import { createInk, INK_COLORS } from './ink'
+import { InkHold, INK_HOLD_MS, INK_HOLD_TOLERANCE_PX } from './inkHold'
 import { eraseBodies, type EraserMode, type EraseResult } from './eraser'
-import { INK_WIDTHS, MAX_CUSTOM_INKS, type EraserSize, type InkMode, type InkPrefs } from './inkPrefs'
+import { INK_ROLES, INK_WIDTHS, MAX_CUSTOM_INKS, type EraserSize, type InkMode, type InkPrefs } from './inkPrefs'
 import { findSurfaceSnap, type SurfaceSnap } from './surfaceSnap'
 import { resizeBody, resizeCursor, resizeHandleAt } from './resizeBody'
 import { pointerBearing, rotationGuide, turnBetween } from './rotationHandle'
@@ -17,6 +19,10 @@ import { pointerBearing, rotationGuide, turnBetween } from './rotationHandle'
 const displayLabels = {velocity:'速度矢量',acceleration:'加速度矢量',forces:'力矢量',trails:'运动轨迹',reference:'理论轨迹'} as const
 const widthLabels = ['细','中','粗'] as const
 const inkModeLabels = [['hold','停留'],['immediate','立即'],['free','关闭']] as const
+const inkRoleLabels = {marker:'视觉标记',body:'刚体',boundary:'碰撞边界',track:'轨道',field:'场源'} as const
+const inkRoleHints = {
+  marker:'只显示，不参与碰撞',body:'参与碰撞并受重力',boundary:'静态碰撞轮廓',track:'静态碰撞轨道',field:'静电场源，不参与碰撞',
+} as const
 
 export type Tool = 'select'|'draw'|'eraser'|'spring'
 const tools = [
@@ -73,10 +79,17 @@ export function Tools({tool,setTool,display,toggle,locked=false,ink,setInk}:Tool
             disabled={locked} onClick={()=>setInk({width})}><i className={'width-bar w'+(index+1)}/>{widthLabels[index]}</button>)}
         </div>
         <span className="context-sep"/>
+        <div className="context-group" role="group" aria-label="绘制用途">
+          <span className="context-label">用途</span>
+          {INK_ROLES.map(role=><button key={role} type="button" className={'context-chip'+(ink.role===role?' chosen':'')}
+            aria-label={'绘制用途 '+inkRoleLabels[role]} aria-pressed={ink.role===role} title={inkRoleHints[role]}
+            disabled={locked} onClick={()=>setInk({role})}>{inkRoleLabels[role]}</button>)}
+        </div>
+        <span className="context-sep"/>
         <div className="context-group" role="group" aria-label="自动规整">
           <span className="context-label">规整</span>
           {inkModeLabels.map(([value,label])=><button key={value} type="button" className={'context-chip'+(ink.mode===value?' chosen':'')}
-            aria-label={'自动规整 '+label} aria-pressed={ink.mode===value} title={value==='hold'?'笔画末端停留 1.5 秒后规整':value==='immediate'?'松开立即规整':''}
+            aria-label={'自动规整 '+label} aria-pressed={ink.mode===value} title={value==='hold'?'笔画末端停留 '+(INK_HOLD_MS/1000)+' 秒后规整':value==='immediate'?'松开立即规整':''}
             disabled={locked} onClick={()=>setInk({mode:value as InkMode})}>{label}</button>)}
         </div>
       </>}
@@ -98,7 +111,7 @@ export function Tools({tool,setTool,display,toggle,locked=false,ink,setInk}:Tool
         <button type="button" className={'context-toggle'+(ink.eraserReturn?' chosen':'')} aria-pressed={ink.eraserReturn}
           disabled={locked} onClick={()=>setInk({eraserReturn:!ink.eraserReturn})}><Check size={12}/>擦完回绘制</button>
       </>}
-      {tool==='select'&&<span className="context-hint">{locked?'回放中不可编辑':'拖动物体移动 · 拖空白平移 · 双击编辑'}</span>}
+      {tool==='select'&&<span className="context-hint">{locked?'回放中不可编辑':'双击属性 · 右键变换/删除'}</span>}
       {tool==='spring'&&<span className="context-hint">在两个物体上各点一次连接点</span>}
     </div>
     {paletteOpen&&tool==='draw'&&<div className="ink-palette" role="group" aria-label="画笔颜色">
@@ -135,7 +148,7 @@ export function Tools({tool,setTool,display,toggle,locked=false,ink,setInk}:Tool
 }
 
 type ResizeHandle = NonNullable<ReturnType<typeof resizeHandleAt>>
-type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan'|'resize'|'rotate'|'erase';positions:Map<string,Point>;moved?:boolean;body?:BodyConfig;snap?:SurfaceSnap;handle?:ResizeHandle;rotation?:{angle:number;bearing:number};ink?:Point[];erase?:EraseResult;holdReady?:boolean}
+type Drag = {pointer:number;from:Point;pixel:Point;now:Point;camera:Camera;type:Tool|'pan'|'resize'|'rotate'|'erase'|'origin';positions:Map<string,Point>;moved?:boolean;body?:BodyConfig;snap?:SurfaceSnap;handle?:ResizeHandle;rotation?:{angle:number;bearing:number};ink?:Point[];erase?:EraseResult;holdReady?:boolean}
 type Target = {id:string;name:string;at:Point;body?:BodyConfig;joint?:Spring}
 type TargetMenu = {target:Target;pixel:Point}
 const interaction: Record<Tool,string> = {
@@ -150,7 +163,7 @@ const eraserRadii:Record<EraserSize,Record<EraserMode,number>>={
   large:{stroke:0.19,drag:0.30},
 }
 const eraserRadius=(mode:EraserMode,size:EraserSize)=>eraserRadii[size][mode]
-const drawHint=(mode:InkMode)=>mode==='hold'?'按住不动 1.5 秒可自动规整':mode==='immediate'?'松开后立即规整':'自由手绘 · 松开不自动规整'
+const drawHint=(mode:InkMode)=>mode==='hold'?'按住不动 0.9 秒可自动规整':mode==='immediate'?'松开后立即规整':'自由手绘 · 松开不自动规整'
 
 function local(point:Point,position:Point,angle:number) {
   return rotate({x:point.x-position.x,y:point.y-position.y},-angle)
@@ -177,6 +190,7 @@ interface ViewportProps {
   remove:(id:string)=>void
   report:(message:string)=>void
   ink:InkPrefs
+  openProperties?:(id:string)=>void
 }
 export function Viewport(props:ViewportProps) {
   const {scene,camera,setCamera,physics,tool,selected,display,setDisplay,change,select,remove,report}=props
@@ -187,6 +201,13 @@ export function Viewport(props:ViewportProps) {
   const space=useRef(false)
   const hold=useRef<ReturnType<typeof setTimeout>|null>(null)
   const holdReady=useRef(false)
+  const inkHold=useRef(new InkHold(INK_HOLD_TOLERANCE_PX,()=>{
+    const d=drag.current
+    if(!d||d.type!=='draw'||latest.current.ink.mode!=='hold')return
+    holdReady.current=true
+    d.holdReady=true
+    setHoldPreview(true)
+  }))
   const inkPath=useRef<Point[]>([])
   const eraserPath=useRef<Point[]>([])
   const menuRef=useRef<HTMLDivElement>(null)
@@ -203,15 +224,17 @@ export function Viewport(props:ViewportProps) {
   const [erasePreview,setErasePreview]=useState<EraseResult>()
   const isReplay=Boolean(props.replay)
   const [displayMenu,setDisplayMenu]=useState(false)
-  const stageState=useRef({anchor,draft,position,targetMenu,editing,erasePreview,holdPreview})
-  stageState.current={anchor,draft,position,targetMenu,editing,erasePreview,holdPreview}
+  const [originEditing,setOriginEditing]=useState(false)
+  const [originPreview,setOriginPreview]=useState<Coordinates>()
+  const stageState=useRef({anchor,draft,position,targetMenu,editing,erasePreview,holdPreview,originPreview})
+  stageState.current={anchor,draft,position,targetMenu,editing,erasePreview,holdPreview,originPreview}
   useEffect(()=>{
     if(!editing)setEditingId('')
     setCursor('')
   },[editing])
   useEffect(()=>{
     cancelDrag()
-    setAnchor(null);setDraft([]);setTargetMenu(null);setErasePreview(undefined);setHoldPreview(false)
+    setAnchor(null);setDraft([]);setTargetMenu(null);setErasePreview(undefined);setHoldPreview(false);setOriginEditing(false);setOriginPreview(undefined)
     return clearTap
   },[tool,physics,isReplay])
   useEffect(()=>{
@@ -265,8 +288,8 @@ export function Viewport(props:ViewportProps) {
       if(resized) {el.width=w;el.height=h}
       previousProps=current;previousStage=stage;previousDrag=d;previousTime=time;lastDraw=now
       const {draft,anchor,position,erasePreview,holdPreview}=stageState.current
-      let overlay:Overlay|undefined=draft.length?{points:draft,color:holdPreview?'#ffd796':undefined}:undefined
-      if(anchor) overlay={points:[anchor.world,position],color:'#e8b779'}
+      let overlay:Overlay|undefined=draft.length?{points:draft,color:holdPreview?'#ffd796':current.ink.color,strokeWidth:current.ink.width}:undefined
+      if(anchor) overlay={points:[anchor.world,position],color:'#e8b779',dash:[5,4]}
       const move=d?.type==='select'&&d.moved?draggedPositions(d,d.now):undefined
       const edit=d?.body&&d.moved?transformBody(d,d.now):undefined
       const eraserView:EraseView|undefined=current.tool==='eraser'&&!current.replay?{
@@ -274,7 +297,7 @@ export function Viewport(props:ViewportProps) {
       }:undefined
       try {
         ctx!.setTransform(dpr,0,0,dpr,0,0)
-        drawScene(ctx!,view,camera,scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0,hidden:erasePreview?.hidden,erase:eraserView})
+        drawScene(ctx!,view,camera,originPreview?{...scene,coordinates:originPreview}:scene,display,{physics:replay?undefined:physics,selected,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0,hidden:erasePreview?.hidden,erase:eraserView})
       } catch {
         if(!failed) latest.current.report('无法绘制当前场景。请重置视图或重新加载实验。')
         failed=true
@@ -292,7 +315,7 @@ export function Viewport(props:ViewportProps) {
     const down=(e:KeyboardEvent)=>{
       if(e.target instanceof HTMLElement && e.target.closest('input, textarea, select, button, [contenteditable]')) return
       if(e.code==='Space') {space.current=true;e.preventDefault()}
-      if(e.key==='Escape') {cancelDrag();clearTap();setEditingId('');setDraft([]);setAnchor(null);setTargetMenu(null)}
+      if(e.key==='Escape') {cancelDrag();clearTap();setEditingId('');setDraft([]);setAnchor(null);setTargetMenu(null);setOriginEditing(false);setOriginPreview(undefined)}
       if(e.key==='Alt'&&drag.current?.moved&&drag.current.body) {
         e.preventDefault()
         updateSnap(drag.current.now,true)
@@ -318,22 +341,11 @@ export function Viewport(props:ViewportProps) {
     if(hold.current!==null)clearTimeout(hold.current)
     hold.current=null
   }
-  function scheduleHold() {
-    cancelHold()
-    if(latest.current.ink.mode!=='hold')return
-    hold.current=setTimeout(()=>{
-      const d=drag.current
-      if(!d||d.type!=='draw'||latest.current.ink.mode!=='hold')return
-      holdReady.current=true
-      d.holdReady=true
-      setHoldPreview(true)
-      hold.current=null
-    },1500)
-  }
   function cancelDrag() {
     const active=drag.current
     drag.current=null
     setSnapLabel(undefined)
+    inkHold.current.cancel()
     cancelHold()
     holdReady.current=false
     if(active?.type==='draw') {
@@ -345,17 +357,27 @@ export function Viewport(props:ViewportProps) {
       eraserPath.current=[]
       setErasePreview(undefined)
     }
+    if(active?.type==='origin')setOriginPreview(undefined)
   }
   function clearTap() {
     if(lastTap.current?.timer!==undefined)clearTimeout(lastTap.current.timer)
     lastTap.current=null
   }
   function editBody(id:string) {
-    if(props.running)props.pause()
-    props.setTool('select')
+    if(latest.current.running)latest.current.pause()
+    latest.current.setTool('select')
+    select(id)
+    setTargetMenu(null)
+    if(latest.current.openProperties)latest.current.openProperties(id)
+    else setEditingId(id)
+  }
+  function beginTransform(id:string) {
+    if(latest.current.running)latest.current.pause()
+    latest.current.setTool('select')
     select(id)
     setEditingId(id)
     setTargetMenu(null)
+    canvas.current?.focus()
   }
   function tapBody(id:string,pixel:Point,single?:()=>void) {
     const previous=lastTap.current
@@ -448,7 +470,7 @@ export function Viewport(props:ViewportProps) {
     if(!anchor) {setAnchor({id:hit.id,world,local:local(world,hit.position,hit.angle)});return}
     if(anchor.id===hit.id)return
     const j:Spring={id:crypto.randomUUID(),a:anchor.id,b:hit.id,anchorA:anchor.local,anchorB:local(world,hit.position,hit.angle),
-      restLength:Math.max(0.1,Math.hypot(world.x-anchor.world.x,world.y-anchor.world.y)),stiffness:40,damping:0.15}
+      restLength:Math.max(0.1,Math.hypot(world.x-anchor.world.x,world.y-anchor.world.y)),stiffness:40,damping:0.15,role:'constraint'}
     if(change({joints:[...scene.joints,j]})) {setAnchor(null);select(j.id)}
   }
   function onDown(e:ReactPointerEvent<HTMLCanvasElement>) {
@@ -460,7 +482,7 @@ export function Viewport(props:ViewportProps) {
     e.currentTarget.focus()
     const {pixel,world}=points(e)
     const forcedPan=e.button===1||space.current||isReplay
-    const type=forcedPan?'pan':drawPointer?'draw':erasePointer?'erase':tool
+    const type=originEditing&&!isReplay&&e.button===0?'origin':forcedPan?'pan':drawPointer?'draw':erasePointer?'erase':tool
     const edited=type==='select'?editingBody():undefined
     if(edited&&hitsRotation(edited,world,e.pointerType==='touch'?16:11)) {
       clearTap()
@@ -478,7 +500,13 @@ export function Viewport(props:ViewportProps) {
       e.currentTarget.setPointerCapture(e.pointerId)
       return
     }
-    if(props.running&&type!=='select'&&type!=='pan') {report('请先暂停模拟，再编辑场景。');return}
+    if(props.running&&type!=='select'&&type!=='pan'&&type!=='origin') {report('请先暂停模拟，再编辑场景。');return}
+    if(type==='origin') {
+      drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'origin',positions:new Map()}
+      setCursor('crosshair')
+      e.currentTarget.setPointerCapture(e.pointerId)
+      return
+    }
     if(type==='draw') {
       inkPath.current=[world]
       holdReady.current=false
@@ -486,7 +514,7 @@ export function Viewport(props:ViewportProps) {
       setDraft([world])
       drag.current={pointer:e.pointerId,from:world,now:world,pixel,camera,type:'draw',positions:new Map(),ink:inkPath.current}
       e.currentTarget.setPointerCapture(e.pointerId)
-      if(props.ink.mode==='hold')scheduleHold()
+      if(props.ink.mode==='hold')inkHold.current.start(pixel)
       return
     }
     if(type==='erase') {
@@ -534,17 +562,25 @@ export function Viewport(props:ViewportProps) {
     }
     if(!d||d.pointer!==e.pointerId)return
     d.now=world
+    if(d.type==='origin') {
+      if(Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5)d.moved=true
+      if(d.moved)setOriginPreview({...latest.current.scene.coordinates,origin:{
+        x:latest.current.scene.coordinates.origin.x+(world.x-d.from.x),
+        y:latest.current.scene.coordinates.origin.y+(world.y-d.from.y),
+      }})
+      return
+    }
     if(d.type==='draw') {
+      const moved=inkHold.current.move(pixel)
+      if(moved) {
+        holdReady.current=false
+        d.holdReady=false
+        setHoldPreview(false)
+      }
       const last=inkPath.current.at(-1)
       if(!last||Math.hypot(world.x-last.x,world.y-last.y)>=2/d.camera.scale) {
         inkPath.current.push(world)
         setDraft([...inkPath.current])
-        if(holdReady.current||d.holdReady) {
-          holdReady.current=false
-          d.holdReady=false
-          setHoldPreview(false)
-        }
-        if(props.ink.mode==='hold')scheduleHold()
       }
       return
     }
@@ -575,12 +611,26 @@ export function Viewport(props:ViewportProps) {
     const d=drag.current
     if(!d||d.pointer!==e.pointerId)return
     const {pixel,world:b}=points(e)
+    if(d.type==='origin') {
+      const base=latest.current.scene.coordinates
+      const coordinates={...base,origin:{x:base.origin.x+b.x-d.from.x,y:base.origin.y+b.y-d.from.y}}
+      cancelDrag()
+      if(Math.hypot(pixel.x-d.pixel.x,pixel.y-d.pixel.y)>5) {
+        change({coordinates:{...coordinates,origin:{
+          x:Math.round(coordinates.origin.x*1e9)/1e9,
+          y:Math.round(coordinates.origin.y*1e9)/1e9,
+        }}})
+      }
+      setOriginEditing(false)
+      return
+    }
     if(d.type==='draw') {
       const path=[...inkPath.current]
+      if(!path.at(-1)||Math.hypot(b.x-path.at(-1)!.x,b.y-path.at(-1)!.y)>1e-6)path.push(b)
       const mode=props.ink.mode
       const regularize=mode==='immediate'||(mode==='hold'&&Boolean(d.holdReady||holdReady.current))
       cancelDrag()
-      const result=createInk(path,props.ink.color,regularize,props.ink.width)
+      const result=createInk(path,props.ink.color,regularize,props.ink.width,props.ink.role)
       if('error' in result)report(result.error)
       else add(result.body,true)
       return
@@ -642,9 +692,15 @@ export function Viewport(props:ViewportProps) {
     const view={width:el.clientWidth,height:el.clientHeight}
     setCamera(zoomAt(camera,view,{x:view.width/2,y:view.height/2},factor))
   }
+  const coordinates=originPreview??scene.coordinates
+  const displayPosition=displayPoint(position,coordinates.origin)
+  const cursorPolar=polarPosition(position,coordinates.origin)
+  const coordinateReadout=coordinates.mode==='none'?'无坐标系':coordinates.mode==='polar'
+    ?<>θ {cursorPolar.theta===undefined?'—':(cursorPolar.theta*180/Math.PI).toFixed(1)+'°'} &nbsp; r {cursorPolar.r.toFixed(2)} m</>
+    :<>X {displayPosition.x.toFixed(2)} &nbsp; Y {displayPosition.y.toFixed(2)} m</>
   return <section className="viewport" aria-label="模拟视图">
-    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':tool}
-      style={tool==='draw'?{cursor:'crosshair'}:tool==='eraser'?{cursor:'none'}:editing&&cursor?{cursor}:undefined}
+    <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':originEditing?'origin':tool}
+      style={tool==='draw'?{cursor:'crosshair'}:tool==='eraser'?{cursor:'none'}:originEditing||editing&&cursor?{cursor:originEditing?'crosshair':cursor}:undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={cancelDrag}
       onLostPointerCapture={e=>{if(drag.current?.pointer===e.pointerId)cancelDrag()}}
       onContextMenu={onContext} onKeyDown={e=>{
@@ -668,10 +724,21 @@ export function Viewport(props:ViewportProps) {
         setTargetMenu(null)
         canvas.current?.focus()
       }}><Trash2 size={16}/> 删除目标</button>
+      {targetMenu.target.body&&<button type="button" aria-label="变换物体" onClick={()=>beginTransform(targetMenu.target.id)}><MoveUpRight size={16}/> 变换物体</button>}
     </div>}
-    <div className="view-heading"><span className="view-tag"><Crosshair size={13}/> {isReplay?'历史回放':'模拟视图'}</span>
+    <div className="view-heading"><div className="view-heading-left">
+      <span className="view-tag"><Crosshair size={13}/> {isReplay?'历史回放':'模拟视图'}</span>
+      <label className="coordinate-picker"><span>坐标系</span><select aria-label="坐标系" disabled={isReplay} value={scene.coordinates.mode} onChange={e=>{
+        change({coordinates:{...scene.coordinates,mode:e.target.value as Coordinates['mode']}})
+        setOriginEditing(false);setOriginPreview(undefined);setDisplayMenu(false)
+      }}>
+        <option value="cartesian">直角坐标</option><option value="polar">极坐标</option><option value="none">无坐标系</option>
+      </select></label>
+      {scene.coordinates.mode!=='none'&&!isReplay&&<button type="button" className={'icon coordinate-origin'+(originEditing?' on':'')} title="移动坐标原点" aria-label="移动坐标原点" aria-pressed={originEditing}
+        onClick={()=>{setOriginEditing(value=>!value);setOriginPreview(undefined);setDisplayMenu(false)}}><LocateFixed size={15}/></button>}
+    </div>
       <div className="view-actions">
-        <button className={display.grid?'icon on':'icon'} title="切换坐标网格" aria-label="切换坐标网格" aria-pressed={display.grid} onClick={()=>setDisplay({...display,grid:!display.grid})}><Grid2X2 size={16}/></button>
+        {scene.coordinates.mode!=='none'&&<button className={display.grid?'icon on':'icon'} title="切换坐标网格" aria-label="切换坐标网格" aria-pressed={display.grid} onClick={()=>setDisplay({...display,grid:!display.grid})}><Grid2X2 size={16}/></button>}
         <button className={displayMenu?'icon on':'icon'} title="显示选项" aria-label="显示选项" aria-expanded={displayMenu} onClick={()=>setDisplayMenu(!displayMenu)}><ChevronsUpDown size={16}/></button>
       </div>
     </div>
@@ -679,22 +746,23 @@ export function Viewport(props:ViewportProps) {
       {(['velocity','acceleration','forces','trails','reference'] as const).map(key=><label key={key}><input type="checkbox" disabled={isReplay&&key==='forces'} checked={display[key]} onChange={e=>setDisplay({...display,[key]:e.target.checked})}/>{displayLabels[key]}</label>)}
       <label>矢量比例 <input aria-label="矢量比例" type="range" min=".1" max="3" step=".1" value={display.vectorScale} onChange={e=>setDisplay({...display,vectorScale:+e.target.value})}/></label>
     </div>}
-    <div className="viewport-footer" style={{right: Math.max(48,Math.min(1,Math.pow(2,Math.ceil(Math.log2(62/camera.scale))))*camera.scale+34)}}>
-      <div className="coordinates"><MoveUpRight size={13}/> X {position.x.toFixed(2)} &nbsp; Y {position.y.toFixed(2)} m</div>
+    <div className="viewport-footer" style={{right: Math.max(48,Math.min(1,coordinateGridStep(camera.scale))*camera.scale+34)}}>
+      <div className="coordinates" aria-label="坐标读数">{coordinateReadout}</div>
       <div className="zoom">
-        <button className="icon" aria-label="缩小" onClick={()=>doZoom(0.8)}><Minus size={16}/></button>
+        <button className="icon" aria-label="缩小" title="缩小视图" onClick={()=>doZoom(0.8)}><Minus size={16}/></button>
         <span>{Math.round(camera.scale/80*100)}%</span>
-        <button className="icon" aria-label="放大" onClick={()=>doZoom(1.25)}><Plus size={16}/></button>
-        <button className="icon" aria-label="重置视图" onClick={props.resetCamera}><LocateFixed size={17}/></button>
+        <button className="icon" aria-label="放大" title="放大视图" onClick={()=>doZoom(1.25)}><Plus size={16}/></button>
+        <button className="icon" aria-label="重置视图" title="重置视图" onClick={props.resetCamera}><LocateFixed size={17}/></button>
       </div>
     </div>
-    {!isReplay&&tool!=='select'&&<div className="tool-hint">{anchor?'请选择第二个连接点':interaction[tool]}
-      {tool==='draw'&&<span className="ink-status" role="status">{draft.length>0?(holdPreview?'已停留 1.5 秒 · 松开自动规整':drawHint(props.ink.mode)):drawHint(props.ink.mode)}</span>}
+    {!isReplay&&originEditing&&<div className="tool-hint" role="status">移动坐标原点 · 拖动改变测量基准，不移动物体</div>}
+    {!isReplay&&!originEditing&&tool!=='select'&&<div className="tool-hint">{anchor?'请选择第二个连接点':interaction[tool]}
+      {tool==='draw'&&<span className="ink-status" role="status">{draft.length>0?(holdPreview?'已停留 0.9 秒 · 松开自动规整':drawHint(props.ink.mode)):drawHint(props.ink.mode)}</span>}
       {tool==='eraser'&&<span className="ink-status" role="status">{props.ink.eraserMode==='stroke'?'整笔删除':'拖动擦除可切断曲线'} · {props.ink.eraserSize==='small'?'小':props.ink.eraserSize==='medium'?'中':'大'}号</span>}
     </div>}
-    {!isReplay&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">{editing?'拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转':'拖物体移动 · 双击编辑 · 拖空白平移'}</span>}
+    {!isReplay&&!originEditing&&tool==='select'&&scene.bodies.length>0&&<span className="select-hint">{editing?'拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转':'拖物体移动 · 双击属性 · 右键变换/删除'}</span>}
     {snapLabel&&<div className="snap-hint" role="status"><Magnet size={14}/> 松手贴合 {snapLabel}</div>}
-    {scene.bodies.length===0&&tool==='select'&&<div className="canvas-empty"><Orbit size={25}/><strong>当前场景为空</strong><span>使用顶部的绘制工具，在画布上勾勒场景。</span></div>}
+    {scene.bodies.length===0&&tool==='select'&&<div className="canvas-empty"><Orbit size={25}/><strong>当前场景为空</strong><span>使用底部的绘制工具，在画布上勾勒场景。</span></div>}
   </section>
 }
 

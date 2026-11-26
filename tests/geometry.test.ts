@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { compileExpression } from '../src/geometry-expression'
-import { defaultGeometry, fitStroke, geometryPaths, insertNode, makeMesh, makeTrack, meshObj, primitive, trackExperiment } from '../src/geometry'
+import { defaultGeometry, fitStroke, geometryExperiment, geometryPaths, insertNode, makeMesh, makeTrack, meshObj, primitive, trackExperiment } from '../src/geometry'
 import { decodeExperiment } from '../src/model'
 import { Physics } from '../src/physics'
 import { instantiate } from '../src/templates'
@@ -72,11 +72,46 @@ describe('geometry sampling',()=>{
   })
 })
 
+it('imports validated geometry with editable roles and physical properties',()=>{
+  const project={...defaultGeometry(),...primitive('circle')}
+  const marker=geometryExperiment(project,0.04,{role:'marker'})
+  expect(marker.version).toBe(3)
+  expect(marker.bodies[0]).toMatchObject({role:'marker',type:'static',geometry:{kind:'freeform',closed:true}})
+  expect(new Physics(marker).bodies.get(marker.bodies[0].id)?.getFixtureList()).toBeNull()
+  const boundary=geometryExperiment(project,0.04,{role:'boundary',friction:.7,restitution:.2,gravity:1.62})
+  expect(boundary.environment.gravity).toBe(1.62)
+  expect(boundary.bodies[0]).toMatchObject({role:'boundary',friction:.7,restitution:.2})
+  const body=geometryExperiment(project,0.04,{role:'body',mass:2.5})
+  expect(body.bodies[0]).toMatchObject({role:'body',type:'dynamic',mass:2.5})
+  const run=new Physics(body)
+  expect(run.bodies.get(body.bodies[0].id)?.getMass()).toBeCloseTo(2.5,8)
+  let fixtures=0
+  for(let fixture=run.bodies.get(body.bodies[0].id)?.getFixtureList();fixture;fixture=fixture.getNext())fixtures++
+  expect(fixtures).toBeGreaterThan(2)
+  const field=geometryExperiment(project,0.04,{role:'field',charge:-25})
+  expect(field.bodies[0]).toMatchObject({role:'field',type:'static',charge:-25})
+  expect(new Physics(field).bodies.get(field.bodies[0].id)?.getFixtureList()).toBeNull()
+  expect(field.notes).toContain('几何工作室')
+  expect(field.notes).toContain('有损')
+})
+
+it('rejects discontinuous geometry and open dynamic bodies instead of inventing collision shapes',()=>{
+  const project=defaultGeometry()
+  expect(()=>geometryExperiment({...project,mode:'function',function:{...project.function,expression:'1/(x-0.113)'}},0.04,{role:'boundary'})).toThrow('间断')
+  expect(()=>geometryExperiment(project,0.04,{role:'body'})).toThrow('封闭')
+  const dynamic=geometryExperiment({...project,...primitive('polygon')},0.04,{role:'body'})
+  expect(dynamic.bodies[0].type).toBe('dynamic')
+  expect(()=>geometryExperiment(project,0.04,{role:'body',mass:0})).toThrow('质量')
+})
+
 it('Planck supports a falling ball on a flat track and retains contacts across a curved chain',()=>{
   for(const project of [{...defaultGeometry(),...primitive('line')},defaultGeometry()]) {
     const scene=trackExperiment(project,0.04,true),[track,ball]=scene.bodies
-    expect(scene.version).toBe(2)
-    expect(()=>decodeExperiment({...scene,version:1})).toThrow('版本 2')
+    expect(scene.version).toBe(3)
+    expect(track.role).toBe('track')
+    expect(scene.notes).toContain('几何工作室')
+    expect(scene.notes).toContain('离散容差 0.04 m')
+    expect(()=>decodeExperiment({...scene,version:2})).toThrow('版本 3')
     const physics=new Physics(scene)
     const live=physics.bodies.get(ball.id)!
     expect(physics.bodies.get(track.id)?.getFixtureList()?.getShape().getType()).toBe('chain')

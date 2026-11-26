@@ -42,6 +42,7 @@ export function containsPoint(body:Bounded,point:Point,tolerance=0) {
   const local=rotate({x:point.x-body.position.x,y:point.y-body.position.y},-body.angle)
   const g=body.geometry
   if(g.kind==='circle')return Math.hypot(local.x,local.y)<=g.radius+tolerance
+  if(g.kind==='ellipse')return (local.x/(g.radiusX+tolerance))**2+(local.y/(g.radiusY+tolerance))**2<=1
   if(g.kind==='polygon')return pointInPolygon(local,g.vertices)||distanceToPolyline(local,g.vertices,true)<=tolerance
   if(g.kind==='track')return distanceToPolyline(local,g.vertices,g.closed)<=tolerance||(g.closed&&pointInPolygon(local,g.vertices))
   if(g.kind==='freeform')return (g.closed&&pointInPolygon(local,g.vertices))||distanceToPolyline(local,g.vertices,g.closed)<=tolerance
@@ -53,6 +54,10 @@ export function outlinePoints(body:Bounded):Point[] {
   if(g.kind==='circle')return toWorld(body,Array.from({length:32},(_,i)=>{
     const angle=i*Math.PI/16
     return {x:g.radius*Math.cos(angle),y:g.radius*Math.sin(angle)}
+  }))
+  if(g.kind==='ellipse')return toWorld(body,Array.from({length:64},(_,i)=>{
+    const angle=i*Math.PI/32
+    return {x:g.radiusX*Math.cos(angle),y:g.radiusY*Math.sin(angle)}
   }))
   if(g.kind==='polygon'||g.kind==='track'||g.kind==='freeform')return toWorld(body,g.vertices)
   return toWorld(body,[

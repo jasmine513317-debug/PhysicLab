@@ -42,6 +42,7 @@ function parameters(scene: Experiment) {
     field('角速度', format(body.angularVelocity) + ' rad/s')
     const g = body.geometry
     if (g.kind === 'circle') field('半径', format(g.radius) + ' m')
+    else if (g.kind === 'ellipse') field('轴半径', format(g.radiusX) + ' × ' + format(g.radiusY) + ' m')
     else if (g.kind === 'polygon' || g.kind === 'track' || g.kind === 'freeform') field('顶点', g.vertices.map(p => point(p, 'm')).join('、'))
     else field('尺寸', format(g.width) + ' × ' + format(g.height) + ' m')
   }

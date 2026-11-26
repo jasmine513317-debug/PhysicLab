@@ -1,6 +1,6 @@
-import { body, type BodyColor, type BodyConfig, type Point } from './model'
+import { body, type BodyColor, type BodyConfig, type ObjectRole, type Point } from './model'
 import { centroid, convexHull } from './freeform'
-import { freeformError, polygonArea } from './track'
+import { freeformError, polygonArea, simplifyPath } from './track'
 
 const distance=(a:Point,b:Point)=>Math.hypot(b.x-a.x,b.y-a.y)
 
@@ -153,75 +153,140 @@ function inkBody(points:Point[],closed:boolean,color:BodyColor,name:string,type:
   return body(name,geometry,center.x,center.y,{type,color,strokeWidth})
 }
 
-export type InkResult = {body:BodyConfig;label:string;kind:'line'|'circle'|'rectangle'|'polygon'|'curve'|'freeform'} | {error:string}
+export type InkKind='line'|'circle'|'ellipse'|'rectangle'|'polygon'|'polyline'|'curve'|'freeform'
+export type Recognition={raw:Point[];confidence:number;fitError:number;sampleDensity:number;sampleCount:number}
+export type InkResult={body:BodyConfig;label:string;kind:InkKind;regularized:boolean;recognition:Recognition}|{error:string}
 
-export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolean,strokeWidth=2.4):InkResult {
+function ellipseFit(points:Point[]) {
+  const center=centroid(points)
+  let xx=0,yy=0,xy=0
+  for(const p of points) {xx+=(p.x-center.x)**2;yy+=(p.y-center.y)**2;xy+=(p.x-center.x)*(p.y-center.y)}
+  xx/=points.length;yy/=points.length;xy/=points.length
+  const angle=.5*Math.atan2(2*xy,xx-yy)
+  const c=Math.cos(angle),s=Math.sin(angle)
+  const along=points.map(p=>({x:(p.x-center.x)*c+(p.y-center.y)*s,y:-(p.x-center.x)*s+(p.y-center.y)*c}))
+  const radiusX=Math.sqrt(Math.max(0,along.reduce((sum,p)=>sum+p.x*p.x,0)/points.length*2))
+  const radiusY=Math.sqrt(Math.max(0,along.reduce((sum,p)=>sum+p.y*p.y,0)/points.length*2))
+  const error=Math.sqrt(along.reduce((sum,p)=>{
+    const radial=Math.hypot(p.x/radiusX,p.y/radiusY)
+    return sum+(radial-1)**2*Math.min(radiusX,radiusY)**2
+  },0)/points.length)
+  return {center,radiusX,radiusY,angle,error}
+}
+
+function cornerAngles(points:Point[]) {
+  return points.slice(1,-1).map((p,i)=>{
+    const a=points[i],b=points[i+2],u={x:p.x-a.x,y:p.y-a.y},v={x:b.x-p.x,y:b.y-p.y}
+    const denom=Math.hypot(u.x,u.y)*Math.hypot(v.x,v.y)
+    return denom?Math.acos(Math.max(-1,Math.min(1,(u.x*v.x+u.y*v.y)/denom))):0
+  }).filter(angle=>angle>.35)
+}
+
+function segmentError(points:Point[],vertices:Point[],closed:boolean) {
+  const path=closed?[...vertices,vertices[0]]:vertices
+  let sum=0
+  for(const point of points) {
+    let best=Infinity
+    for(let i=0;i<path.length-1;i++) {
+      const a=path[i],b=path[i+1],dx=b.x-a.x,dy=b.y-a.y
+      const t=Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/(dx*dx+dy*dy||1)))
+      best=Math.min(best,Math.hypot(point.x-a.x-t*dx,point.y-a.y-t*dy))
+    }
+    sum+=best*best
+  }
+  return Math.sqrt(sum/points.length)
+}
+
+export function createInk(raw:readonly Point[],color:BodyColor,regularize:boolean,strokeWidth=2.4,role:ObjectRole='body'):InkResult {
   const source=dedupe(raw)
   if(source.length<2)return {error:'笔画太短，请画出更长的线条。'}
-  const box=bounds(source)
-  const diagonal=Math.hypot(box.width,box.height)
+  if(source.length>1200||!source.every(p=>[p.x,p.y].every(n=>Number.isFinite(n)&&Math.abs(n)<=10000)))return {error:'笔迹过长或坐标无效。'}
+  const box=bounds(source),diagonal=Math.hypot(box.width,box.height),length=pathLength(source,false)
   if(diagonal<0.06)return {error:'图形太小，请放大画布后再绘制。'}
   const closed=isClosedStroke(source,diagonal)
-
-  if(!regularize) {
-    let points=decimate(source,closed)
-    points=thin(points,closed)
-    if(closed) {
-      if(points.length<3)return {error:'封闭图形过小，请画得更大一些。'}
-      const error=freeformError(points,true,true)
-      if(error)return {error}
-      return {body:inkBody(points,true,color,'手绘物块','dynamic',strokeWidth),label:'手绘物块',kind:'freeform'}
+  const sampleCount=source.length
+  const sampleDensity=length/sampleCount
+  const evidence=(confidence:number,fitError:number):Recognition=>({raw:source.map(p=>({...p})),confidence:Math.max(0,Math.min(.99,confidence)),fitError,sampleDensity,sampleCount})
+  function finish(config:BodyConfig,label:string,kind:InkKind,confidence:number,fitError:number,changed=regularize):InkResult {
+    const dynamic=role==='body'&&closed
+    let geometry=config.geometry
+    if(role==='track'||role==='boundary') {
+      if(geometry.kind==='freeform')geometry={kind:'track',vertices:geometry.vertices,closed}
+      else if(closed) {
+        const points=resample(source,96,true)
+        const local=centroid(points)
+        config.position=local
+        geometry={kind:'track',vertices:points.map(p=>({x:p.x-local.x,y:p.y-local.y})),closed:true}
+      } else {
+        const points=thin(source,false),local=centroid(points)
+        config.position=local
+        geometry={kind:'track',vertices:points.map(p=>({x:p.x-local.x,y:p.y-local.y})),closed:false}
+      }
     }
-    if(points.length<2)return {error:'笔画太短，请画出更长的线条。'}
-    return {body:inkBody(points,false,color,'手绘曲线','static',strokeWidth),label:'手绘曲线（静态斜面/碰撞曲线）',kind:'freeform'}
+    const final=role==='body'?{...config,type:dynamic?'dynamic' as const:'static' as const,geometry,role}:
+      {...config,type:'static' as const,geometry,role,velocity:{x:0,y:0},angularVelocity:0,...(role==='field'?{charge:10}:{})}
+    final.provenance={source:'ink',raw:source.map(p=>({...p})),regularized:changed,confidence,fitError,sampleDensity}
+    return {body:final,label,kind,regularized:changed,recognition:evidence(confidence,fitError)}
   }
+  function fallback():InkResult {
+    let points=thin(decimate(source,closed),closed)
+    if(closed&&points.length<3)return {error:'封闭曲线过于简单，请画得更大一些。'}
+    if(!closed&&points.length<2)return {error:'笔画太短，请画出更长的线条。'}
+    const error=closed?freeformError(points,true,true):undefined
+    if(error)return {error}
+    const label=closed?(role==='marker'?'手绘标记':'手绘物块'):(role==='track'||role==='boundary'?'手绘轨道':!regularize?'手绘曲线（静态斜面/碰撞曲线）':'手绘曲线')
+    return finish(inkBody(points,closed,color,label,dynamicType(role,closed),strokeWidth),label,closed?'freeform':regularize?'curve':'freeform',.5,diagonal*.1,false)
+  }
+  if(!regularize)return fallback()
 
   const sampled=resample(source,closed?96:110,closed)
   if(closed) {
+    const fit=ellipseFit(source),axisRatio=Math.min(fit.radiusX,fit.radiusY)/Math.max(fit.radiusX,fit.radiusY)
+    const ellipseError=fit.error/Math.max(.02,Math.max(fit.radiusX,fit.radiusY))
+    const fill=Math.abs(polygonArea(sampled))/(Math.PI*fit.radiusX*fit.radiusY)
+    if(ellipseError<.045&&fill>.88&&axisRatio>.12&&Math.min(fit.radiusX,fit.radiusY)>.02) {
+      const circle=axisRatio>.88
+      const geometry=circle?{kind:'circle' as const,radius:(fit.radiusX+fit.radiusY)/2}:{kind:'ellipse' as const,radiusX:fit.radiusX,radiusY:fit.radiusY}
+      return finish(body(circle?'手绘圆':'手绘椭圆',geometry,fit.center.x,fit.center.y,{angle:circle?0:fit.angle,color,strokeWidth}),circle?'规整为圆':'规整为椭圆',circle?'circle':'ellipse',.99-ellipseError,fit.error)
+    }
     const boxFit=minimumBox(sampled)
     if(boxFit) {
       const ratio=Math.abs(polygonArea(sampled))/boxFit.area
       const aspect=Math.min(boxFit.width,boxFit.height)/Math.max(boxFit.width,boxFit.height)
-      if(ratio>.86&&aspect>.12&&boxFit.width>=0.02&&boxFit.height>=0.02)
-        return {body:body('手绘矩形',{kind:'rectangle',width:boxFit.width,height:boxFit.height},boxFit.cx,boxFit.cy,{angle:boxFit.angle,color,strokeWidth}),
-          label:'规整为矩形',kind:'rectangle'}
-    }
-
-    const center=centroid(sampled)
-    const radii=sampled.map(point=>distance(point,center))
-    const mean=radii.reduce((sum,r)=>sum+r,0)/radii.length
-    if(mean>0.03) {
-      const deviation=Math.sqrt(radii.reduce((sum,r)=>sum+(r-mean)**2,0)/radii.length)/mean
-      if(deviation<.13&&Math.abs(polygonArea(sampled))/(Math.PI*mean*mean)>.72)
-        return {body:body('手绘圆',{kind:'circle',radius:mean},center.x,center.y,{color,strokeWidth}),label:'规整为圆',kind:'circle'}
-    }
-
-    const hull=dropTinyCorners(convexHull(sampled))
-    if(hull.length>=3&&hull.length<=8) {
-      const hullArea=Math.abs(polygonArea(hull))
-      const fill=hullArea>1e-8?Math.abs(polygonArea(sampled))/hullArea:0
-      if(fill>.87) {
-        const local=centroid(hull)
-        const vertices=hull.map(p=>({x:p.x-local.x,y:p.y-local.y}))
-        const name=hull.length===3?'手绘三角形':'手绘多边形'
-        return {body:body(name,{kind:'polygon',vertices},local.x,local.y,{color,strokeWidth}),label:'规整为'+(hull.length===3?'三角形':'多边形'),kind:'polygon'}
+      if(ratio>.86&&aspect>.12&&boxFit.width>=.02&&boxFit.height>=.02) {
+        const error=segmentError(sampled,[
+          {x:boxFit.cx-boxFit.width/2,y:boxFit.cy-boxFit.height/2},{x:boxFit.cx+boxFit.width/2,y:boxFit.cy-boxFit.height/2},
+          {x:boxFit.cx+boxFit.width/2,y:boxFit.cy+boxFit.height/2},{x:boxFit.cx-boxFit.width/2,y:boxFit.cy+boxFit.height/2}],true)
+        if(error<diagonal*.08)return finish(body('手绘矩形',{kind:'rectangle',width:boxFit.width,height:boxFit.height},boxFit.cx,boxFit.cy,{angle:boxFit.angle,color,strokeWidth}),'规整为矩形','rectangle',.98-error/diagonal,error)
       }
     }
-
-    const smooth=thin(decimate(chaikin(sampled,true),true),true)
-    if(smooth.length<3)return {error:'封闭曲线过于简单，请画得更大一些。'}
-    const error=freeformError(smooth,true,true)
-    if(error)return {error}
-    return {body:inkBody(smooth,true,color,'手绘物块','dynamic',strokeWidth),label:'规整为平滑物块',kind:'freeform'}
+    const hull=dropTinyCorners(convexHull(sampled))
+    if(hull.length>=3&&hull.length<=8) {
+      const hullArea=Math.abs(polygonArea(hull)),fill=hullArea>1e-8?Math.abs(polygonArea(sampled))/hullArea:0
+      const error=segmentError(sampled,hull,true)
+      if(fill>.9&&error<diagonal*.065) {
+        const local=centroid(hull),vertices=hull.map(p=>({x:p.x-local.x,y:p.y-local.y}))
+        return finish(body(hull.length===3?'手绘三角形':'手绘多边形',{kind:'polygon',vertices},local.x,local.y,{color,strokeWidth}),'规整为'+(hull.length===3?'三角形':'多边形'),'polygon',.97-error/diagonal,error)
+      }
+    }
+    return fallback()
   }
 
-  if(isStraight(source)) {
-    const start=source[0],end=source.at(-1)!
-    if(distance(start,end)<0.02)return {error:'笔画太短，请画出更长的线条。'}
-    return {body:inkBody([start,end],false,color,'手绘直线','static',strokeWidth),label:'规整为直线',kind:'line'}
+  let lineError=0
+  const start=source[0],end=source.at(-1)!,chord=distance(start,end)
+  for(const point of source)lineError=Math.max(lineError,Math.abs((end.x-start.x)*(start.y-point.y)-(start.x-point.x)*(end.y-start.y))/(chord||1))
+  if(isStraight(source))return finish(inkBody([start,end],false,color,'手绘直线','static',strokeWidth),'规整为直线','line',.99-lineError/Math.max(.02,chord),lineError)
+  let tolerance=Math.max(.025,diagonal*.035)
+  let corners=simplifyPath(source,tolerance)
+  while(corners.length>16)corners=simplifyPath(source,tolerance*=1.35)
+  const error=segmentError(source,corners,false)
+  const angles=cornerAngles(corners)
+  const directions=new Set(source.slice(1).map((p,i)=>Math.round(Math.atan2(p.y-source[i].y,p.x-source[i].x)*3)))
+  if(corners.length>=3&&corners.length<=16&&error<=tolerance*1.8&&angles.length>=2&&Math.max(...angles)>=.9&&directions.size<=8) {
+    const local=centroid(corners),vertices=corners.map(p=>({x:p.x-local.x,y:p.y-local.y}))
+    return finish(body('手绘折线',{kind:'freeform',vertices,closed:false},local.x,local.y,{type:'static',color,strokeWidth}),'规整为折线','polyline',.96-error/diagonal,error)
   }
-
-  const smooth=thin(decimate(chaikin(sampled,false),false),false)
-  if(smooth.length<2)return {error:'笔画太短，请画出更长的线条。'}
-  return {body:inkBody(smooth,false,color,'平滑曲线','static',strokeWidth),label:'规整为平滑曲线',kind:'curve'}
+  return fallback()
 }
+
+function dynamicType(role:ObjectRole,closed:boolean):BodyConfig['type'] {return role==='body'&&closed?'dynamic':'static'}

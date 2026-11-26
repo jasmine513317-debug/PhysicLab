@@ -1,4 +1,8 @@
 import type { EraserMode } from './eraser'
+import type { ObjectRole } from './model'
+
+export type InkRole = Exclude<ObjectRole,'constraint'>
+export const INK_ROLES:InkRole[]=['marker','body','boundary','track','field']
 
 export const INK_WIDTHS = [1.8, 2.4, 3.6] as const
 export type InkWidth = typeof INK_WIDTHS[number]
@@ -13,6 +17,7 @@ export type InkPrefs = {
   customInks: string[]
   width: InkWidth
   mode: InkMode
+  role: InkRole
   eraserMode: EraserMode
   eraserSize: EraserSize
   eraserReturn: boolean
@@ -23,6 +28,7 @@ export const DEFAULT_INK_PREFS: InkPrefs = {
   customInks: [],
   width: 2.4,
   mode: 'hold',
+  role: 'body',
   eraserMode: 'stroke',
   eraserSize: 'medium',
   eraserReturn: false,
@@ -40,6 +46,9 @@ function isMode(value: unknown): value is InkMode {
 function isEraserSize(value: unknown): value is EraserSize {
   return ERASER_SIZES.includes(value as EraserSize)
 }
+function isRole(value: unknown): value is InkRole {
+  return INK_ROLES.includes(value as InkRole)
+}
 
 export function normalizeInkPrefs(value: unknown): InkPrefs {
   const source = value && typeof value === 'object' ? value as Partial<InkPrefs> : {}
@@ -53,6 +62,7 @@ export function normalizeInkPrefs(value: unknown): InkPrefs {
     customInks,
     width: isWidth(source.width) ? source.width : DEFAULT_INK_PREFS.width,
     mode: isMode(source.mode) ? source.mode : DEFAULT_INK_PREFS.mode,
+    role: isRole(source.role) ? source.role : DEFAULT_INK_PREFS.role,
     eraserMode: source.eraserMode === 'drag' ? 'drag' : 'stroke',
     eraserSize: isEraserSize(source.eraserSize) ? source.eraserSize : DEFAULT_INK_PREFS.eraserSize,
     eraserReturn: typeof source.eraserReturn === 'boolean' ? source.eraserReturn : false,

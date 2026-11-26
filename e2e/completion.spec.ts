@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { circlePixels, drawStroke, touchStroke } from './helpers'
+import { circlePixels, drawStroke, openAnalysis, openProperties, touchStroke } from './helpers'
 
 test('records poses, scrubs history, and restores the saved recording after reload',async({page})=>{
   await page.goto('/lab?template=collision')
@@ -33,6 +33,7 @@ test('records poses, scrubs history, and restores the saved recording after relo
 
 test('classifies a quick open stroke as a static curve and a closed stroke as a body',async({page})=>{
   await page.goto('/lab?new=1')
+  await openProperties(page)
   const canvas=page.getByLabel('物理场景')
   const bounds=(await canvas.boundingBox())!
   await page.getByRole('button',{name:'绘制',exact:true}).click()
@@ -40,18 +41,20 @@ test('classifies a quick open stroke as a static curve and a closed stroke as a 
     {x:bounds.x+140,y:bounds.y+150},{x:bounds.x+220,y:bounds.y+185},
     {x:bounds.x+320,y:bounds.y+140},{x:bounds.x+430,y:bounds.y+175},
   ])
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线')
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
   await expect(page.getByText(/手绘曲线（静态斜面\/碰撞曲线） · \d+ 个点/)).toBeVisible()
   await drawStroke(page,circlePixels(bounds.x+250,bounds.y+300,45))
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
   await expect(page.getByText(/手绘物块 · \d+ 个点/)).toBeVisible()
   await page.getByRole('button',{name:'运行',exact:true}).click()
+  await openAnalysis(page)
   await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
   await page.getByRole('button',{name:'暂停',exact:true}).click()
 })
 
 test('edits the initial spring displacement and shows vector velocity in comparisons',async({page})=>{
   await page.goto('/lab?template=spring')
+  await openProperties(page)
   await page.getByRole('combobox',{name:'当前物体'}).selectOption({label:'弹簧 1'})
   const displacement=page.getByRole('spinbutton',{name:'初始位移'})
   await expect(displacement).toHaveValue('1')
@@ -59,7 +62,9 @@ test('edits the initial spring displacement and shows vector velocity in compari
   await displacement.press('Enter')
   await expect(displacement).toHaveValue('-0.5')
   await expect(page.getByRole('spinbutton',{name:'原长'})).toHaveValue('3')
+  await page.getByRole('button',{name:'关闭参数面板'}).click()
   await page.getByRole('button',{name:'运行',exact:true}).click()
+  await openAnalysis(page)
   await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
   await page.getByRole('button',{name:'暂停',exact:true}).click()
   await page.getByRole('button',{name:'设为基准'}).click()
@@ -94,6 +99,7 @@ test('runs and edits a 50-body scene while recording data and rendering charts',
   console.log(browserName+' · 50 bodies · frame interval p90 '+p90.toFixed(1)+' ms')
   expect(p90).toBeLessThan(100)
   await expect.poll(async()=>parseFloat((await page.getByLabel('模拟时间',{exact:true}).textContent())??'0')).toBeGreaterThan(0.5)
+  await openAnalysis(page)
   await page.getByRole('button',{name:'速度',exact:true}).click()
   await expect(page.getByLabel('速度随模拟时间变化')).toBeVisible()
   await page.getByRole('button',{name:'暂停',exact:true}).click()
@@ -108,9 +114,12 @@ test.describe('mobile touch emulation',()=>{
     const canvas=page.getByLabel('物理场景')
     const bounds=(await canvas.boundingBox())!
     await touchStroke(page,circlePixels(bounds.x+bounds.width/2,bounds.y+bounds.height/2,45,28))
+    await page.getByRole('button',{name:'选择',exact:true}).click()
+    await openProperties(page)
     await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
     // A raw CDP touch stroke leaves Chromium's gesture state so the next synthesized tap emits no click.
     await page.getByRole('button',{name:'运行',exact:true}).click()
+    await openAnalysis(page)
     await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
     await page.getByRole('button',{name:'暂停',exact:true}).click()
   })
@@ -118,7 +127,10 @@ test.describe('mobile touch emulation',()=>{
 
 test('edits boundaries and resizes the data panel with the keyboard',async({page})=>{
   await page.goto('/lab?template=fall')
-  await page.getByRole('button',{name:'环境',exact:true}).click()
+  await openProperties(page)
+  await page.getByRole('combobox',{name:'当前物体'}).selectOption('')
+  await page.getByRole('button',{name:'关闭参数面板'}).click()
+  await openProperties(page,'world')
   await page.getByRole('checkbox',{name:'启用场景边界'}).check()
   const limit=page.getByRole('spinbutton',{name:'右边界 X'})
   await limit.fill('4')
@@ -127,6 +139,8 @@ test('edits boundaries and resizes the data panel with the keyboard',async({page
   await limit.fill('-12')
   await limit.press('Enter')
   await expect(page.getByRole('alert')).toContainText('最大值必须比最小值至少大')
+  await page.getByRole('button',{name:'关闭参数面板'}).click()
+  await openAnalysis(page)
   const handle=page.getByRole('separator',{name:'调整分析面板高度'})
   const panel=page.getByRole('region',{name:'数据分析'})
   const before=(await panel.boundingBox())!.height

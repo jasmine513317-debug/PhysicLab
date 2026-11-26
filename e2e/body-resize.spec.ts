@@ -1,23 +1,26 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { openImportedScene, pixelOf } from './helpers'
+import { openImportedScene, openProperties, pixelOf, touchStroke } from './helpers'
 
 function rectangleScene(title:string) {
   return {...emptyExperiment(),title,camera:{x:0,y:2.2,scale:80},
     bodies:[body(title,{kind:'rectangle',width:.8,height:.6},0,2.2,{restitution:0})]}
 }
 
-test('double-clicks a placed block, drags its edge and interior, and undoes each drag',async({page})=>{
+test('opens transform from the target menu, drags a block edge and interior, and undoes each drag',async({page})=>{
   const scene=rectangleScene('缩放方块')
   const canvas=await openImportedScene(page,scene)
   const tools=page.getByRole('complementary',{name:'场景工具'})
   const bounds=(await canvas.boundingBox())!
   const center=pixelOf(bounds,scene.camera,{x:0,y:2.2})
   const local=(x:number,y:number)=>({x:center.x-bounds.x+x,y:center.y-bounds.y+y})
-  await canvas.dblclick({position:local(0,0)})
+  await expect(page.getByRole('complementary',{name:'参数面板'})).toHaveCount(0)
+  await canvas.click({position:local(0,0),button:'right'})
+  await page.getByRole('button',{name:'变换物体',exact:true}).click()
   const hint=page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')
   await expect(hint).toBeVisible()
   await expect(tools.getByRole('button',{name:'选择',exact:true})).toHaveAttribute('aria-pressed','true')
+  await openProperties(page)
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:'缩放方块'})).toHaveCount(1)
   const move=(x:number,y:number)=>page.mouse.move(bounds.x+center.x-bounds.x+x,bounds.y+center.y-bounds.y+y,{steps:6})
   const width=page.getByRole('spinbutton',{name:'宽度',exact:true})
@@ -39,7 +42,7 @@ test('double-clicks a placed block, drags its edge and interior, and undoes each
   expect(Number(await x.inputValue())).toBeCloseTo(startX+.75)
   expect(Number(await y.inputValue())).toBeCloseTo(startY+.2)
   await canvas.press('Control+z')
-  expect(Number(await x.inputValue())).toBeCloseTo(startX+.25)
+  await expect(x).toHaveValue(String(+(startX+.25).toFixed(5)))
   await canvas.press('Control+z')
   await expect(width).toHaveValue('0.8')
   await expect(hint).toBeVisible()
@@ -54,13 +57,21 @@ test('double-clicks a placed block, drags its edge and interior, and undoes each
 
 test.describe('touch editing',()=>{
   test.use({hasTouch:true,viewport:{width:390,height:844}})
-  test('double-taps to edit a block',async({page})=>{
+  test('double-tap opens properties and long-press opens transform',async({page})=>{
     const scene=rectangleScene('触控方块')
     const canvas=await openImportedScene(page,scene)
     const bounds=(await canvas.boundingBox())!
     const p=pixelOf(bounds,scene.camera,{x:0,y:2.2})
-    await canvas.tap({position:{x:p.x-bounds.x,y:p.y-bounds.y}})
-    await canvas.tap({position:{x:p.x-bounds.x,y:p.y-bounds.y}})
+    const position={x:p.x-bounds.x,y:p.y-bounds.y}
+    await canvas.tap({position})
+    await canvas.tap({position})
+    await expect(page.getByRole('complementary',{name:'参数面板'})).toBeVisible()
+    await openProperties(page)
+    await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('触控方块')
+    await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toHaveCount(0)
+    await page.getByRole('button',{name:'关闭参数面板'}).click()
+    await touchStroke(page,[p],550)
+    await page.getByRole('button',{name:'变换物体',exact:true}).tap()
     await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toBeVisible()
   })
 })
@@ -70,7 +81,9 @@ test('rotates around the block center with the round handle and supports undo',a
   const canvas=await openImportedScene(page,scene)
   const bounds=(await canvas.boundingBox())!
   const center=pixelOf(bounds,scene.camera,{x:0,y:2.2})
-  await canvas.dblclick({position:{x:center.x-bounds.x,y:center.y-bounds.y}})
+  await canvas.click({position:{x:center.x-bounds.x,y:center.y-bounds.y},button:'right'})
+  await page.getByRole('button',{name:'变换物体',exact:true}).click()
+  await openProperties(page)
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
   const y=page.getByRole('spinbutton',{name:'Y 坐标'})
   const angle=page.getByRole('spinbutton',{name:'旋转角'})

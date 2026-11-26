@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { openImportedScene, pixelOf } from './helpers'
+import { openImportedScene, openProperties, pixelOf } from './helpers'
 
 for(const surface of ['地面','斜面'] as const) {
   test('previews and commits block contact with '+surface+' as one undoable drag',async({page})=>{
@@ -16,6 +16,7 @@ for(const surface of ['地面','斜面'] as const) {
     const start=pixelOf(bounds,scene.camera,{x:0,y:2.2})
     const surfaceCenter=pixelOf(bounds,scene.camera,{x:0,y:1})
     const move=(x:number,y:number)=>page.mouse.move(x,y,{steps:10})
+    await openProperties(page)
     const x=page.getByRole('spinbutton',{name:'X 坐标'})
     const y=page.getByRole('spinbutton',{name:'Y 坐标'})
     const rotation=page.getByRole('spinbutton',{name:'旋转角'})

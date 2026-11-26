@@ -7,6 +7,7 @@ import { loadAstronomy, saveAstronomy } from './repository'
 import { appUrl } from './routes'
 import { downloadText } from './download'
 import { extendedTemplates, extensionUrl } from './extended-experiments'
+import { formatNumber } from './numberFormat'
 import './astronomy.css'
 
 const layerLabels={reference:'理论轨道',trails:'运行轨迹',center:'质心',velocity:'速度矢量',apsides:'近心点与远心点',sweeps:'扫过面积'} as const
@@ -19,15 +20,16 @@ function format(value:number|undefined,digits=4) {
 
 function Numeric({label,unit,value,min,max,change}:{label:string;unit:string;value:number;min:number;max:number;change:(value:number)=>void}) {
   const key=useId()
+  const display=formatNumber(value)
   const [invalid,setInvalid]=useState(false)
   return <div className="astronomy-field"><label htmlFor={key}>{label} <small>{unit}</small></label>
-    <input id={key} key={value} type="number" step="any" min={min} max={max} defaultValue={Number(value.toPrecision(9))}
+    <input id={key} key={value} type="number" step="any" min={min} max={max} defaultValue={display}
       aria-invalid={invalid} aria-describedby={invalid?key+'-error':undefined} onChange={()=>setInvalid(false)}
       onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}}
       onBlur={event=>{
         const next=event.currentTarget.valueAsNumber
         if(!Number.isFinite(next)||next<min||next>max){setInvalid(true);return}
-        if(next!==Number(value.toPrecision(9)))change(next)
+        if(next!==Number(display))change(next)
       }} />
     {invalid&&<small id={key+'-error'} className="astronomy-field-error">请输入 {min} 至 {max} {unit}。</small>}
   </div>
@@ -208,9 +210,9 @@ function AstronomyEditor({initial,initiallySaved,active,updateSavedAddress}:{ini
             <OrbitCanvas scene={scene} orbit={orbit} selected={selected} setSelected={setSelected} zoom={zoom} revision={revision}/>
             {!orbit&&<p className="astronomy-canvas-note">{result.error||'添加两个天体以运行轨道。'}</p>}
             <div className="astronomy-zoom" role="group" aria-label="轨道视图缩放">
-              <button className="icon framed" aria-label="缩小轨道视图" onClick={()=>setZoom(value=>Math.max(.05,value/1.3))}><Minus size={17}/></button>
-              <button className="icon framed" aria-label="放大轨道视图" onClick={()=>setZoom(value=>Math.min(15,value*1.3))}><Plus size={17}/></button>
-              <button className="icon framed" aria-label="重置轨道视图" onClick={()=>setZoom(1)}><RotateCcw size={16}/></button>
+              <button className="icon framed" aria-label="缩小轨道视图" title="缩小轨道视图" onClick={()=>setZoom(value=>Math.max(.05,value/1.3))}><Minus size={17}/></button>
+              <button className="icon framed" aria-label="放大轨道视图" title="放大轨道视图" onClick={()=>setZoom(value=>Math.min(15,value*1.3))}><Plus size={17}/></button>
+              <button className="icon framed" aria-label="重置轨道视图" title="重置轨道视图" onClick={()=>setZoom(1)}><RotateCcw size={16}/></button>
             </div>
           </div>
           <div className="astronomy-status"><span>模拟时间 <output aria-label="轨道模拟时间">{format(orbit?.current.time??0,6)} 年</output></span>

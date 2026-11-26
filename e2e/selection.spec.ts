@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { openImportedScene, pixelOf } from './helpers'
+import { openImportedScene, openProperties, pixelOf } from './helpers'
 
 test('uses selection for dragging, panning, animated context selection, and deletion',async({page})=>{
   const scene={...emptyExperiment(),title:'选择测试',camera:{x:0,y:2.2,scale:80},bodies:[body('测试圆',{kind:'circle',radius:.35},0,2.2,{restitution:0})]}
@@ -13,11 +13,12 @@ test('uses selection for dragging, panning, animated context selection, and dele
   const p=at(0,0)
   await expect(tools.getByRole('button',{name:'平移',exact:true})).toHaveCount(0)
   await expect(tools.getByRole('button',{name:'删除',exact:true})).toHaveCount(0)
+  const first=await canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())
   await canvas.click({position:p,button:'right'})
   await expect(menu.getByRole('button',{name:'删除 测试圆'})).toBeVisible()
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('测试圆')
-  const first=await canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())
   await expect.poll(()=>canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())).not.toBe(first)
+  await openProperties(page)
+  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('测试圆')
   const x=page.getByRole('spinbutton',{name:'X 坐标'})
   const y=page.getByRole('spinbutton',{name:'Y 坐标'})
   const oldX=Number(await x.inputValue()),oldY=Number(await y.inputValue())
@@ -77,6 +78,7 @@ test.describe('touch selection',()=>{
       await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
       await action.tap()
       await expect(action).toHaveCount(0)
+      await openProperties(page)
       await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:'固定点'})).toHaveCount(0)
     } finally {await cdp.detach()}
   })
@@ -91,6 +93,7 @@ test('moves both spring endpoints and deletes only the selected spring',async({p
   await page.mouse.down()
   await page.mouse.move(bounds.x+point.x+40,bounds.y+point.y,{steps:6})
   await page.mouse.up()
+  await openProperties(page)
   const object=page.getByRole('combobox',{name:'当前物体'})
   await expect(page.getByRole('spinbutton',{name:'初始位移'})).toHaveValue('1')
   await object.selectOption({label:'固定点'})

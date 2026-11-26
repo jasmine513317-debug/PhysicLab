@@ -15,17 +15,17 @@
   white-space: nowrap;
 }
 .series .chart-ruler-toggle[aria-pressed="true"] {
-  color: var(--accent);
-  background: #20344c;
-  border-color: #547392;
+  color: var(--selected-ink);
+  background: var(--selected-bg);
+  border-color: var(--selected-border);
 }
 .analysis-panel:has(.chart-ruler-active) { flex-basis: 298px; }
 .chart-ruler-controls {
   padding: 7px 12px;
-  background: #142135;
+  background: var(--raised);
   border-top: 1px solid var(--line);
-  color: #cedaec;
-  font-size: 11px;
+  color: var(--soft);
+  font-size: var(--text-xs);
 }
 .chart-ruler-inputs, .chart-ruler-readout, .chart-ruler-inputs label {
   display: flex;
@@ -35,17 +35,17 @@
 }
 .chart-ruler-inputs, .chart-ruler-readout { gap: 5px 14px; }
 .chart-ruler-inputs select, .chart-ruler-inputs input {
-  height: 25px;
+  height: var(--control-height-sm);
   padding: 1px 5px;
-  font-size: 11px;
-  color: #edf4ff;
-  background: #111c2e;
-  border: 1px solid #3c516c;
-  border-radius: 4px;
+  font-size: var(--text-xs);
+  color: var(--text);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
 }
-.chart-ruler-inputs input { width: 63px; font-family: var(--mono); }
+.chart-ruler-inputs input { width: 63px; font-family: var(--numeric-font); font-variant-numeric: var(--numeric-variant); }
 .chart-ruler-readout { margin-top: 5px; }
-.chart-ruler-readout b { font-variant-numeric: tabular-nums; color: #eaf3ff; }
+.chart-ruler-readout b { font-variant-numeric: var(--numeric-variant); color: var(--text); }
 .marker-value { font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) {
   .analysis-panel:has(.chart-ruler-active) { flex-basis: 330px; }

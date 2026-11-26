@@ -1,4 +1,4 @@
-import { rotate, screenPoint, worldPoint, type View } from './coordinates'
+import { rotate, screenPoint, worldPoint, displayPoint, polarComponents, polarPosition, type View } from './coordinates'
 import { ballisticDuration, projectile, type Sample } from './analysis'
 import { DEFAULT_WORLD_BOUNDS, type BodyConfig, type Camera, type Experiment, type Point } from './model'
 import type { Physics } from './physics'
@@ -6,6 +6,8 @@ import type { RecordedSample } from './replay'
 import type { SurfaceSnap } from './surfaceSnap'
 import { resizeHandles } from './resizeBody'
 import { rotationGuide } from './rotationHandle'
+import { roleVisual } from './objectRole'
+import { coordinateGridStep, drawCoordinates } from './coordinateOverlay'
 
 const palette = {
   mint:['#d2d2d0','#f5f5f2'], blue:['#899bbd','#b9c9ef'],
@@ -21,7 +23,7 @@ export function inkColors(color:string):[string,string] {
 export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number}
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
 export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
-export type Overlay = {points:Point[]; color?:string}
+export type Overlay = {points:Point[]; color?:string; strokeWidth?:number; dash?:number[]}
 export type EraseView = {segments:{points:Point[];color:string;strokeWidth?:number}[];cursor?:Point;radius:number}
 
 function path(ctx:CanvasRenderingContext2D, points:Point[], color:string, dash:number[]=[]) {
@@ -51,7 +53,7 @@ function arrow(ctx:CanvasRenderingContext2D, a:Point, b:Point, color:string, tex
 }
 
 function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:number,scale:number,selected:boolean,simple:boolean,dash?:number) {
-  const [fill,stroke] = inkColors(b.color), g = b.geometry
+  const [fill,stroke] = inkColors(b.color), g = b.geometry, visual=roleVisual(b)
   ctx.save()
   ctx.translate(center.x,center.y)
   ctx.rotate(-angle)
@@ -63,26 +65,37 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     ctx.lineCap='round'
     ctx.lineJoin='round'
     ctx.lineDashOffset=dash??0
-    path(ctx,vertices,g.kind==='track'?(selected?'#f5f5f2':'#a8a8b0'):(selected?'#ffffff':stroke),dash===undefined?[]:[8,6])
+    path(ctx,vertices,selected?'#ffffff':visual.stroke??stroke,visual.dash??(dash===undefined?[]:[8,6]))
     ctx.restore()
     return
   }
   ctx.beginPath()
   if (g.kind==='circle') ctx.arc(0,0,g.radius*scale,0,Math.PI*2)
+  else if (g.kind==='ellipse') ctx.ellipse(0,0,g.radiusX*scale,g.radiusY*scale,0,0,Math.PI*2)
   else if (g.kind==='polygon'||g.kind==='freeform') {
     g.vertices.forEach((p,i)=>i===0?ctx.moveTo(p.x*scale,-p.y*scale):ctx.lineTo(p.x*scale,-p.y*scale))
     ctx.closePath()
   } else ctx.rect(-g.width*scale/2,-g.height*scale/2,g.width*scale,g.height*scale)
   ctx.fillStyle=fill
-  if(!simple) {
+  if(visual.filled&&!simple) {
     const gradient=ctx.createLinearGradient(0,-18,0,27)
     gradient.addColorStop(0,fill)
     gradient.addColorStop(1,b.color==='slate'?'#1a1a1e':b.color in palette?fill+'7d':stroke+'2a')
     ctx.fillStyle=gradient
   }
-  ctx.strokeStyle=stroke
+  ctx.strokeStyle=visual.stroke??stroke
   ctx.lineWidth=b.strokeWidth??1.1
-  ctx.fill();ctx.stroke()
+  ctx.setLineDash(visual.dash??[])
+  if(visual.filled)ctx.fill()
+  ctx.stroke()
+  ctx.setLineDash([])
+  if(visual.badge) {
+    ctx.beginPath();ctx.arc(0,0,9,0,Math.PI*2)
+    ctx.fillStyle='#16161a';ctx.fill()
+    ctx.strokeStyle=visual.stroke??stroke;ctx.lineWidth=1.2;ctx.stroke()
+    ctx.fillStyle='#f5f5f2';ctx.font='bold 11px "JetBrains Mono Variable", monospace'
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(visual.badge,0,.5)
+  }
   if (g.kind==='surface') {
     ctx.save();ctx.clip()
     const halfWidth=g.width*scale/2, halfHeight=g.height*scale/2
@@ -100,6 +113,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     ctx.lineDashOffset=dash??0
     ctx.beginPath()
     if (radius) ctx.arc(0,0,radius+6,0,Math.PI*2)
+    else if (g.kind==='ellipse') ctx.ellipse(0,0,g.radiusX*scale+6,g.radiusY*scale+6,0,0,Math.PI*2)
     else if (g.kind==='polygon'||g.kind==='freeform') {
       g.vertices.forEach((p,i)=>i===0?ctx.moveTo(p.x*scale*1.08,-p.y*scale*1.08):ctx.lineTo(p.x*scale*1.08,-p.y*scale*1.08))
       ctx.closePath()
@@ -119,31 +133,8 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
   ctx.clearRect(0,0,width,height)
   ctx.font=(diagram?'11':'10')+'px "JetBrains Mono Variable", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace'
   ctx.lineWidth=1
-  const origin=p({x:0,y:0})
-  const major=Math.pow(2,Math.ceil(Math.log2(62/camera.scale)))
-  const spacing=major*camera.scale
-  if (display.grid) {
-    // Minor divisions are subdued to keep the scale and scene geometry readable.
-    for (const [step,color] of [[spacing/4,'#1b1b1f'],[spacing,'#29292e']] as const) {
-      ctx.beginPath()
-      for (let x=origin.x%step;x<width;x+=step) {ctx.moveTo(Math.floor(x)+.5,0);ctx.lineTo(Math.floor(x)+.5,height)}
-      for (let y=origin.y%step;y<height;y+=step) {ctx.moveTo(0,Math.floor(y)+.5);ctx.lineTo(width,Math.floor(y)+.5)}
-      ctx.strokeStyle=color;ctx.stroke()
-    }
-    path(ctx,[{x:0,y:origin.y},{x:width,y:origin.y}],'#515159')
-    path(ctx,[{x:origin.x,y:0},{x:origin.x,y:height}],'#515159')
-    ctx.fillStyle='#a6a6a6'
-    if (!diagram) {
-      for(let x=origin.x%spacing;x<width;x+=spacing) {
-        const i=Math.round((x-origin.x)/spacing)
-        if (i && x>26) ctx.fillText(String(Number((i*major).toPrecision(3))),x+3,Math.max(72,Math.min(height-31,origin.y-8)))
-      }
-      for(let y=origin.y%spacing;y<height-36;y+=spacing) {
-        const i=Math.round((origin.y-y)/spacing)
-        if (i && y>56) ctx.fillText(String(Number((i*major).toPrecision(3))),Math.max(8,Math.min(width-35,origin.x+9)),y-4)
-      }
-    }
-  }
+  const major=coordinateGridStep(camera.scale)
+  drawCoordinates(ctx,view,camera,scene.coordinates,display.grid,!diagram)
 
   if (scene.environment.boundaries) {
     const {minX,maxX,minY,maxY}=scene.environment.worldBounds??DEFAULT_WORLD_BOUNDS
@@ -223,19 +214,30 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     const pose=replay?.tracks.get(b.id)?.[replay.index]
     const snapped=snap?.bodyId===b.id?snap:undefined
     const edited=edit?.body.id===b.id?edit.body:undefined
-    const at=p(snapped?.position??edited?.position??move?.get(b.id)??pose??live?.getPosition()??b.position)
+    const position=snapped?.position??edited?.position??move?.get(b.id)??pose??live?.getPosition()??b.position
+    const at=p(position)
     const angle=edited?.angle??snapped?.angle??pose?.angle??live?.getAngle()??b.angle
+    const velocity=pose?{x:pose.vx,y:pose.vy}:live?.getLinearVelocity()??b.velocity
     shape(ctx,edited??b,at,angle,camera.scale,b.id===selected,manyBodies&&b.id!==selected,b.id===highlight?dash:undefined)
     if (b.type==='static') continue
     function drawVector(vector:Point, scale:number, color:string, label:string) {
       const factor=scale*display.vectorScale*camera.scale
       arrow(ctx,at,{x:at.x+vector.x*factor,y:at.y-vector.y*factor},color,manyBodies&&b.id!==selected?'':label)
     }
-    if (display.velocity) drawVector(pose?{x:pose.vx,y:pose.vy}:live?.getLinearVelocity()??b.velocity,0.17,'#a6bfff','v')
+    if (display.velocity) drawVector(velocity,0.17,'#a6bfff','v')
     if (display.acceleration) drawVector(pose?{x:pose.ax,y:pose.ay}:physics?.acceleration.get(b.id)??{x:0,y:-scene.environment.gravity},0.09,'#f2c38b','a')
     if (display.forces && physics) for(const force of physics.forceVectors(b.id)) drawVector(force.vector,0.075,force.color,force.name)
     if (b.id===selected && !diagram) {
-      ctx.fillStyle='#f5f5f2';ctx.fillText(b.name,at.x+22,at.y+31)
+      ctx.fillStyle='#f5f5f2';ctx.fillText(b.name,at.x+22,at.y+25)
+      if(scene.coordinates.mode==='cartesian') {
+        const display=displayPoint(position,scene.coordinates.origin)
+        ctx.fillStyle='#a6a6a6';ctx.fillText('x '+display.x.toFixed(2)+'  y '+display.y.toFixed(2)+' m',at.x+22,at.y+39)
+      } else if(scene.coordinates.mode==='polar') {
+        const polar=polarPosition(position,scene.coordinates.origin)
+        const components=polarComponents(position,velocity,scene.coordinates.origin)
+        ctx.fillStyle='#a6a6a6';ctx.fillText('r '+polar.r.toFixed(2)+' m  θ '+(polar.theta===undefined?'—':(polar.theta*180/Math.PI).toFixed(1)+'°'),at.x+22,at.y+39)
+        if(components)ctx.fillText('vr '+components.radial.toFixed(2)+'  vt '+components.tangential.toFixed(2)+' m/s',at.x+22,at.y+53)
+      }
     }
   }
   if (options.editing) {
@@ -275,7 +277,7 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     }
     ctx.restore()
   }
-  if (overlay) {ctx.lineWidth=1.7;path(ctx,overlay.points.map(p),overlay.color??'#91d9ff',[5,4])}
+  if (overlay) {ctx.lineWidth=overlay.strokeWidth??1.7;ctx.lineCap='round';ctx.lineJoin='round';path(ctx,overlay.points.map(p),overlay.color??'#91d9ff',overlay.dash??(overlay.strokeWidth?[]:[5,4]))}
   if(erase) {
     ctx.save()
     ctx.lineCap='round'
@@ -297,11 +299,13 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     ctx.restore()
   }
   if (diagram) return
-  const scaleLength = Math.min(major,1)*camera.scale
-  const x=width-scaleLength-23, y=height-20
-  ctx.lineWidth=1
-  path(ctx,[{x,y:y-4},{x,y},{x:x+scaleLength,y},{x:x+scaleLength,y:y-4}],'#a6a6a6')
-  ctx.fillStyle='#d2d2d0';ctx.fillText(Math.min(1,major)+' m',x+5,y-8)
+  if(scene.coordinates.mode!=='none') {
+    const scaleLength = Math.min(major,1)*camera.scale
+    const x=width-scaleLength-23, y=height-20
+    ctx.lineWidth=1
+    path(ctx,[{x,y:y-4},{x,y},{x:x+scaleLength,y},{x:x+scaleLength,y:y-4}],'#a6a6a6')
+    ctx.fillStyle='#d2d2d0';ctx.fillText(Math.min(1,major)+' m',x+5,y-8)
+  }
   const lc=worldPoint({x:0,y:0},camera,view)
   if (!Number.isFinite(lc.x)) throw new Error('视图坐标无效。')
 }

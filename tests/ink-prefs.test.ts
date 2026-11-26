@@ -13,8 +13,9 @@ function memoryStorage() {
 it('normalizes invalid or partial drawing preferences to safe defaults',()=>{
   expect(normalizeInkPrefs(undefined)).toEqual(DEFAULT_INK_PREFS)
   expect(normalizeInkPrefs({color:'green',width:99,mode:'always',eraserMode:'all',eraserSize:'huge',eraserReturn:'yes'})).toEqual(DEFAULT_INK_PREFS)
-  expect(normalizeInkPrefs({color:'#AABBCC',width:3.6,mode:'immediate',eraserMode:'drag',eraserSize:'small',eraserReturn:true}))
-    .toEqual({...DEFAULT_INK_PREFS,color:'#aabbcc',width:3.6,mode:'immediate',eraserMode:'drag',eraserSize:'small',eraserReturn:true})
+  expect(normalizeInkPrefs({color:'#AABBCC',width:3.6,mode:'immediate',role:'boundary',eraserMode:'drag',eraserSize:'small',eraserReturn:true}))
+    .toEqual({...DEFAULT_INK_PREFS,color:'#aabbcc',width:3.6,mode:'immediate',role:'boundary',eraserMode:'drag',eraserSize:'small',eraserReturn:true})
+  expect(normalizeInkPrefs({role:'constraint'}).role).toBe('body')
 })
 
 it('deduplicates and caps collected custom colors',()=>{

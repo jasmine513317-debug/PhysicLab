@@ -1,4 +1,4 @@
-import { body, type BodyConfig, type Point } from './model'
+import type { BodyConfig, Point } from './model'
 import { centroid, containsPoint, densify, toLocal, toWorld } from './freeform'
 import { segmentDistance, simplifyPath } from './track'
 
@@ -36,11 +36,14 @@ function cleanRun(points:Point[],spacing:number) {
 }
 
 function runBody(original:BodyConfig,points:Point[]) {
-  const center=centroid(points)
-  return body(original.name,{kind:'freeform',vertices:toLocal(points,center),closed:false},center.x,center.y,{
-    type:'static',color:original.color,friction:original.friction,restitution:original.restitution,
-    strokeWidth:original.strokeWidth,
-  })
+  const center=centroid(points),vertices=toLocal(points,center)
+  const geometry=original.geometry.kind==='track'
+    ? {kind:'track' as const,vertices,closed:false}
+    : {kind:'freeform' as const,vertices,closed:false}
+  return {
+    ...original,id:crypto.randomUUID(),geometry,position:center,type:'static' as const,
+    angle:0,velocity:{x:0,y:0},angularVelocity:0,
+  }
 }
 
 function splitStroke(original:BodyConfig,path:readonly Point[],radius:number,spacing:number) {

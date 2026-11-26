@@ -7,6 +7,7 @@ import { ExtendedCanvas } from './ExtendedCanvas'
 import { loadExtended, saveExtended } from './repository'
 import { downloadText } from './download'
 import { appUrl } from './routes'
+import { formatNumber } from './numberFormat'
 import './astronomy.css'
 import './extended.css'
 
@@ -45,14 +46,14 @@ function number(value:number|undefined,digits=4) {
 
 function FieldInput({field,value,change}:{field:Field;value:number;change:(value:number)=>void}) {
   const [,label,unit,min,max]=field
-  const id=useId(),[error,setError]=useState(false)
+  const id=useId(),[error,setError]=useState(false),display=formatNumber(value)
   return <div className="astronomy-field"><label htmlFor={id}>{label} <small>{unit}</small></label>
-    <input id={id} key={value} type="number" step="any" min={min} max={max} defaultValue={value} aria-invalid={error}
+    <input id={id} key={value} type="number" step="any" min={min} max={max} defaultValue={display} aria-invalid={error}
       aria-describedby={error?id+'-error':undefined} onChange={()=>setError(false)} onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}}
       onBlur={event=>{
         const next=event.currentTarget.valueAsNumber
         if(!Number.isFinite(next)||next<min||next>max){setError(true);return}
-        if(next!==value)change(next)
+        if(next!==Number(display))change(next)
       }}/>{error&&<small id={id+'-error'} className="astronomy-field-error">请输入 {min} 至 {max} {unit}。</small>}
   </div>
 }

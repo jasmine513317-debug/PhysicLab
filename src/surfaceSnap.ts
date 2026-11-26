@@ -28,7 +28,12 @@ function section(geometry: BodyConfig['geometry'], angle: number, x: number, hal
     const height=Math.sqrt(geometry.radius**2-dx**2)
     return {bottom:{y:-height,left:nearest,right:nearest},top:{y:height,left:nearest,right:nearest},centerY:0}
   }
-  const vertices = geometry.kind === 'polygon' || geometry.kind === 'track' || geometry.kind === 'freeform' ? geometry.vertices : rectangleCorners(geometry.width, geometry.height)
+  const vertices = geometry.kind === 'polygon' || geometry.kind === 'track' || geometry.kind === 'freeform' ? geometry.vertices
+    : geometry.kind === 'ellipse' ? Array.from({length:64},(_,i)=>{
+      const angle=i*Math.PI/32
+      return {x:geometry.radiusX*Math.cos(angle),y:geometry.radiusY*Math.sin(angle)}
+    })
+    : rectangleCorners(geometry.width, geometry.height)
   const points = vertices.map(p => { const q=rotate(p,angle); return {x:q.x+x,y:q.y} })
   if(Math.min(...points.map(p=>p.x))>=halfWidth-EPS || Math.max(...points.map(p=>p.x))<=-halfWidth+EPS)return
   const clipped=points.filter(p=>Math.abs(p.x)<=halfWidth)

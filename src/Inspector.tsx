@@ -1,50 +1,82 @@
-import { useEffect, useId, useState } from 'react'
-import { Box, Circle, Globe2, Hexagon, Layers3, PenLine, SlidersHorizontal, Spline, Waves } from 'lucide-react'
-import { area, DEFAULT_WORLD_BOUNDS, GRAVITY_PRESETS, type BodyConfig, type Experiment, type Spring } from './model'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Box, Circle, Globe2, Hexagon, Layers3, PenLine, SlidersHorizontal, Spline, Waves, X } from 'lucide-react'
+import { area, DEFAULT_WORLD_BOUNDS, GRAVITY_PRESETS, type BodyConfig, type Experiment, type Point, type Spring } from './model'
+import { displayPoint, polarComponents, polarPosition } from './coordinates'
 import { setInitialExtension, springGeometry } from './springs'
+import { formatNumber } from './numberFormat'
+import { withObjectRole, type EditableRole } from './objectRole'
 
-function NumberField({label,value,unit,onCommit,min,max,step='any'}:{
-  label:string;value:number;unit?:string;onCommit:(n:number)=>boolean;min?:number;max?:number;step?:number|'any'
+const roleLabels={marker:'视觉标记',body:'刚体',boundary:'碰撞边界',track:'轨道',field:'场源'} as const
+const roleHints={marker:'只显示，不参与碰撞',body:'参与碰撞；可设为动态或静态',boundary:'静态碰撞轮廓',track:'静态碰撞轨道',field:'静电场源，不参与碰撞'} as const
+const editableRoles:EditableRole[]=['marker','body','boundary','track','field']
+
+function NumberField({label,value,unit,onCommit,min,max,step='any',readOnly=false}:{
+  label:string;value:number;unit?:string;onCommit:(n:number)=>boolean;min?:number;max?:number;step?:number|'any';readOnly?:boolean
 }) {
   const id=useId()
-  const [text,setText]=useState(String(+value.toFixed(5)))
+  const display=formatNumber(value)
+  const [text,setText]=useState(display)
   const [error,setError]=useState('')
-  useEffect(()=>{setText(String(+value.toFixed(5)));setError('')},[value])
+  useEffect(()=>{setText(formatNumber(value));setError('')},[value])
   function commit() {
+    if(readOnly)return
     const n=Number(text)
     if(!text.trim()||!Number.isFinite(n)||(min!==undefined&&n<min)||(max!==undefined&&n>max)) {
       setError(min!==undefined&&max!==undefined?'请输入 '+min+' 至 '+max+' 之间的数值。':min!==undefined?'最小值为 '+min+'。':'请输入有效数值。')
       return
     }
-    if(n===+value.toFixed(5)) {setError('');return}
+    if(n===Number(display)) {setError('');return}
     if(onCommit(n)) setError('')
     else setError('请查看实验参数的错误提示。')
   }
   return <div className="field"><label htmlFor={id}>{label}</label><div className="numeric">
-    <input id={id} type="number" min={min} max={max} step={step} value={text} aria-invalid={Boolean(error)}
+    <input id={id} type="number" min={min} max={max} step={step} value={text} readOnly={readOnly} aria-invalid={Boolean(error)}
       aria-describedby={error?id+'-error':undefined} onChange={e=>{setText(e.target.value);setError('')}}
-      onBlur={commit} onKeyDown={e=>{if(e.key==='Enter') e.currentTarget.blur();if(e.key==='Escape'){setText(String(+value.toFixed(5)));setError('')}}}/>
+      onBlur={commit} onKeyDown={e=>{if(e.key==='Enter') e.currentTarget.blur();if(e.key==='Escape'){setText(display);setError('')}}}/>
     {unit&&<span aria-hidden="true">{unit}</span>}
   </div>{error&&<small className="field-error" id={id+'-error'}>{error}</small>}</div>
+}
+function Readout({label,value,unit}:{label:string;value:string;unit?:string}) {
+  return <div className="field"><span className="readout-label">{label}</span><div className="numeric"><output aria-label={label}>{value}</output>{unit&&<span aria-hidden="true">{unit}</span>}</div></div>
 }
 type Props = {
   scene:Experiment; selected:string; select:(id:string)=>void; change:(patch:Partial<Experiment>)=>boolean
   force:(id:string,x:number,y:number)=>void
+  livePosition?:Point;liveVelocity?:Point
+  initialTab?:'object'|'world'
+  onClose?:()=>void
 }
-export function Inspector({scene,selected,select,change,force}:Props) {
-  const [tab,setTab]=useState<'object'|'world'>('object')
-  useEffect(()=>{if(selected)setTab('object')},[selected])
+export function Inspector({scene,selected,select,change,force,livePosition,liveVelocity,initialTab='object',onClose}:Props) {
+  const [tab,setTab]=useState<'object'|'world'>(initialTab)
+  const previous=useRef({initialTab,selected})
+  useEffect(()=>{
+    if(selected!==previous.current.selected)setTab('object')
+    else if(initialTab!==previous.current.initialTab)setTab(initialTab)
+    previous.current={initialTab,selected}
+  },[initialTab,selected])
   const b=scene.bodies.find(b=>b.id===selected),j=scene.joints.find(j=>j.id===selected)
   const env=scene.environment
   const bounds=env.worldBounds??DEFAULT_WORLD_BOUNDS
   const springA=j&&scene.bodies.find(body=>body.id===j.a)
   const springB=j&&scene.bodies.find(body=>body.id===j.b)
   const patch=(x:Partial<BodyConfig>)=>change({bodies:scene.bodies.map(body=>body.id===selected?{...body,...x}:body)})
+  const assignRole=(role:EditableRole)=>{
+    const target=scene.bodies.find(body=>body.id===selected)
+    return target?patch(withObjectRole(target,role)):false
+  }
   const spring=(x:Partial<Spring>)=>change({joints:scene.joints.map(joint=>joint.id===selected?{...joint,...x}:joint)})
+  const coordinates=(x:Partial<Experiment['coordinates']>)=>change({coordinates:{...scene.coordinates,...x}})
+  const position=b?livePosition??b.position:undefined
+  const velocity=b?liveVelocity??b.velocity:undefined
+  const displayed=position?displayPoint(position,scene.coordinates.origin):undefined
+  const polar=position?polarPosition(position,scene.coordinates.origin):undefined
+  const components=position&&velocity?polarComponents(position,velocity,scene.coordinates.origin):undefined
   const world=(x:Partial<Experiment['environment']>)=>change({environment:{...env,...x}})
   const fields=b?.geometry
+  const role:EditableRole=b?.role==='constraint'?'body':b?.role??'body'
+  const collisionFree=role==='marker'||role==='field',specialRole=role!=='body'
   return <aside className="inspector" aria-label="参数面板">
-    <div className="panel-title"><SlidersHorizontal size={15}/> 参数</div>
+    <div className="panel-title"><SlidersHorizontal size={15}/> 参数{onClose&&<button className="icon" aria-label="关闭参数面板" title="关闭参数面板" onClick={onClose}><X size={16}/></button>}</div>
     <div className="tabs inspector-tabs">
       <button className={tab==='object'?'chosen':''} onClick={()=>setTab('object')}>物体</button>
       <button className={tab==='world'?'chosen':''} onClick={()=>setTab('world')}>环境</button>
@@ -52,6 +84,12 @@ export function Inspector({scene,selected,select,change,force}:Props) {
     <div className="inspector-content">
       {tab==='world'?<>
         <div className="object-title"><span className="object-icon"><Globe2 size={19}/></span><div><strong>环境设置</strong><small>国际单位制 · Y 轴向上</small></div></div>
+        <div className="prop-group">
+          <h3>坐标设置</h3>
+          <NumberField label="坐标原点 X" unit="m" value={scene.coordinates.origin.x} onCommit={x=>coordinates({origin:{...scene.coordinates.origin,x}})}/>
+          <NumberField label="坐标原点 Y" unit="m" value={scene.coordinates.origin.y} onCommit={y=>coordinates({origin:{...scene.coordinates.origin,y}})}/>
+          <p className="muted role-hint">原点只改变显示坐标和测量基准，不改变物体位置或物理运动。</p>
+        </div>
         <div className="prop-group">
           <h3>模拟设置</h3>
           <div className="tabs gravity-presets" role="group" aria-label="重力预设">
@@ -74,16 +112,40 @@ export function Inspector({scene,selected,select,change,force}:Props) {
           {scene.joints.map((joint,i)=><option key={joint.id} value={joint.id}>弹簧 {i+1}</option>)}
         </select></label>
         {b&&fields&&<div key={b.id}>
-          <div className="object-title"><span className={'object-icon '+b.color} style={b.color.startsWith('#')?{color:b.color}:undefined}>{fields.kind==='circle'?<Circle size={18}/>:fields.kind==='polygon'?<Hexagon size={18}/>:fields.kind==='freeform'?<PenLine size={18}/>:fields.kind==='track'?<Spline size={18}/>:<Box size={18}/>}</span><div><strong>{b.name}</strong><small>{b.type==='dynamic'?'动态物体':'静态物体'}</small></div></div>
+          <div className="object-title"><span className={'object-icon '+b.color} style={b.color.startsWith('#')?{color:b.color}:undefined}>{fields.kind==='circle'?<Circle size={18}/>:fields.kind==='polygon'?<Hexagon size={18}/>:fields.kind==='freeform'?<PenLine size={18}/>:fields.kind==='track'?<Spline size={18}/>:<Box size={18}/>}</span><div><strong>{b.name}</strong><small>{b.type==='dynamic'?'动态物体':'静态物体'} · {roleLabels[role]}</small></div></div>
+          {scene.coordinates.mode!=='none'&&displayed&&polar&&<div className="prop-group">
+            <h3>当前坐标</h3>
+            <NumberField label="世界 X" unit="m" value={position?.x??0} onCommit={()=>true} readOnly/>
+            <NumberField label="世界 Y" unit="m" value={position?.y??0} onCommit={()=>true} readOnly/>
+            {scene.coordinates.mode==='cartesian'?<>
+              <NumberField label="显示 X" unit="m" value={displayed.x} onCommit={()=>true} readOnly/>
+              <NumberField label="显示 Y" unit="m" value={displayed.y} onCommit={()=>true} readOnly/>
+            </>:<>
+              <NumberField label="极径 r" unit="m" value={polar.r} onCommit={()=>true} readOnly/>
+              {polar.theta===undefined?<Readout label="极角 θ" value="—"/>:<NumberField label="极角 θ" unit="°" value={polar.theta*180/Math.PI} onCommit={()=>true} readOnly/>}
+              {components?<>
+                <NumberField label="径向速度" unit="m/s" value={components.radial} onCommit={()=>true} readOnly/>
+                <NumberField label="切向速度" unit="m/s" value={components.tangential} onCommit={()=>true} readOnly/>
+              </>:<><Readout label="径向速度" value="—"/><Readout label="切向速度" value="—"/></>}
+            </>}
+            <p className="muted role-hint">只读测量值 · 世界位置 {(position?.x??0).toFixed(2)}, {(position?.y??0).toFixed(2)} m</p>
+          </div>}
           <div className="prop-group">
             <h3>物理属性</h3>
-            {fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<>
+            {!collisionFree&&fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<>
               <NumberField label="质量" unit="kg" min={0.001} max={100000} value={b.mass} onCommit={mass=>patch({mass})}/>
               <NumberField label="面密度" unit="kg/m²" min={0.000001} value={b.mass/area(fields)} onCommit={density=>patch({mass:density*area(fields)})}/>
             </>}
-            <NumberField label="摩擦系数" min={0} max={10} value={b.friction} onCommit={friction=>patch({friction})}/>
-            <NumberField label="恢复系数" min={0} max={1} value={b.restitution} onCommit={restitution=>patch({restitution})}/>
-            {fields.kind!=='surface'&&fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<label className="plain-select">物体类型<select value={b.type} onChange={e=>patch({type:e.target.value as BodyConfig['type']})}><option value="dynamic">动态</option><option value="static">静态</option></select></label>}
+            {!collisionFree&&<>
+              <NumberField label="摩擦系数" min={0} max={10} value={b.friction} onCommit={friction=>patch({friction})}/>
+              <NumberField label="恢复系数" min={0} max={1} value={b.restitution} onCommit={restitution=>patch({restitution})}/>
+            </>}
+            <label className="plain-select">物体角色<select aria-label="物体角色" value={role} onChange={e=>assignRole(e.target.value as EditableRole)}>
+              {editableRoles.map(value=><option key={value} value={value} disabled={fields.kind==='ellipse'?value!=='body':value==='track'&&fields.kind!=='track'&&fields.kind!=='freeform'}>{roleLabels[value]}</option>)}
+            </select></label>
+            <p className="muted role-hint">{roleHints[role]}</p>
+            <NumberField label="电荷量" unit="nC" min={-1000} max={1000} value={b.charge??0} onCommit={charge=>patch({charge})}/>
+            {!specialRole&&fields.kind!=='surface'&&fields.kind!=='track'&&!(fields.kind==='freeform'&&!fields.closed)&&<label className="plain-select">物体类型<select aria-label="物体类型" value={b.type} onChange={e=>patch({type:e.target.value as BodyConfig['type']})}><option value="dynamic">动态</option><option value="static">静态</option></select></label>}
           </div>
           {b.type==='dynamic'&&<div className="prop-group">
             <h3>初始运动</h3>
@@ -107,6 +169,10 @@ export function Inspector({scene,selected,select,change,force}:Props) {
             <NumberField label="Y 坐标" unit="m" value={b.position.y} onCommit={y=>patch({position:{...b.position,y}})}/>
             <NumberField label="旋转角" unit="°" value={b.angle*180/Math.PI} onCommit={n=>patch({angle:n*Math.PI/180})}/>
             {fields.kind==='circle'?<NumberField label="半径" unit="m" min={0.02} max={1000} value={fields.radius} onCommit={radius=>patch({geometry:{...fields,radius}})}/>
+              :fields.kind==='ellipse'?<>
+                <NumberField label="X 轴半径" unit="m" min={0.02} max={1000} value={fields.radiusX} onCommit={radiusX=>patch({geometry:{...fields,radiusX}})}/>
+                <NumberField label="Y 轴半径" unit="m" min={0.02} max={1000} value={fields.radiusY} onCommit={radiusY=>patch({geometry:{...fields,radiusY}})}/>
+              </>
               :fields.kind!=='polygon'&&fields.kind!=='track'&&fields.kind!=='freeform'&&<>
                 <NumberField label="宽度" unit="m" min={0.02} max={1000} value={fields.width} onCommit={width=>patch({geometry:{...fields,width}})}/>
                 <NumberField label="高度" unit="m" min={0.02} max={1000} value={fields.height} onCommit={height=>patch({geometry:{...fields,height}})}/>
@@ -117,7 +183,7 @@ export function Inspector({scene,selected,select,change,force}:Props) {
           {b.type==='dynamic'&&<ForceFields apply={(x,y)=>force(b.id,x,y)}/>}
         </div>}
         {j&&<div key={j.id}>
-          <div className="object-title"><span className="object-icon amber"><Waves size={19}/></span><div><strong>弹簧</strong><small>{scene.bodies.find(b=>b.id===j.a)?.name} ↔ {scene.bodies.find(b=>b.id===j.b)?.name}</small></div></div>
+          <div className="object-title"><span className="object-icon amber"><Waves size={19}/></span><div><strong>弹簧</strong><small>约束连接 · {scene.bodies.find(b=>b.id===j.a)?.name} ↔ {scene.bodies.find(b=>b.id===j.b)?.name}</small></div></div>
           <div className="prop-group">
             <h3>弹簧参数</h3>
             <NumberField label="刚度" unit="N/m" min={0.01} max={100000} value={j.stiffness} onCommit={stiffness=>spring({stiffness})}/>

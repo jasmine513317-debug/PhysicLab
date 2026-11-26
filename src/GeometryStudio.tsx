@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowUpRight, Download, Hand, MousePointer2, PenLine, Redo2, Spline, Undo2, Upload } from 'lucide-react'
 import { CurveCanvas, SurfaceCanvas } from './GeometryCanvas'
-import { decodeGeometry, defaultGeometry, geometryModes, geometryPaths, insertNode, makeMesh, makeTrack, meshObj, moveNode, primitive, primitives, trackExperiment, type CurveNode, type GeometryProject } from './geometry'
+import { decodeGeometry, defaultGeometry, defaultGeometryImport, geometryExperiment, geometryModes, geometryPaths, insertNode, makeMesh, meshObj, moveNode, primitive, primitives, type CurveNode, type GeometryImportOptions, type GeometryProject } from './geometry'
 import { saveExperiment } from './repository'
 import { downloadText } from './download'
 import { appUrl } from './routes'
+import { formatNumber } from './numberFormat'
 import './geometry-studio.css'
 
 type Tool='node'|'draw'|'pan'
@@ -30,13 +31,13 @@ function TextField({label,value,change,max=240}:{label:string;value:string;chang
 }
 
 function NumberField({label,value,change,min=-100,max=100,integer=false,step}:{label:string;value:number;change:(value:number)=>void;min?:number;max?:number;integer?:boolean;step?:number}) {
-  const display=+value.toFixed(6)
+  const display=formatNumber(value)
   const [invalid,setInvalid]=useState(false)
   return <label className="geometry-field"><span>{label}</span><input key={value} type="number" min={min} max={max} step={step??(integer?1:'any')} defaultValue={display}
     aria-invalid={invalid} onChange={()=>setInvalid(false)} onKeyDown={e=>{if(e.key==='Enter')e.currentTarget.blur()}} onBlur={e=>{
       const n=e.currentTarget.valueAsNumber
       if(!Number.isFinite(n)||n<min||n>max||(integer&&!Number.isInteger(n))) {setInvalid(true);return}
-      if(n!==display)change(n)
+      if(n!==Number(display))change(n)
     }}/>{invalid&&<small className="field-error">范围 {min} 至 {max}{integer?'，须为整数':''}</small>}</label>
 }
 
@@ -93,7 +94,7 @@ export function GeometryStudio() {
   const [tool,setTool]=useState<Tool>('node')
   const [selected,select]=useState(0)
   const [tolerance,setTolerance]=useState(0.04)
-  const [withBall,setWithBall]=useState(true)
+  const [importOptions,setImportOptions]=useState<GeometryImportOptions>(defaultGeometryImport)
   const [surface,setSurface]=useState({grid:true,shade:true,normals:false,pan:false})
   const [error,setError]=useState('')
   const [storageError,setStorageError]=useState(false)
@@ -102,7 +103,7 @@ export function GeometryStudio() {
   const isSurface=project.mode==='surface', isBezier=project.mode==='bezier'
   const path=useMemo(()=>result(()=>geometryPaths(project)),[project])
   const mesh=useMemo(()=>isSurface?result(()=>makeMesh(project.surface)):undefined,[isSurface,project.surface])
-  const track=useMemo(()=>isSurface?undefined:result(()=>makeTrack(project,tolerance)),[isSurface,project,tolerance])
+  const track=useMemo(()=>isSurface?undefined:result(()=>geometryExperiment(project,tolerance,importOptions)),[isSurface,project,tolerance,importOptions])
   const previewError=(mesh?.error||path.error)||(!isSurface&&!path.value?.some(points=>points.length)?'当前设置下没有可绘制的点。':'')
   const index=project.nodes.length?Math.max(0,Math.min(selected,project.nodes.length-1)):-1
   const node=project.nodes[index]
@@ -138,7 +139,7 @@ export function GeometryStudio() {
     if(saving||!track?.value)return
     setSaving(true);setError('')
     try {
-      const saved=await saveExperiment(trackExperiment(project,tolerance,withBall))
+      const saved=await saveExperiment(track.value)
       location.assign(appUrl('/lab?id='+encodeURIComponent(saved.id)))
     } catch(e) {setError(e instanceof Error?e.message:'无法保存轨道实验。');setSaving(false)}
   }
@@ -229,11 +230,22 @@ export function GeometryStudio() {
           <Toggle checked={surface.normals} change={normals=>setSurface({...surface,normals})}>采样法线</Toggle>
           <button className="button" disabled={!mesh?.value} onClick={()=>{if(mesh?.value)downloadText(project.title,'obj','text/plain',meshObj(mesh.value))}}><Download size={16}/> 导出 OBJ</button>
         </section>:<section className="geometry-group">
-          <h2>碰撞轨道</h2>
+          <h2>导入实验画布</h2>
+          <label className="geometry-field"><span>导入角色</span><select value={importOptions.role} onChange={e=>setImportOptions({...importOptions,role:e.target.value as GeometryImportOptions['role']})}>
+            <option value="track">轨道</option><option value="boundary">碰撞边界</option><option value="body">刚体</option><option value="marker">视觉标记</option><option value="field">场源</option>
+          </select></label>
           <NumberField label="离散容差 (m)" value={tolerance} min={0.005} max={1} step={0.005} change={setTolerance}/>
-          <Toggle checked={withBall} change={setWithBall}>添加测试小球</Toggle>
-          <p className="geometry-help">{track?.value?`${track.value.vertices.length} 个顶点 · Planck 静态链式边界`:track?.error}</p>
-          <button className="button primary" disabled={!track?.value||saving} onClick={()=>void openTrack()}>{saving?'正在创建…':'创建轨道实验'} <ArrowUpRight size={16}/></button>
+          <NumberField label="重力加速度" value={importOptions.gravity} min={0} max={100} change={gravity=>setImportOptions({...importOptions,gravity})}/>
+          {importOptions.role==='body'&&<NumberField label="质量" value={importOptions.mass} min={0.001} max={100000} change={mass=>setImportOptions({...importOptions,mass})}/>}
+          {(importOptions.role==='body'||importOptions.role==='boundary'||importOptions.role==='track')&&<>
+            <NumberField label="摩擦系数" value={importOptions.friction} min={0} max={10} change={friction=>setImportOptions({...importOptions,friction})}/>
+            <NumberField label="恢复系数" value={importOptions.restitution} min={0} max={1} change={restitution=>setImportOptions({...importOptions,restitution})}/>
+          </>}
+          {importOptions.role==='field'&&<NumberField label="电荷量" value={importOptions.charge} min={-1000} max={1000} change={charge=>setImportOptions({...importOptions,charge})}/>}
+          {(importOptions.role==='track'||importOptions.role==='boundary')&&<Toggle checked={importOptions.withBall} change={withBall=>setImportOptions({...importOptions,withBall})}>添加测试小球</Toggle>}
+          <p className="geometry-help">{track?.value?`${track.value.bodies[0].geometry.kind==='freeform'||track.value.bodies[0].geometry.kind==='track'?track.value.bodies[0].geometry.vertices.length:0} 个顶点 · ${track.value.bodies[0].type==='dynamic'?'动态刚体':'静态对象'}`:track?.error}</p>
+          <p className="geometry-help">几何会有损离散；刚体须使用可三角化的闭合轮廓。导入后仍可编辑物理属性。</p>
+          <button className="button primary" disabled={!track?.value||saving} onClick={()=>void openTrack()}>{saving?'正在创建…':'创建实验'} <ArrowUpRight size={16}/></button>
         </section>}
       </aside>
     </div>
