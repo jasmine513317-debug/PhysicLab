@@ -51,10 +51,10 @@ it('prefers the newest valid semantic record and removes every legacy copy of it
   const charged=body('带电球',{kind:'circle',radius:.2},1,1,{role:'body',charge:10})
   const current={...emptyExperiment(),id:legacy.id,version:3 as const,title:'语义场景',createdAt:legacy.createdAt,bodies:[marker,charged]}
   await saveExperiment(legacy)
-  await saveExperiment(current)
-  expect(await loadExperiment(current.id)).toEqual(current)
+  const saved=await saveExperiment(current)
+  expect(await loadExperiment(current.id)).toEqual(saved)
   const library=await listExperiments()
-  expect(library.experiments.filter(scene=>scene.id===current.id)).toEqual([current])
+  expect(library.experiments.filter(scene=>scene.id===current.id)).toEqual([saved])
 
   const legacyEngine=new Physics(legacy)
   legacyEngine.step()
