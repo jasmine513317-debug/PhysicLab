@@ -38,14 +38,17 @@ for (const viewport of [
   test(`fits the home screen at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await page.goto('/')
+    await expect(page.locator('#app-sidebar, .sidebar-scrim, .mobile-topbar')).toHaveCount(0)
 
     const dimensions = await page.evaluate(() => ({
       width: document.documentElement.scrollWidth,
       height: document.documentElement.scrollHeight,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
+      contentWidth: document.querySelector('main')?.getBoundingClientRect().width,
     }))
     expect(dimensions.width).toBeLessThanOrEqual(dimensions.viewportWidth)
+    expect(dimensions.contentWidth).toBe(dimensions.viewportWidth)
     expect(dimensions.height).toBeLessThanOrEqual(dimensions.viewportHeight + 1)
     await expect(page.getByRole('link', { name: '创建实验', exact: true })).toBeInViewport()
     await expect(page.locator('.home-metrics')).toBeInViewport()

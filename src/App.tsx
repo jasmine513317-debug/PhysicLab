@@ -43,7 +43,7 @@ function savedUrl(scene:SavedExperiment) {
   return appUrl('/lab?'+('domain' in scene?'domain='+scene.domain+'&':'')+'id='+encodeURIComponent(scene.id))
 }
 
-type Page='home'|'lab'|'geometry'|'library'
+type Page='lab'|'geometry'|'library'
 const sidebarTemplateGroups:readonly {domain:Domain;items:readonly {title:string;url:string}[]}[]=[
   {domain:domains[0],items:[
     ...templates.map(item=>({title:item.title,url:appUrl('/lab?template='+item.id)})),
@@ -92,7 +92,7 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
       </div>
       <a className="button primary sidebar-new" href={newLab} aria-label="新建实验"><Plus size={17}/><span>新建实验</span></a>
       <nav className="sidebar-nav" aria-label="主导航">
-        <a className={page==='home'?'current':''} href={appUrl('/')} aria-current={page==='home'?'page':undefined} title="首页"><HomeIcon size={18}/><span>首页</span></a>
+        <a href={appUrl('/')} title="首页"><HomeIcon size={18}/><span>首页</span></a>
         <a className={page==='lab'?'current':''} href={appUrl('/lab')} aria-current={page==='lab'?'page':undefined} title="实验台"><Activity size={18}/><span>实验台</span></a>
         <a className={page==='geometry'?'current':''} href={appUrl('/geometry')} aria-current={page==='geometry'?'page':undefined} title="几何工作室"><Shapes size={18}/><span>几何工作室</span></a>
         <a className={page==='library'?'current':''} href={appUrl('/experiments')} aria-current={page==='library'?'page':undefined} title="实验库"><LibraryBig size={18}/><span>实验库</span><span className="nav-count" aria-hidden="true">{entries.length||''}</span></a>
@@ -126,7 +126,7 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
   </>
 }
 function Home() {
-  return <div className="home">
+  return <main className="home" id="app-content">
     <div className="home-shell">
       <h1>让想法，成为实验</h1>
       <a className="button primary home-create" href={newLab}><Plus size={17}/>创建实验<ArrowRight size={15}/></a>
@@ -136,7 +136,7 @@ function Home() {
         <div><strong>SI</strong><span>国际标准单位</span></div>
       </div>
     </div>
-  </div>
+  </main>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
@@ -263,12 +263,15 @@ class ErrorBoundary extends Component<{children:ReactNode},{error:string}> {
   static getDerivedStateFromError(e:unknown) {return {error:message(e)}}
   render() {return this.state.error?<main className="page-width library"><h1>无法打开 PhysicLab</h1><p role="alert">{this.state.error}</p><a className="button" href={appUrl('/')}>返回首页</a></main>:this.props.children}
 }
+function WorkspaceApp({page}:{page:Page}) {
+  const library=useLibrary()
+  return <AppShell page={page} entries={library.entries} error={library.error} loading={library.loading}>
+    {page==='lab'?<Workspace/>:page==='library'?<Library {...library}/>:
+      <Suspense fallback={<main className="page-width library"><p>正在打开几何工作室…</p></main>}><GeometryStudio/></Suspense>}
+  </AppShell>
+}
 export function App() {
   const path=appPath(location.pathname)
-  const page:Page=path==='/lab'?'lab':path==='/experiments'?'library':path==='/geometry'?'geometry':'home'
-  const library=useLibrary()
-  return <ErrorBoundary><AppShell page={page} entries={library.entries} error={library.error} loading={library.loading}>
-    {page==='lab'?<Workspace/>:page==='library'?<Library {...library}/>:page==='geometry'?
-      <Suspense fallback={<main className="page-width library"><p>正在打开几何工作室…</p></main>}><GeometryStudio/></Suspense>:<Home/>}
-  </AppShell></ErrorBoundary>
+  const page=path==='/lab'?'lab':path==='/experiments'?'library':path==='/geometry'?'geometry':undefined
+  return <ErrorBoundary>{page?<WorkspaceApp page={page}/>:<Home/>}</ErrorBoundary>
 }

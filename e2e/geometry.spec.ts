@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { openProperties } from './helpers'
 
 test('draws a stroke, edits nodes, and restores an exported geometry draft',async({page})=>{
-  await page.goto('/')
+  await page.goto('/lab?new=1')
   await page.getByRole('link',{name:'几何工作室'}).click()
   const canvas=page.getByLabel('二维几何画布')
   await expect(canvas).toBeVisible()
