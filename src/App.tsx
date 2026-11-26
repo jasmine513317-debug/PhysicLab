@@ -9,7 +9,6 @@ import { astronomyTemplates, type SavedExperiment } from './astronomy'
 import { extendedTemplates, extensionUrl, isExtension, type Extension } from './extended-experiments'
 import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
-import { HeroSimulation } from './HeroSimulation'
 import { appPath, appUrl } from './routes'
 import { domains, domainUrl, DomainNav, type Domain } from './domains'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
@@ -146,21 +145,21 @@ type FieldFormula = {
  * x 全部避开左侧正文栏（17%–42%），上升流只在右侧留白与图表区穿过。
  */
 const formulaField:readonly FieldFormula[]=[
-  /* 椭圆锚点 —— 缓慢、清晰，构成版式的骨架 */
-  {tex:'F = ma',x:'60%',y:'5%',size:'46px',op:.26,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
-  {tex:'E = ½mv²',x:'84%',y:'23%',size:'25px',op:.22,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
-  {tex:'T = 2π√(l/g)',x:'64%',y:'46%',size:'27px',op:.19,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
-  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'86%',y:'80%',size:'24px',op:.17,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
-  {tex:'Δx·Δp ≥ ℏ/2',x:'45%',y:'2%',size:'19px',op:.14,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
-  {tex:'λ = h/p',x:'93%',y:'55%',size:'17px',op:.15,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
-  {tex:'F = dp/dt',x:'-2%',y:'90%',size:'72px',op:.075,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
-  /* 上升流 —— 极淡、贯穿页面，让「漂浮」在余光里持续发生 */
-  {tex:'∇·E = ρ/ε₀',x:'70%',y:'100%',size:'22px',op:.10,dur:'38s',delay:'-5s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true,optional:true},
-  {tex:'pV = nRT',x:'60%',y:'100%',size:'19px',op:.09,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
-  {tex:'∮B·dl = μ₀I',x:'87%',y:'100%',size:'20px',op:.10,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
-  {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.09,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
-  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.10,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
-  {tex:'½kx² = ½mv²',x:'66%',y:'100%',size:'18px',op:.09,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
+  /* 椭圆锚点 —— 首屏右侧与大标题错开，构成版式的骨架 */
+  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.20,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.17,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'63%',y:'58%',size:'28px',op:.15,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.14,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'50%',y:'3%',size:'19px',op:.11,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.12,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'F = dp/dt',x:'70%',y:'92%',size:'76px',op:.05,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
+  /* 上升流 —— 极淡、贯穿两屏，让「漂浮」在余光里持续发生 */
+  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.08,dur:'38s',delay:'-5s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true,optional:true},
+  {tex:'pV = nRT',x:'58%',y:'100%',size:'19px',op:.07,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
+  {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.08,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
+  {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.07,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
+  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.08,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
+  {tex:'½kx² = ½mv²',x:'64%',y:'100%',size:'18px',op:.07,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
 ]
 function Home() {
   const fieldRef = useRef<HTMLDivElement>(null)
@@ -191,57 +190,37 @@ function Home() {
       className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.flow?' is-flow':'')+(f.optional?' hp-optional':'')}
       style={{'--x':f.x,'--y':f.y,'--size':f.size,'--op':f.op,'--dur':f.dur,'--delay':f.delay,'--dx':f.dx,'--dy':f.dy,'--rot':f.rot} as CSSProperties}
     ><span className="hp-formula-ink">{f.tex}</span></span>)}</div>
-    <header className="hp-shell hp-top">
-      <a className="hp-brand" href={appUrl('/')}>PhysicLab · Studio</a>
-      <a className="hp-top-link" href={appUrl('/experiments')}>实验库<ArrowUpRight size={12} aria-hidden="true"/></a>
-    </header>
     <main className="hp">
-      <div className="hp-shell">
+      <section className="hp-hero" aria-labelledby="home-title">
+        <div className="hp-shell hp-hero-inner">
+          <h1 id="home-title" className="hp-title">先搭一个世界，<br/>再问它为什么。</h1>
+        </div>
+        <a className="hp-scroll" href="#domains" aria-label="向下查看三个实验领域"><span className="hp-scroll-line" aria-hidden="true"/></a>
+      </section>
 
-        <section className="hp-hero" aria-labelledby="home-title">
-          <div className="hp-hero-copy">
-            <p className="hp-eyebrow"><i aria-hidden="true"/>交互式物理实验室</p>
-            <h1 id="home-title" className="hp-title">先搭一个世界，<br/><span>再问它为什么。</span></h1>
-            <p className="hp-lead">设定重力、斜面与电荷，让固定步长的求解器跑起来。再用曲线和数字回答你的假设。</p>
-            <div className="hp-actions">
-              <a className="hp-button" href={newLab}>开始实验<ArrowRight size={15} aria-hidden="true"/></a>
-              <a className="hp-link" href="#domains">看三个领域<ArrowUpRight size={13} aria-hidden="true"/></a>
-            </div>
-          </div>
-          <a className="hp-figure" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">
-            <div className="hp-canvas-wrap"><HeroSimulation/></div>
-            <dl className="hp-readout">
-              <div><dt>最高点</dt><dd>2.55 m</dd></div>
-              <div><dt>滞空</dt><dd>1.44 s</dd></div>
-              <div><dt>射程</dt><dd>10.19 m</dd></div>
-              <div className="hp-readout-go"><dt>斜抛运动</dt><ArrowUpRight size={12} aria-hidden="true"/></div>
-            </dl>
-          </a>
-        </section>
-
-        <section className="hp-domains" id="domains" aria-labelledby="domains-title">
+      <section className="hp-domains" id="domains" aria-labelledby="domains-title">
+        <div className="hp-shell">
           <div className="hp-section-head">
-            <h2 id="domains-title">三个领域，同一套法则。</h2>
-            <p>01 — 领域</p>
+            <p className="hp-chapter">01 — 领域</p>
+            <h2 id="domains-title">从一条定律开始。</h2>
           </div>
-          <div className="hp-rows">{domains.map(domain=><a key={domain.id} className="hp-row" href={domainUrl(domain)}>
+          <div className="hp-rows">{domains.map((domain,i)=><a key={domain.id} className="hp-row" href={domainUrl(domain)}>
+            <span className="hp-row-index" aria-hidden="true">0{i+1}</span>
             <span className="hp-row-eq" aria-hidden="true">{domainFormula[domain.id]}</span>
             <div className="hp-row-body">
               <h3>{domain.name}</h3>
               <p>{domain.description}</p>
             </div>
-            <div className="hp-row-go"><span>{domainCount[domain.id]}</span><ArrowUpRight size={16} aria-hidden="true"/></div>
+            <div className="hp-row-go"><span>{domainCount[domain.id]}</span><ArrowUpRight size={17} aria-hidden="true"/></div>
           </a>)}</div>
-        </section>
-      </div>
+          <div className="hp-tail">
+            <a className="hp-tail-link" href={appUrl('/lab?template=projectile')} aria-label="打开斜抛运动实验">打开斜抛运动实验<ArrowUpRight size={13} aria-hidden="true"/></a>
+            <span className="hp-tail-note">本地优先 · 无账号 · 无上传</span>
+            <a className="hp-tail-link" href={appUrl('/experiments')}>实验库<ArrowUpRight size={13} aria-hidden="true"/></a>
+          </div>
+        </div>
+      </section>
     </main>
-    <footer className="hp-footer">
-      <div className="hp-shell hp-footer-inner">
-        <span>PhysicLab Studio</span>
-        <span>本地优先 · 无账号 · 无上传</span>
-        <a href={appUrl('/experiments')}>实验库<ArrowUpRight size={12} aria-hidden="true"/></a>
-      </div>
-    </footer>
   </div>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
