@@ -26,32 +26,67 @@
 .hp-top,.hp,.hp-footer {position:relative;z-index:1}
 .hp {flex:1 0 auto}
 
-/* ---------- 公式场：背景层 ---------- */
-.hp-field {position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;user-select:none}
+/* ---------- 公式场：背景层 ----------
+   两条独立轨道叠加成椭圆漂移：外层走横轴、内层走纵轴+旋转，
+   周期互质，所以每条公式的路径都不会重复。明暗与景深各自呼吸。 */
+.hp-field {
+  position:absolute;inset:-7%;z-index:0;overflow:hidden;pointer-events:none;user-select:none;
+  transform:translate3d(var(--par-x,0px),var(--par-y,0px),0);
+  will-change:transform;
+}
 .hp-field::before {
   content:"";position:absolute;top:-14%;right:-8%;width:min(780px,82vw);height:min(780px,82vw);border-radius:50%;
-  background:radial-gradient(circle,rgba(200,172,130,.055),rgba(200,172,130,0) 68%);
+  background:radial-gradient(circle,rgba(200,172,130,.075),rgba(200,172,130,0) 68%);
+  animation:hp-glow 19s ease-in-out infinite alternate;
 }
 .hp-field::after {
   content:"";position:absolute;bottom:2%;left:-12%;width:min(560px,68vw);height:min(560px,68vw);border-radius:50%;
-  background:radial-gradient(circle,rgba(142,216,230,.035),rgba(142,216,230,0) 70%);
+  background:radial-gradient(circle,rgba(142,216,230,.05),rgba(142,216,230,0) 70%);
+  animation:hp-glow 27s ease-in-out -9s infinite alternate-reverse;
+}
+@keyframes hp-glow {
+  from {transform:scale(.88);opacity:.55}
+  to   {transform:scale(1.16);opacity:1}
 }
 .hp-formula {
   position:absolute;left:var(--x);top:var(--y);
   font-family:var(--hp-serif);font-style:italic;font-weight:400;
   font-size:calc(var(--size) * var(--fs,1));line-height:1;white-space:nowrap;
   color:var(--tone,var(--hp-ink));
-  opacity:calc(var(--op) * var(--om,1));
   transform-origin:50% 50%;
-  animation:hp-float var(--dur,54s) ease-in-out var(--delay,0s) infinite;
+  animation:hp-orbit-x var(--dur,24s) ease-in-out var(--delay,0s) infinite alternate;
   will-change:transform;
+}
+.hp-formula-ink {
+  display:block;
+  opacity:calc(var(--op) * var(--om,1));
+  animation:hp-orbit-y calc(var(--dur,24s) * 1.31) ease-in-out var(--delay,0s) infinite alternate,
+            hp-breathe calc(var(--dur,24s) * .67) ease-in-out var(--delay,0s) infinite alternate;
+  will-change:transform,opacity,filter;
 }
 .hp-formula.is-sand {--tone:var(--hp-accent)}
 .hp-formula.is-cool {--tone:var(--hp-cool)}
-.hp-formula.is-far {filter:blur(1px)}
-@keyframes hp-float {
-  0%,100% {transform:translate3d(0,0,0) rotate(var(--rot,0deg))}
-  50% {transform:translate3d(var(--dx,14px),var(--dy,-20px),0) rotate(calc(var(--rot,0deg) + 1.1deg))}
+.hp-formula.is-far {--blur-max:1.7px}
+/* 上升流：从页脚飘到抬头，线性不停，两端淡入淡出 */
+.hp-formula.is-flow {animation:hp-rise var(--dur,42s) linear var(--delay,0s) infinite}
+@keyframes hp-rise {
+  0%   {transform:translate3d(0,0,0);opacity:0}
+  12%  {opacity:1}
+  86%  {opacity:1}
+  100% {transform:translate3d(0,-114vh,0);opacity:0}
+}
+@keyframes hp-orbit-x {
+  from {transform:translate3d(calc(var(--dx,30px) * -.5),0,0)}
+  to   {transform:translate3d(calc(var(--dx,30px) *  .5),0,0)}
+}
+@keyframes hp-orbit-y {
+  from {transform:translate3d(0,calc(var(--dy,60px) * .5),0) rotate(calc(var(--rot,0deg) - 1.7deg)) scale(.97)}
+  to   {transform:translate3d(0,calc(var(--dy,60px) * -.5),0) rotate(calc(var(--rot,0deg) + 1.7deg)) scale(1.03)}
+}
+@keyframes hp-breathe {
+  0%   {opacity:calc(var(--op) * var(--om,1) * .38);filter:blur(var(--blur-max,0px))}
+  50%  {opacity:calc(var(--op) * var(--om,1) * 1.16);filter:blur(0px)}
+  100% {opacity:calc(var(--op) * var(--om,1) * .38);filter:blur(var(--blur-max,0px))}
 }
 
 /* ---------- 报头 ---------- */
@@ -177,7 +212,7 @@
 @media (max-width:760px) {
   /* 窄屏没有安全的留白给公式，只留一条出血的大式作为暗示 */
   .hp-formula:not(:first-child) {display:none}
-  .hp-formula:first-child {left:58%;top:89%;font-size:60px;opacity:.06}
+  .hp-formula:first-child {left:58%;top:89%;font-size:60px;--om:.42}
   .hp-hero {padding-top:clamp(28px,6vw,44px)}
   .hp-title {font-size:clamp(31px,8vw,42px);line-height:1.2}
   .hp-lead {margin-top:22px;font-size:14px;line-height:1.9}
@@ -199,7 +234,10 @@
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .hp-formula,.hp-page *,.hp-footer * {animation:none!important;transition:none!important}
+  .hp-formula.is-flow {display:none}
+  .hp-field,.hp-field::before,.hp-field::after {animation:none!important;transform:none!important}
+  .hp-formula,.hp-formula-ink,.hp-page *,.hp-footer * {animation:none!important;transition:none!important}
+  .hp-formula-ink {opacity:calc(var(--op) * var(--om,1));filter:none}
   .hp-button:hover {transform:none;box-shadow:none}
   .hp-row:hover .hp-row-eq {transform:none}
 }

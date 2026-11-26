@@ -138,29 +138,59 @@ const domainFormula:Record<Domain['id'],string>={
 type FieldFormula = {
   tex:string;x:string;y:string;size:string;op:number
   dur:string;delay:string;dx:string;dy:string;rot:string
-  tone?:'sand'|'cool';far?:boolean;optional?:boolean
+  tone?:'sand'|'cool';far?:boolean;optional?:boolean;flow?:boolean
 }
-/** 背景公式场：公式在这里是气氛，不是清单。位置为视口百分比。 */
+/**
+ * 背景公式场：公式在这里是气氛，不是清单。
+ * 两层运动：dur/dy 驱动的椭圆锚点（清晰、慢），以及 flow 驱动的上升流（极淡、持续）。
+ * x 全部避开左侧正文栏（17%–42%），上升流只在右侧留白与图表区穿过。
+ */
 const formulaField:readonly FieldFormula[]=[
-  {tex:'F = ma',x:'59%',y:'6%',size:'40px',op:.22,dur:'46s',delay:'0s',dx:'30px',dy:'-38px',rot:'-2deg'},
-  {tex:'E = ½mv²',x:'85%',y:'26%',size:'23px',op:.17,dur:'38s',delay:'-7s',dx:'-26px',dy:'32px',rot:'1.4deg',tone:'sand'},
-  {tex:'T = 2π√(l/g)',x:'63%',y:'53%',size:'26px',op:.15,dur:'52s',delay:'-19s',dx:'-34px',dy:'-28px',rot:'-1deg'},
-  {tex:'F = G m₁m₂ / r²',x:'78%',y:'74%',size:'27px',op:.16,dur:'42s',delay:'-11s',dx:'22px',dy:'34px',rot:'1deg',optional:true},
-  {tex:'∮B·dl = μ₀I',x:'69%',y:'90%',size:'19px',op:.11,dur:'56s',delay:'-24s',dx:'-18px',dy:'-24px',rot:'.8deg',far:true,optional:true},
-  {tex:'Δx·Δp ≥ ℏ/2',x:'45%',y:'2%',size:'18px',op:.11,dur:'60s',delay:'-30s',dx:'18px',dy:'22px',rot:'-1.2deg',far:true,optional:true},
-  {tex:'λ = h/p',x:'92%',y:'60%',size:'16px',op:.13,dur:'40s',delay:'-5s',dx:'-14px',dy:'26px',rot:'1.6deg',tone:'cool',far:true,optional:true},
-  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'0%',y:'47%',size:'24px',op:.15,dur:'54s',delay:'-15s',dx:'24px',dy:'-30px',rot:'-1.4deg',optional:true},
-  {tex:'∇·E = ρ/ε₀',x:'73%',y:'63%',size:'21px',op:.12,dur:'48s',delay:'-26s',dx:'-22px',dy:'28px',rot:'1deg',far:true,optional:true},
-  {tex:'pV = nRT',x:'62%',y:'88%',size:'18px',op:.11,dur:'50s',delay:'-8s',dx:'18px',dy:'-22px',rot:'-.8deg',far:true,optional:true},
-  {tex:'S = k_B ln W',x:'90%',y:'11%',size:'16px',op:.10,dur:'62s',delay:'-34s',dx:'14px',dy:'26px',rot:'1.2deg',far:true,optional:true},
+  /* 椭圆锚点 —— 缓慢、清晰，构成版式的骨架 */
+  {tex:'F = ma',x:'60%',y:'5%',size:'46px',op:.26,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'84%',y:'23%',size:'25px',op:.22,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'64%',y:'46%',size:'27px',op:.19,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'86%',y:'80%',size:'24px',op:.17,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'45%',y:'2%',size:'19px',op:.14,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'93%',y:'55%',size:'17px',op:.15,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'F = dp/dt',x:'-2%',y:'90%',size:'72px',op:.075,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
+  /* 上升流 —— 极淡、贯穿页面，让「漂浮」在余光里持续发生 */
+  {tex:'∇·E = ρ/ε₀',x:'70%',y:'100%',size:'22px',op:.10,dur:'38s',delay:'-5s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true,optional:true},
+  {tex:'pV = nRT',x:'60%',y:'100%',size:'19px',op:.09,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
+  {tex:'∮B·dl = μ₀I',x:'87%',y:'100%',size:'20px',op:.10,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
+  {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.09,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
+  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.10,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
+  {tex:'½kx² = ½mv²',x:'66%',y:'100%',size:'18px',op:.09,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
 ]
 function Home() {
+  const fieldRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce), (hover: none)').matches) return
+    const field = fieldRef.current
+    if (!field) return
+    let raf = 0
+    let tx = 0, ty = 0, cx = 0, cy = 0
+    const tick = () => {
+      cx += (tx - cx) * .06
+      cy += (ty - cy) * .06
+      field.style.setProperty('--par-x', cx.toFixed(2) + 'px')
+      field.style.setProperty('--par-y', cy.toFixed(2) + 'px')
+      raf = Math.abs(tx - cx) > .1 || Math.abs(ty - cy) > .1 ? requestAnimationFrame(tick) : 0
+    }
+    const onMove = (e: MouseEvent) => {
+      tx = (e.clientX / window.innerWidth - .5) * -36
+      ty = (e.clientY / window.innerHeight - .5) * -24
+      if (!raf) raf = requestAnimationFrame(tick)
+    }
+    window.addEventListener('mousemove', onMove, { passive: true })
+    return () => { window.removeEventListener('mousemove', onMove); if (raf) cancelAnimationFrame(raf) }
+  }, [])
   return <div className="hp-page">
-    <div className="hp-field" aria-hidden="true">{formulaField.map(f=><span
+    <div className="hp-field" ref={fieldRef} aria-hidden="true">{formulaField.map(f=><span
       key={f.tex}
-      className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.optional?' hp-optional':'')}
+      className={'hp-formula'+(f.tone?' is-'+f.tone:'')+(f.far?' is-far':'')+(f.flow?' is-flow':'')+(f.optional?' hp-optional':'')}
       style={{'--x':f.x,'--y':f.y,'--size':f.size,'--op':f.op,'--dur':f.dur,'--delay':f.delay,'--dx':f.dx,'--dy':f.dy,'--rot':f.rot} as CSSProperties}
-    >{f.tex}</span>)}</div>
+    ><span className="hp-formula-ink">{f.tex}</span></span>)}</div>
     <header className="hp-shell hp-top">
       <a className="hp-brand" href={appUrl('/')}>PhysicLab · Studio</a>
       <a className="hp-top-link" href={appUrl('/experiments')}>实验库<ArrowUpRight size={12} aria-hidden="true"/></a>
