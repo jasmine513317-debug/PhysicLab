@@ -145,21 +145,21 @@ type FieldFormula = {
  * x 全部避开左侧正文栏（17%–42%），上升流只在右侧留白与图表区穿过。
  */
 const formulaField:readonly FieldFormula[]=[
-  /* 椭圆锚点 —— 首屏右侧与大标题错开，构成版式的骨架 */
-  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.20,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
-  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.17,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
-  {tex:'T = 2π√(l/g)',x:'63%',y:'58%',size:'28px',op:.15,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
-  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.14,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
-  {tex:'Δx·Δp ≥ ℏ/2',x:'50%',y:'3%',size:'19px',op:.11,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
-  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.12,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
-  {tex:'F = dp/dt',x:'70%',y:'92%',size:'76px',op:.05,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
+  /* 椭圆锚点 —— 全部落在右侧页边区，像写在稿纸旁的关系批注 */
+  {tex:'F = ma',x:'68%',y:'8%',size:'52px',op:.18,dur:'16s',delay:'0s',dx:'40px',dy:'70px',rot:'-2deg'},
+  {tex:'E = ½mv²',x:'80%',y:'33%',size:'27px',op:.15,dur:'15s',delay:'-4s',dx:'-42px',dy:'80px',rot:'1.4deg',tone:'sand'},
+  {tex:'T = 2π√(l/g)',x:'72%',y:'58%',size:'28px',op:.14,dur:'19s',delay:'-9s',dx:'-48px',dy:'84px',rot:'-1deg'},
+  {tex:'iℏ ∂Ψ/∂t = ĤΨ',x:'88%',y:'70%',size:'24px',op:.13,dur:'20s',delay:'-13s',dx:'30px',dy:'70px',rot:'-1.4deg',optional:true},
+  {tex:'Δx·Δp ≥ ℏ/2',x:'70%',y:'3%',size:'19px',op:.1,dur:'22s',delay:'-7s',dx:'30px',dy:'58px',rot:'-1.2deg',far:true,optional:true},
+  {tex:'λ = h/p',x:'94%',y:'48%',size:'17px',op:.11,dur:'18s',delay:'-11s',dx:'-28px',dy:'68px',rot:'1.6deg',tone:'cool',far:true,optional:true},
+  {tex:'F = dp/dt',x:'74%',y:'92%',size:'76px',op:.045,dur:'28s',delay:'-19s',dx:'34px',dy:'52px',rot:'-1deg',tone:'sand',far:true},
   /* 上升流 —— 极淡、贯穿两屏，让「漂浮」在余光里持续发生 */
-  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.08,dur:'38s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
-  {tex:'pV = nRT',x:'58%',y:'100%',size:'19px',op:.07,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
-  {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.08,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
-  {tex:'S = k_B ln W',x:'76%',y:'100%',size:'17px',op:.07,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
-  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.08,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
-  {tex:'½kx² = ½mv²',x:'64%',y:'100%',size:'18px',op:.07,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
+  {tex:'∇·E = ρ/ε₀',x:'72%',y:'100%',size:'22px',op:.07,dur:'38s',delay:'-16s',dx:'0px',dy:'0px',rot:'.6deg',far:true,flow:true},
+  {tex:'pV = nRT',x:'66%',y:'100%',size:'19px',op:.06,dur:'46s',delay:'-18s',dx:'0px',dy:'0px',rot:'-.5deg',far:true,flow:true,optional:true},
+  {tex:'∮B·dl = μ₀I',x:'88%',y:'100%',size:'20px',op:.07,dur:'42s',delay:'-29s',dx:'0px',dy:'0px',rot:'.8deg',far:true,flow:true,optional:true},
+  {tex:'S = k_B ln W',x:'80%',y:'100%',size:'17px',op:.06,dur:'50s',delay:'-12s',dx:'0px',dy:'0px',rot:'-.4deg',far:true,flow:true,optional:true},
+  {tex:'a = v²/r',x:'95%',y:'100%',size:'21px',op:.07,dur:'35s',delay:'-24s',dx:'0px',dy:'0px',rot:'1deg',far:true,flow:true,optional:true},
+  {tex:'½kx² = ½mv²',x:'68%',y:'100%',size:'18px',op:.06,dur:'44s',delay:'-36s',dx:'0px',dy:'0px',rot:'-.7deg',far:true,flow:true,optional:true},
 ]
 function Home() {
   const fieldRef = useRef<HTMLDivElement>(null)
@@ -227,7 +227,6 @@ function Home() {
         <div className="hp-orbit" aria-hidden="true">
           <span className="hp-orbit-ring"/>
           <span className="hp-orbit-ring hp-orbit-ring--inner"/>
-          <span className="hp-orbit-track"><i className="hp-orbit-dot"/></span>
         </div>
         <div className="hp-shell hp-hero-inner">
           <h1 id="home-title" className="hp-title">
@@ -243,6 +242,9 @@ function Home() {
           <div className="hp-section-head">
             <p className="hp-chapter">01 — 领域</p>
             <h2 id="domains-title">从一条定律开始。</h2>
+          </div>
+          <div className="hp-rows-head" aria-hidden="true">
+            <span>编号</span><span>基本关系</span><span>领域</span><span>实验</span>
           </div>
           <div className="hp-rows">{domains.map((domain,i)=><a key={domain.id} className="hp-row" href={domainUrl(domain)}>
             <span className="hp-row-index" aria-hidden="true">0{i+1}</span>
