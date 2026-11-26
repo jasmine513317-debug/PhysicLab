@@ -161,7 +161,7 @@ small,.muted {color:var(--dim)}
 .rename-form input {width:100%;min-width:0;background:var(--panel);border:1px solid var(--line);padding:5px 7px;color:var(--text)}
 
 .lab {position:relative;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-.lab-top {position:relative;z-index:12;height:65px;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:15px;align-items:center;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
+.lab-top {position:relative;z-index:12;height:65px;display:grid;grid-template-columns:minmax(0,1fr) max-content minmax(max-content,1fr);gap:15px;align-items:center;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0}
 .lab-identity,.lab-actions,.run-buttons {display:flex;align-items:center;gap:8px;min-width:0}
 .lab-identity {position:relative}
 .lab-actions {justify-content:flex-end}
@@ -263,7 +263,7 @@ small,.muted {color:var(--dim)}
 .zoom span {min-width:36px;text-align:center}
 .zoom .icon+.icon {border-left:1px solid var(--line)}
 .view-menu,.experiment-menu,.help-panel {position:absolute;z-index:8;background:var(--raised);border:1px solid var(--line-strong);border-radius:8px;box-shadow:var(--shadow-menu)}
-.view-menu {right:13px;top:53px;padding:9px;font-size:12px}
+.view-menu {right:13px;top:53px;padding:9px;font-size:12px;max-height:calc(100% - 62px);overflow:auto;overscroll-behavior:contain}
 .view-menu label {display:flex;align-items:center;gap:8px;padding:4px}
 .view-menu input[type=range] {width:90px}
 .experiment-menu {left:0;top:48px;min-width:185px;padding:6px}
@@ -344,6 +344,10 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
 .analysis-resizer:focus-visible {outline:1px solid var(--accent);outline-offset:-1px}
 .analysis-panel.collapsed {flex-basis:44px}
 .analysis-panel.momentum-panel {flex-basis:270px}
+.analysis-range {padding:4px 8px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:var(--text-xs)}
+.analysis-range input {width:5.5em;margin-left:3px}
+.analysis-range details {max-width:100%;max-height:80px;overflow:auto}
+.analysis-range ul {margin:4px 0;padding-left:18px}
 .momentum-summary {display:flex;align-items:center;gap:16px;min-height:33px;margin:0;padding:3px 13px;border-top:1px solid var(--line);overflow:auto;font:11px var(--mono)}
 .momentum-summary>div {display:flex;gap:5px;flex-shrink:0;align-items:baseline}
 .momentum-summary dt {color:var(--dim)}
@@ -485,9 +489,53 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
   .help-panel {top:72px}
 }
 @media (min-width:901px) and (max-height:650px) {
-  .work-center>#analysis-panel {position:absolute;z-index:8;inset:auto 8px 63px;height:244px;max-height:calc(100% - 79px);border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;box-shadow:var(--shadow-overlay)}
-  .work-center>#analysis-panel>.analysis-panel {height:100%;min-height:0;flex-shrink:1}
+  .work-center .analysis-panel .chart-wrap {min-height:110px}
 }
+@media (min-width:901px) {
+  .work-center>#analysis-panel {position:absolute;z-index:8;top:0;right:0;bottom:78px;max-width:65%;border-left:1px solid var(--line)}
+  .work-center>#analysis-panel>.analysis-panel {flex:1;max-width:100%;overflow:auto}
+  .analysis-resizer {top:0;bottom:0;left:0;right:auto;height:auto;width:9px;cursor:ew-resize}
+  .analysis-resizer::after {width:3px;height:32px;margin:24px auto 0}
+  .analysis-collapse {display:none}
+}
+@media (max-width:900px) {
+  .work-center>#analysis-panel {position:absolute;z-index:8;inset:auto 0 78px;max-height:calc(100% - 78px)}
+  .work-center>#analysis-panel>.analysis-panel {flex:0 1 auto;overflow:auto}
+  .analysis-resizer {top:0}
+  .analysis-actions .button span {display:none}
+}
+.work-center>#analysis-panel:has(.analysis-full) {position:absolute;inset:0 0 78px;max-width:none;max-height:none}
+.work-center>#analysis-panel>.analysis-full {width:100%;height:100%;flex:1}
+.lab[hidden] {display:none}
+.spatial-workbench {min-height:0;min-width:0;flex:1;display:flex;flex-direction:column;background:var(--canvas)}
+.spatial-controls {display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--panel);overflow-x:auto;white-space:nowrap}
+.spatial-controls>* {flex:none}
+.spatial-controls strong {padding:0 8px;font-size:var(--text-sm)}
+.spatial-view {position:relative;flex:1;min-height:120px}
+.spatial-canvas {position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.spatial-canvas:active {cursor:grabbing}
+.spatial-camera {position:absolute;top:8px;left:8px;display:flex;gap:4px}
+.spatial-movement {display:flex;gap:4px}
+.spatial-camera {right:8px;flex-wrap:wrap}
+.spatial-properties {position:absolute;right:8px;top:54px;bottom:8px;width:min(340px,calc(100% - 16px));overflow:auto;display:flex;flex-direction:column;gap:8px;padding:12px;background:var(--panel);border:1px solid var(--line-strong);border-radius:var(--radius-md)}
+.spatial-properties>label {display:flex;justify-content:space-between;align-items:center;gap:8px}
+.spatial-properties input[type=number] {width:84px}
+.spatial-vector-options {border:1px solid var(--line);padding:7px}
+.spatial-vector-options label,.spatial-intervention label {display:flex;align-items:center;gap:6px;margin:4px 0}
+.spatial-intervention {min-width:0;border:1px solid var(--line);padding:8px}
+.spatial-properties textarea {max-width:100%;min-width:0}
+.spatial-vector {min-width:0;display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--line);padding:6px}
+.spatial-vector label {flex:1;min-width:70px;display:flex;gap:4px;align-items:center}
+.spatial-vector label input {width:100%;min-width:0}
+.spatial-status {display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:5px 10px;font-size:var(--text-xs);color:var(--soft)}
+.spatial-message {margin:0;padding:6px 10px;font-size:var(--text-sm)}
+.experiment-data {min-width:0;display:grid;gap:6px;padding:8px 10px;background:var(--panel)}
+.data-controls {display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;font-size:var(--text-xs)}
+.data-controls label {display:flex;align-items:center;gap:4px}
+.data-controls input[type=number] {width:6.5em;min-width:0}
+.data-controls select {max-width:15em}
+.data-plot {height:230px;min-width:0}
+.spatial-properties .data-plot {height:190px}
 @media (pointer:coarse) {
   .button,.icon,select,input[type="number"] {min-height:var(--control-height-touch)}
   .button,.icon {min-width:var(--icon-size-touch)}

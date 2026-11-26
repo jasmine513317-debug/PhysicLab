@@ -34,15 +34,17 @@ export function flightTime(height:number, vy:number, gravity:number) {
 }
 
 export function ballisticDuration(scene:Experiment, body:BodyConfig) {
-  if(scene.kind!=='projectile'&&scene.kind!=='fall')return
+  if(body.rail||scene.kind!=='projectile'&&scene.kind!=='fall')return
   const {gravity,collisions,boundaries}=scene.environment
+  if(scene.environment.linearDrag || gravity!==0 && scene.environment.gravityAngle!==undefined && scene.environment.gravityAngle!==-90)return
+  if(body.charge&&scene.bodies.some(other=>other.id!==body.id&&other.role==='field'&&other.charge))return
   let duration=Infinity
   if(collisions) {
     if(boundaries||scene.bodies.some(other=>other.id!==body.id&&other.type==='dynamic'))return
     const obstacles=scene.bodies.filter(other=>other.id!==body.id)
     if(obstacles.length) {
       const [floor]=obstacles
-      if(obstacles.length!==1||floor.geometry.kind!=='surface'||floor.angle!==0||body.geometry.kind!=='circle')return
+      if(obstacles.length!==1||floor.geometry.kind!=='surface'||floor.angle!==0||floor.contactSide==='right'||body.geometry.kind!=='circle')return
       const height=body.position.y-floor.position.y-floor.geometry.height/2-body.geometry.radius
       if(height<0)return
       duration=flightTime(height,body.velocity.y,gravity)
@@ -83,7 +85,7 @@ export function ballisticReference(scene:Experiment, body:BodyConfig, samples:Sa
 }
 
 export function springPeriodReference(scene:Experiment, subject:BodyConfig) {
-  if(scene.kind!=='spring'||scene.bodies.length!==2||scene.joints.length!==1||scene.environment.gravity!==0||scene.environment.boundaries)return
+  if(scene.kind!=='spring'||scene.bodies.length!==2||scene.joints.length!==1||scene.environment.gravity!==0||scene.environment.boundaries||scene.environment.linearDrag)return
   const joint=scene.joints[0]
   if(joint.damping>=1||joint.anchorA.x||joint.anchorA.y||joint.anchorB.x||joint.anchorB.y)return
   const anchor=scene.bodies.find(candidate=>candidate.type==='static')

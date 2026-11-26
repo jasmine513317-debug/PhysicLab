@@ -45,3 +45,5 @@ The build writes `dist/`. Install Playwright test browsers with `npx playwright 
 The application interface defaults to Simplified Chinese. Use **历史回放** to review a recorded run, scrub to a pose, or save the recording separately from the scene. The [三分钟中文演示](docs/中文演示脚本.md) uses the Chinese workbench and the inclined-plane template.
 
 The app runs entirely client-side. The deploying host needs no API keys or server-side data storage.
+
+Studio 3.0 also includes the **3D** workbench, with Rapier rigid-body contacts, spatial modeling, experiment templates, history and prediction, and a shared 2D/3D workspace file. Results, benchmark conditions, and supported models are described in the [Studio 3.0 validation record](docs/studio-3.0-validation.md).

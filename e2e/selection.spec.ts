@@ -30,8 +30,8 @@ test('uses selection for dragging, panning, animated context selection, and dele
   }
   await drag(p,80,-40)
   await expect(menu).toHaveCount(0)
-  expect(Number(await x.inputValue())).toBeCloseTo(oldX+1,4)
-  expect(Number(await y.inputValue())).toBeCloseTo(oldY+.5,4)
+  await expect.poll(async()=>Number(await x.inputValue())).toBeCloseTo(oldX+1,4)
+  await expect.poll(async()=>Number(await y.inputValue())).toBeCloseTo(oldY+.5,4)
 
   const blank=at(180,20)
   await canvas.click({position:blank,button:'right'})

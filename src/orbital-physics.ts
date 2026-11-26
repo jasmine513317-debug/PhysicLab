@@ -97,7 +97,7 @@ export class TwoBodyOrbit {
   private revolutionAngle=0
   private sweep:Sweep
 
-  constructor(bodies:Pair) {
+  constructor(bodies:Pair,refinement=1) {
     this.bodies=bodies
     const [primary,secondary]=bodies
     const mass=primary.mass+secondary.mass
@@ -114,7 +114,7 @@ export class TwoBodyOrbit {
     const dynamicalTime=Math.sqrt(closest**3/this.mu)
     const velocityTime=closest/Math.max(length(this.velocity),1e-12)
     const resolution=this.elements?.period?80:256
-    this.dt=Math.min((this.elements?.period??Infinity)/4096,dynamicalTime/resolution,velocityTime/resolution)
+    this.dt=Math.min((this.elements?.period??Infinity)/4096,dynamicalTime/resolution,velocityTime/resolution)/refinement
     this.playbackRate=Math.min((this.elements?.period??dynamicalTime*TAU)/9,this.dt*6800)
     const sweepDuration=(this.elements?.period??this.dt*4096)/8
     this.sweepSteps=Math.max(1,Math.round(sweepDuration/this.dt))

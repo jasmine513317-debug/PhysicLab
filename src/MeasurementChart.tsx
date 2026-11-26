@@ -33,9 +33,11 @@ function PlotPicker({start,end,pick}:{start:number;end:number;pick:(time:number)
 interface Props {
   group:Group; title:string; samples:Sample[]; hasBody:boolean
   hidden:string[]; toggleSeries:(key:string)=>void
+  source?:Sample[]
+  events?:readonly {time:number}[]
 }
 
-export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSeries}:Props) {
+export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSeries,source=samples,events}:Props) {
   const [enabled,setEnabled] = useState(false)
   const [quantity,setQuantity] = useState<MeasuredQuantity>(group==='Velocity'?'vy':groups[group][0][0])
   const [target,setTarget] = useState<Marker>('A')
@@ -48,7 +50,7 @@ export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSerie
   const end = Math.max(start+1, lastTime)
   const stride = Math.max(1,Math.ceil(samples.length/750))
   const points = samples.filter((_,i)=>i%stride===0||i===samples.length-1)
-  const retained = (point?:Sample) => selection?.source===samples && point && point.time>=start ? point : undefined
+  const retained = (point?:Sample) => selection?.source===source && point && point.time>=start ? point : undefined
   const a = retained(selection?.A), b = retained(selection?.B)
   const interval = a && b && series ? measureInterval(a,b,series[0]) : undefined
   const active = enabled && samples.length>=2
@@ -57,7 +59,7 @@ export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSerie
   function pick(time:number, marker:Marker=next) {
     const point = nearestSample(samples,time)
     if (!point) return
-    setSelection({source:samples,A:a,B:b,[marker]:point})
+    setSelection({source,A:a,B:b,[marker]:point})
     setTarget(marker==='A'?'B':'A')
   }
 
@@ -72,6 +74,7 @@ export function MeasurementChart({group,title,samples,hasBody,hidden,toggleSerie
             contentStyle={{background:'var(--raised)',border:'1px solid var(--line)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--text)'}}
             itemStyle={{color:'var(--text)'}} labelStyle={{color:'var(--soft)'}}/>
           {groups[group].map(([key,label,color])=><Line key={key} type="linear" name={label} dataKey={key} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} hide={hidden.includes(key)}/>)}
+          {events?.slice(-100).map((event,i)=><ReferenceLine key={i} x={event.time} stroke="var(--comparison)" strokeDasharray="3 3"/>)}
           {active && series && markers.map(marker=>{
             const point = marker==='A'?a:b
             return point && <ReferenceLine key={marker} x={point.time} stroke={markerColors[marker]} strokeDasharray="3 3"/>

@@ -60,3 +60,9 @@ Open **动量** in the analysis panel to view signed momentum components. Switch
 - **三体引力** starts from an equal-mass figure-eight orbit. Expand an object's parameters to set its mass, position, and velocity. Adjust **对照组天体 3 的 X 位移** to compare initial conditions. The measurements include the center of mass and changes in the conserved quantities.
 - **引力弹弓** records an inbound and outbound crossing of the same measurement circle. **飞掠前后对比** displays the spacecraft's speed and specific kinetic energy in both the star and planet frames. Choose a frame for the canvas independently of the table.
 - **电磁感应** plots flux and electromotive force in a ten-second window. Change **回路状态** to compare the open and closed circuits. The initial parameters control the field, projected loop area, and resistance.
+
+## Studio 3.0 矢量与空间轨道
+
+- 在二维可动对象的 **矢量干预** 中输入目标合力或加速度。系统按当前重力、场强、速度和阻尼计算持续外力。接触条件改变时重新检查测量结果。
+- 目标支持力适用于法向稳定、方向一致的固定接触。让物体先接触支撑面，再填写目标值。斜面上会沿实际法线调整外力，原有切向外力保留。
+- 在三维加载 **倾斜双体轨道**，打开 **环境** 后可以输入相对 XZ 平面的初始轨道倾角。调整倾角会以新初始状态开始，可用三维工具栏撤销。在 **属性** 中可独立改变天体的显示半径与物理半径。

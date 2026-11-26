@@ -10,12 +10,14 @@ export const templates = [
 ] as const
 export type TemplateId = typeof templates[number]['id']
 
-export function instantiate(id: TemplateId): Experiment {
+export function instantiate(id: TemplateId, {lineSurfaces=false}:{lineSurfaces?:boolean}={}): Experiment {
   const info = templates.find(t => t.id === id)!
   const scene:Experiment = {...emptyExperiment(), kind:id==='track'?'custom':id, title:info.title, description:info.description}
-  const floor = body('地面', {kind:'surface',width:22,height:0.32}, 0, -0.16, {restitution:0})
+  const surfaceOptions=lineSurfaces?{surfaceLine:true as const}:{}
+  const floor = body('地面', {kind:'surface',width:22,height:0.32}, 0, -0.16, {restitution:0,...surfaceOptions})
   switch (id) {
     case 'projectile':
+      if(lineSurfaces)scene.version=3
       scene.camera = {...scene.camera,x:1.35}
       scene.bodies = [body('抛射体', {kind:'circle',radius:0.28}, -4, 0.8, {
         velocity:{x:Math.SQRT1_2*10,y:Math.SQRT1_2*10}, restitution:0,
@@ -38,14 +40,16 @@ export function instantiate(id: TemplateId): Experiment {
       break
     }
     case 'friction': {
+      if(lineSurfaces)scene.version=3
       const angle = -0.38
       scene.bodies = [
         body('滑块',{kind:'rectangle',width:0.75,height:0.6},-2.6,3.07,{angle,mass:2,color:'blue',friction:0.2,restitution:0}),
-        body('斜面',{kind:'surface',width:8,height:0.23},0,1.6,{angle,friction:0.35,restitution:0}),floor,
+        body('斜面',{kind:'surface',width:8,height:0.23},0,1.6,{angle,friction:0.35,restitution:0,...surfaceOptions}),floor,
       ]
       break
     }
     case 'fall':
+      if(lineSurfaces)scene.version=3
       scene.camera = {x:0,y:5,scale:45}
       scene.bodies = [body('下落小球',{kind:'circle',radius:0.35},0,10,{restitution:0}),floor]
       break

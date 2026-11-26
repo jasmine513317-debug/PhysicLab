@@ -98,3 +98,38 @@ test('keeps core playback and save controls available on a phone', async ({ page
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
 })
+
+test('preserves playback state on viewport rotation and suspends simulation while hidden', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openImportedScene(page, emptyExperiment())
+  const time = page.getByLabel('模拟时间', { exact: true })
+  await page.getByRole('button', { name: '运行', exact: true }).click()
+  await expect(time).not.toHaveText('0.000 s')
+  const values = await page.evaluate(async () => {
+    // Model browsers that continue delivering animation frames to hidden pages.
+    const value = () => document.querySelector('[aria-label="模拟时间"]')?.textContent
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    try {
+      // Let the last visible frame's queued React update settle before sampling.
+      for (let frame = 0; frame < 3; frame++) await new Promise(requestAnimationFrame)
+      const before = value()
+      for (let frame = 0; frame < 5; frame++) await new Promise(requestAnimationFrame)
+      return [before, value()]
+    } finally {
+      Reflect.deleteProperty(document, 'hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+  })
+  expect(values[0]).toBeTruthy()
+  expect(values[1]).toBe(values[0])
+  await page.setViewportSize({ width: 844, height: 390 })
+  await expect(time).not.toHaveText(values[0]!)
+  await page.getByRole('button', { name: '暂停', exact: true }).click()
+  await expect(page.getByRole('button', { name: '运行', exact: true })).toBeVisible()
+  const paused = (await time.textContent())!
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(time).toHaveText(paused)
+  await expect(page.getByRole('button', { name: '保存实验', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+})

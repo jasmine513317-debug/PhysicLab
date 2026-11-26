@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import { runFixedSolver } from './simulation'
 import { Download, Minus, Pause, Play, Plus, RotateCcw, Save, StepForward, Trash2 } from 'lucide-react'
 import { astronomyTemplates, createAstronomyExperiment, createCelestialBody, KM_PER_SECOND_PER_AU_PER_YEAR, SOLAR_GRAVITY, type AstronomyExperiment, type CelestialBody } from './astronomy'
 import { centerOfMass, escapeThreshold, orbitCsv, TwoBodyOrbit, verifyKeplerThird, withEscapeSpeed } from './orbital-physics'
@@ -8,6 +9,7 @@ import { appUrl } from './routes'
 import { downloadText } from './download'
 import { extendedTemplates, extensionUrl } from './extended-experiments'
 import { formatNumber } from './numberFormat'
+import { ExperimentData } from './ExperimentData'
 import './astronomy.css'
 
 const layerLabels={reference:'理论轨道',trails:'运行轨迹',center:'质心',velocity:'速度矢量',apsides:'近心点与远心点',sweeps:'扫过面积'} as const
@@ -36,6 +38,7 @@ function Numeric({label,unit,value,min,max,change}:{label:string;unit:string;val
 }
 
 function OrbitAnalysis({orbit}:{orbit:TwoBodyOrbit}) {
+  const [variables,setVariables]=useState(false)
   const [comparison,setComparison]=useState<ReturnType<typeof verifyKeplerThird>>()
   const [error,setError]=useState('')
   const elements=orbit.elements
@@ -47,6 +50,16 @@ function OrbitAnalysis({orbit}:{orbit:TwoBodyOrbit}) {
   const measuredEccentricity=measured?(orbit.maximumDistance-orbit.minimumDistance)/(orbit.maximumDistance+orbit.minimumDistance):undefined
   return <section className="astronomy-analysis" aria-label="轨道分析">
     <h2>轨道分析</h2>
+    <button className="button compact" onClick={()=>setVariables(!variables)} aria-expanded={variables}>变量分析</button>
+    {variables&&<ExperimentData title="双体轨道" variables={[
+      ['time','模拟时间','年'],['radius','相对距离','AU'],['speed','相对速率','AU/年'],
+      ['energy','轨道能量','M☉·AU²/年²'],['energyError','能量漂移','M☉·AU²/年²','误差'],
+      ['angular','轨道角动量','M☉·AU²/年'],['angularError','角动量漂移','M☉·AU²/年','误差'],
+    ]} subjects={[{id:'orbit',name:'双体系统',rows:orbit.history.map(sample=>({
+      time:sample.time,radius:Math.hypot(sample.relative.x,sample.relative.y),speed:Math.hypot(sample.velocity.x,sample.velocity.y),
+      energy:sample.energy,angular:sample.angularMomentum,energyError:sample.energy-orbit.initial.energy,
+      angularError:sample.angularMomentum-orbit.initial.angularMomentum,
+    }))}]}/>}
     <p className="muted">轨道要素使用双体间的相对位置。实测值来自积分轨迹。</p>
     <div className="astronomy-table-wrap">
       <table><thead><tr><th>轨道要素</th><th>理论值</th><th>实测值</th></tr></thead>
@@ -125,22 +138,8 @@ function AstronomyEditor({initial,initiallySaved,active,updateSavedAddress}:{ini
   useEffect(()=>{
     if(!active) {if(running)setRunning(false);return}
     if(!running||!orbit)return
-    let frame=0,previous:number|undefined,remaining=0
-    function tick(now:number) {
-      if(!orbit)return
-      if(previous!==undefined)remaining+=Math.min(.05,(now-previous)/1000)*speed*orbit.playbackRate
-      previous=now
-      let advanced=0
-      while(remaining>=orbit.dt&&advanced<180) {
-        if(!orbit.step()){setRunning(false);redraw(value=>value+1);return}
-        remaining-=orbit.dt;advanced++
-      }
-      if(advanced===180)remaining%=orbit.dt
-      if(advanced)redraw(value=>value+1)
-      frame=requestAnimationFrame(tick)
-    }
-    frame=requestAnimationFrame(tick)
-    return ()=>cancelAnimationFrame(frame)
+    return runFixedSolver(orbit,{speed:speed*orbit.playbackRate,maxDelta:.05,maxSteps:180,
+      updated:()=>redraw(value=>value+1),stopped:()=>setRunning(false)})
   },[active,orbit,running,speed])
 
   function changeBody(patch:Partial<CelestialBody>) {

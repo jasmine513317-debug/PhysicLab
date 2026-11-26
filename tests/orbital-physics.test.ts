@@ -50,6 +50,21 @@ describe('Newtonian two-body orbit',()=>{
     expect(orbit.current.time).toBe(0)
   })
 
+  it.each(['ellipse','kepler','escape'])('checks time-step convergence on the %s preset',preset=>{
+    const {bodies}=createAstronomyExperiment(preset)
+    const pair:[typeof bodies[number],typeof bodies[number]]=[bodies[0],bodies[1]]
+    const coarse=new TwoBodyOrbit(pair),fine=new TwoBodyOrbit(pair,2),reference=new TwoBodyOrbit(pair,8)
+    const steps=Math.round(coarse.elements!.period!/(4*coarse.dt))
+    for(const [orbit,scale] of [[coarse,1],[fine,2],[reference,8]] as const) {
+      for(let step=0;step<steps*scale;step++)expect(orbit.step()).toBe(true)
+      expect(orbit.current.time).toBeCloseTo(coarse.current.time,12)
+    }
+    const error=(orbit:TwoBodyOrbit)=>Math.hypot(orbit.current.relative.x-reference.current.relative.x,
+      orbit.current.relative.y-reference.current.relative.y)
+    expect(error(coarse)).toBeLessThan(.0001)
+    expect(error(fine)).toBeLessThan(error(coarse)*.3)
+  })
+
   it('stops before a radial encounter crosses the contact boundary',()=>{
     const source=template().bodies
     const orbit=new TwoBodyOrbit(source.map(body=>({...body,radius:.1,velocity:{x:0,y:0}})) as typeof source)

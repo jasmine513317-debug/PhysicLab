@@ -15,20 +15,22 @@ async function centerColor(canvas:Locator,box:{x:number;y:number},camera:Camera,
   },{x:pixel.x-box.x,y:pixel.y-box.y})
 }
 
-function expectSameBodyPixel(before:number[],after:number[]) {
-  expect(after.every((channel,index)=>Math.abs(channel-before[index])<=4)).toBe(true)
-}
-
 test('switches coordinate modes and moves the origin without moving the physical body',async({page})=>{
   const scene=fixture(),canvas=await openImportedScene(page,scene),bounds=(await canvas.boundingBox())!
-  const before=await centerColor(canvas,bounds,scene.camera,scene.bodies[0].position)
+  // The polar origin and Cartesian axes may be drawn below the translucent body.
+  const probe={x:scene.bodies[0].position.x+.13,y:scene.bodies[0].position.y+.09}
+  await expect.poll(async()=>(await centerColor(canvas,bounds,scene.camera,probe))[3]).toBeGreaterThan(0)
+  const before=await centerColor(canvas,bounds,scene.camera,probe)
   const mode=page.getByRole('combobox',{name:'坐标系'})
   await expect(mode).toHaveValue('cartesian')
   await mode.selectOption('polar')
   await expect(page.locator('.coordinates')).toContainText('θ')
   await page.mouse.move(bounds.x+bounds.width/2+50,bounds.y+bounds.height/2-50)
   await expect(page.locator('.coordinates')).toContainText('r')
-  expectSameBodyPixel(before,await centerColor(canvas,(await canvas.boundingBox())!,scene.camera,scene.bodies[0].position))
+  await expect.poll(async()=>{
+    const after=await centerColor(canvas,(await canvas.boundingBox())!,scene.camera,probe)
+    return after.every((channel,index)=>Math.abs(channel-before[index])<=4)
+  }).toBe(true)
 
   await page.getByRole('button',{name:'移动坐标原点',exact:true}).click()
   const start={x:bounds.x+bounds.width/2,y:bounds.y+bounds.height/2}

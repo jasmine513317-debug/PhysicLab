@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { experimentSchema, type Experiment } from './model'
 import type { Sample } from './analysis'
+import { interventionSchema, type Intervention } from './interventions'
 
 export const REPLAY_SAMPLE_LIMIT = 3601
 const sampleSchema = z.object({
@@ -15,12 +16,14 @@ export interface Replay {
   scene:Experiment
   tracks:Track[]
   externalForceApplied?:true
+  interventions?:Intervention[]
 }
 const replaySchema = z.object({
   version:z.literal(1),
   scene:experimentSchema,
   tracks:z.array(z.tuple([z.string(),z.array(sampleSchema).min(2).max(REPLAY_SAMPLE_LIMIT)])).min(1).max(100),
   externalForceApplied:z.literal(true).optional(),
+  interventions:z.array(interventionSchema).optional(),
 })
 
 export function decodeReplay(value:unknown):Replay {
@@ -29,6 +32,11 @@ export function decodeReplay(value:unknown):Replay {
   const times=replay.tracks[0][1].map(s=>s.time)
   const aligned=times.every((time,i)=>i===0||time>times[i-1]) && replay.tracks.every(([id,samples])=>
     ids.delete(id)&&samples.length===times.length&&samples.every((s,i)=>s.time===times[i]&&s.bodyId===id))
-  if(!aligned||ids.size) throw new Error('回放数据与场景不匹配。')
+  const dynamic=new Set(replay.tracks.map(([id])=>id))
+  const eventsValid=replay.interventions?.every((event,i,events)=>
+    dynamic.has(event.bodyId) && event.time<times.at(-1)! &&
+    Math.abs(event.tick*replay.scene.environment.timeStep-event.time)<1e-9 &&
+    (i===0 || event.tick>=events[i-1].tick)) ?? true
+  if(!aligned||ids.size||!eventsValid) throw new Error('回放数据与场景不匹配。')
   return replay
 }

@@ -5,6 +5,7 @@ import { displayPoint, polarComponents, polarPosition } from './coordinates'
 import { setInitialExtension, springGeometry } from './springs'
 import { formatNumber } from './numberFormat'
 import { withObjectRole, type EditableRole } from './objectRole'
+import type { PhysicalInput } from './interventions'
 
 const roleLabels={marker:'视觉标记',body:'刚体',boundary:'碰撞边界',track:'轨道',field:'场源'} as const
 const roleHints={marker:'只显示，不参与碰撞',body:'参与碰撞；可设为动态或静态',boundary:'静态碰撞轮廓',track:'静态碰撞轨道',field:'静电场源，不参与碰撞'} as const
@@ -17,22 +18,36 @@ function NumberField({label,value,unit,onCommit,min,max,step='any',readOnly=fals
   const display=formatNumber(value)
   const [text,setText]=useState(display)
   const [error,setError]=useState('')
+  const committedOnEnter=useRef(false)
   useEffect(()=>{setText(formatNumber(value));setError('')},[value])
-  function commit() {
-    if(readOnly)return
-    const n=Number(text)
-    if(!text.trim()||!Number.isFinite(n)||(min!==undefined&&n<min)||(max!==undefined&&n>max)) {
+  function commit(raw:string) {
+    if(readOnly)return true
+    const n=Number(raw)
+    if(!raw.trim()||!Number.isFinite(n)||(min!==undefined&&n<min)||(max!==undefined&&n>max)) {
       setError(min!==undefined&&max!==undefined?'请输入 '+min+' 至 '+max+' 之间的数值。':min!==undefined?'最小值为 '+min+'。':'请输入有效数值。')
-      return
+      return false
     }
-    if(n===Number(display)) {setError('');return}
-    if(onCommit(n)) setError('')
-    else setError('请查看实验参数的错误提示。')
+    if(n===Number(display)||onCommit(n)) {setError('');return true}
+    setError('请查看实验参数的错误提示。')
+    return false
   }
   return <div className="field"><label htmlFor={id}>{label}</label><div className="numeric">
     <input id={id} type="number" min={min} max={max} step={step} value={text} readOnly={readOnly} aria-invalid={Boolean(error)}
       aria-describedby={error?id+'-error':undefined} onChange={e=>{setText(e.target.value);setError('')}}
-      onBlur={commit} onKeyDown={e=>{if(e.key==='Enter') e.currentTarget.blur();if(e.key==='Escape'){setText(display);setError('')}}}/>
+      onBlur={e=>{
+        if(committedOnEnter.current){committedOnEnter.current=false;return}
+        commit(e.currentTarget.value)
+      }} onKeyDown={e=>{
+        if(e.key==='Enter') {
+          e.preventDefault()
+          if(commit(e.currentTarget.value)) {
+            committedOnEnter.current=true
+            e.currentTarget.blur()
+            committedOnEnter.current=false
+          }
+        }
+        if(e.key==='Escape'){setText(display);setError('')}
+      }}/>
     {unit&&<span aria-hidden="true">{unit}</span>}
   </div>{error&&<small className="field-error" id={id+'-error'}>{error}</small>}</div>
 }
@@ -41,12 +56,14 @@ function Readout({label,value,unit}:{label:string;value:string;unit?:string}) {
 }
 type Props = {
   scene:Experiment; selected:string; select:(id:string)=>void; change:(patch:Partial<Experiment>)=>boolean
-  force:(id:string,x:number,y:number)=>void
+  applyInput:(id:string,input:PhysicalInput)=>void
+  applyTarget:(id:string,value:Point,quantity:'force'|'acceleration'|'support')=>void
+  simulationTime:number
   livePosition?:Point;liveVelocity?:Point
   initialTab?:'object'|'world'
   onClose?:()=>void
 }
-export function Inspector({scene,selected,select,change,force,livePosition,liveVelocity,initialTab='object',onClose}:Props) {
+export function Inspector({scene,selected,select,change,applyInput,applyTarget,simulationTime,livePosition,liveVelocity,initialTab='object',onClose}:Props) {
   const [tab,setTab]=useState<'object'|'world'>(initialTab)
   const previous=useRef({initialTab,selected})
   useEffect(()=>{
@@ -94,9 +111,11 @@ export function Inspector({scene,selected,select,change,force,livePosition,liveV
           <h3>模拟设置</h3>
           <div className="tabs gravity-presets" role="group" aria-label="重力预设">
             {GRAVITY_PRESETS.map(p=><button key={p.name} type="button" title={p.note} aria-pressed={env.gravity===p.gravity}
-              className={env.gravity===p.gravity?'chosen':''} onClick={()=>world({gravity:p.gravity})}>{p.name} {p.gravity}</button>)}
+              className={env.gravity===p.gravity?'chosen':''} onClick={()=>world({gravity:p.gravity,gravityAngle:undefined})}>{p.name} {p.gravity}</button>)}
           </div>
           <NumberField label="重力加速度" unit="m/s²" min={0} max={100} value={env.gravity} onCommit={gravity=>world({gravity})}/>
+          <NumberField label="重力方向（自 +X 逆时针）" unit="°" min={-360} max={360} value={env.gravityAngle??-90} onCommit={gravityAngle=>world({gravityAngle})}/>
+          <NumberField label="介质线性阻尼" unit="s⁻¹" min={0} max={20} value={env.linearDrag??0} onCommit={linearDrag=>world({linearDrag})}/>
           <NumberField label="模拟速度" unit="×" min={0.1} max={4} step={0.1} value={env.speed} onCommit={speed=>world({speed})}/>
           <label className="switch-row">启用场景边界<input type="checkbox" checked={env.boundaries} onChange={e=>world({boundaries:e.target.checked})}/></label>
           {env.boundaries&&([
@@ -104,6 +123,8 @@ export function Inspector({scene,selected,select,change,force,livePosition,liveV
           ] as const).map(([key,label])=><NumberField key={key} label={label} unit="m" min={-10000} max={10000} value={bounds[key]} onCommit={n=>world({worldBounds:{...bounds,[key]:n}})}/>)}
           <label className="switch-row">启用碰撞<input type="checkbox" checked={env.collisions} onChange={e=>world({collisions:e.target.checked})}/></label>
           <NumberField label="默认比例" unit="px/m" min={5} max={400} value={scene.camera.scale} onCommit={scale=>change({camera:{...scene.camera,scale}})}/>
+          <button className="button compact" onClick={()=>world({gravity:9.81,gravityAngle:undefined,linearDrag:undefined,
+            speed:1,boundaries:false,collisions:true,worldBounds:undefined})}>恢复默认环境</button>
         </div>
       </>:<>
         <label className="object-select"><Layers3 size={15}/><select aria-label="当前物体" value={selected} onChange={e=>select(e.target.value)}>
@@ -139,6 +160,17 @@ export function Inspector({scene,selected,select,change,force,livePosition,liveV
             {!collisionFree&&<>
               <NumberField label="摩擦系数" min={0} max={10} value={b.friction} onCommit={friction=>patch({friction})}/>
               <NumberField label="恢复系数" min={0} max={1} value={b.restitution} onCommit={restitution=>patch({restitution})}/>
+            </>}
+            {fields.kind==='surface'&&!b.surfaceLine&&<button type="button" className="button compact" onClick={()=>patch({surfaceLine:true})}>转换为线段碰撞</button>}
+            {(fields.kind==='track'||b.surfaceLine)&&<label className="plain-select">碰撞方向<select value={b.contactSide??'both'} onChange={e=>patch({contactSide:e.target.value as BodyConfig['contactSide']})}>
+              <option value="both">双侧</option><option value="left">仅沿线方向左侧</option><option value="right">仅沿线方向右侧</option>
+            </select></label>}
+            {b.type==='dynamic'&&fields.kind==='circle'&&scene.bodies.some(target=>target.geometry.kind==='track')&&<>
+              <label className="plain-select">轨道模式<select value={b.rail??''} onChange={e=>patch({rail:e.target.value||undefined})}>
+                <option value="">普通碰撞</option>{scene.bodies.filter(target=>target.geometry.kind==='track'&&target.role!=='marker'&&target.role!=='field').map(target=>
+                  <option key={target.id} value={target.id}>理想约束 · {target.name}</option>)}
+              </select></label>
+              {b.rail&&<small>质点沿轨道弧长运动，端点停住。忽略滚动与碰撞。</small>}
             </>}
             <label className="plain-select">物体角色<select aria-label="物体角色" value={role} onChange={e=>assignRole(e.target.value as EditableRole)}>
               {editableRoles.map(value=><option key={value} value={value} disabled={fields.kind==='ellipse'?value!=='body':value==='track'&&fields.kind!=='track'&&fields.kind!=='freeform'}>{roleLabels[value]}</option>)}
@@ -180,7 +212,8 @@ export function Inspector({scene,selected,select,change,force,livePosition,liveV
             {fields.kind==='track'&&<p className="muted">静态碰撞轨道 · {fields.vertices.length} 个顶点</p>}
             {fields.kind==='freeform'&&<p className="muted">{fields.closed?'手绘物块':'手绘曲线（静态斜面/碰撞曲线）'} · {fields.vertices.length} 个点</p>}
           </div>
-          {b.type==='dynamic'&&<ForceFields apply={(x,y)=>force(b.id,x,y)}/>}
+          {b.type==='dynamic'&&<ForceFields key={b.id} mode={scene.physicalMode??'strict'} setMode={physicalMode=>change({physicalMode})} time={simulationTime} apply={input=>applyInput(b.id,input)}
+            target={(value,quantity)=>applyTarget(b.id,value,quantity)}/>}
         </div>}
         {j&&<div key={j.id}>
           <div className="object-title"><span className="object-icon amber"><Waves size={19}/></span><div><strong>弹簧</strong><small>约束连接 · {scene.bodies.find(b=>b.id===j.a)?.name} ↔ {scene.bodies.find(b=>b.id===j.b)?.name}</small></div></div>
@@ -205,12 +238,50 @@ export function Inspector({scene,selected,select,change,force,livePosition,liveV
   </aside>
 }
 
-function ForceFields({apply}:{apply:(x:number,y:number)=>void}) {
+function ForceFields({apply,time,target,mode,setMode}:{apply:(input:PhysicalInput)=>void;time:number;target:(value:Point,quantity:'force'|'acceleration'|'support')=>void;
+  mode:'strict'|'free';setMode:(mode:'strict'|'free')=>boolean}) {
   const [x,setX]=useState(0),[y,setY]=useState(0)
+  const [kind,setKind]=useState<PhysicalInput['kind']|'force'|'acceleration'|'support'>('continuous')
+  const [entry,setEntry]=useState<'components'|'polar'>('components')
+  const [magnitude,setMagnitude]=useState(0),[angle,setAngle]=useState(0)
+  const [start,setStart]=useState(time),[end,setEnd]=useState(time+1)
+  const unit=kind==='impulse'?'N·s':kind==='velocity'?'m/s':kind==='acceleration'?'m/s²':'N'
+  const vector=entry==='components'?{x,y}:{x:magnitude*Math.cos(angle*Math.PI/180),y:magnitude*Math.sin(angle*Math.PI/180)}
   return <div className="prop-group">
-    <h3>外力 · 本次运行</h3>
-    <NumberField label="X 方向外力" unit="N" min={-10000} max={10000} value={x} onCommit={n=>{setX(n);return true}}/>
-    <NumberField label="Y 方向外力" unit="N" min={-10000} max={10000} value={y} onCommit={n=>{setY(n);return true}}/>
-    <button className="button compact" onClick={()=>apply(x,y)}>施加恒定外力</button>
+    <h3>矢量干预</h3>
+    <label>物理模式 <select value={mode} onChange={e=>{
+      setMode(e.target.value==='free'?'free':'strict')
+      if(e.target.value==='strict'&&kind==='velocity')setKind('continuous')
+    }}><option value="strict">严格物理</option><option value="free">自由干预</option></select></label>
+    {mode==='free'&&<p className="muted">覆盖速度属于人工干预，能量和动量守恒可能不再适用。</p>}
+    <label>输入类型 <select value={kind} onChange={e=>setKind(e.target.value as typeof kind)}>
+      <option value="continuous">持续力</option><option value="timed">定时力</option><option value="impulse">瞬时冲量</option>
+      <option value="force">目标合力</option><option value="acceleration">目标加速度</option>
+      <option value="support">目标支持力</option>
+      {mode==='free'&&<option value="velocity">覆盖当前速度</option>}
+    </select></label>
+    {kind!=='support'&&<label>输入方式 <select value={entry} onChange={e=>setEntry(e.target.value==='polar'?'polar':'components')}>
+      <option value="components">分量</option><option value="polar">大小和方向</option>
+    </select></label>}
+    {kind==='support'?<NumberField label="目标支持力" unit="N" min={0} max={10000} value={magnitude} onCommit={n=>{setMagnitude(n);return true}}/>:
+    entry==='components'?<>
+      <NumberField label="X 分量" unit={unit} min={-10000} max={10000} value={x} onCommit={n=>{setX(n);return true}}/>
+      <NumberField label="Y 分量" unit={unit} min={-10000} max={10000} value={y} onCommit={n=>{setY(n);return true}}/>
+    </>:<>
+      <NumberField label="大小" unit={unit} min={0} max={10000} value={magnitude} onCommit={n=>{setMagnitude(n);return true}}/>
+      <NumberField label="方向角（自 +X 逆时针）" unit="°" value={angle} onCommit={n=>{setAngle(n);return true}}/>
+    </>}
+    {kind==='timed'&&<>
+      <NumberField label="模拟起始时间" unit="s" min={0} value={start} onCommit={n=>{setStart(n);return true}}/>
+      <NumberField label="模拟结束时间" unit="s" min={0} value={end} onCommit={n=>{setEnd(n);return true}}/>
+    </>}
+    {(kind==='force'||kind==='acceleration')&&<p className="muted">按当前状态计算所需持续外力。速度、场强或接触变化后，实际结果也会变化。</p>}
+    {kind==='support'&&<p className="muted">法向稳定且支承固定时，沿实际接触法线调整持续外力。目标值是该方向上所有接触的支持力之和。</p>}
+    <button type="button" className="button compact" onClick={()=>{
+      if(kind==='support')target({x:0,y:magnitude},kind)
+      else if(kind==='force'||kind==='acceleration')target(vector,kind)
+      else apply(kind==='timed'?{kind,vector,start,end}:{kind,vector})
+    }}>应用矢量</button>
+    <button type="button" className="button compact" onClick={()=>apply({kind:'continuous',vector:{x:0,y:0}})}>停止外力</button>
   </div>
 }

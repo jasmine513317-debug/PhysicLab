@@ -141,9 +141,9 @@ test('edits boundaries and resizes the data panel with the keyboard',async({page
   await expect(page.getByRole('alert')).toContainText('最大值必须比最小值至少大')
   await page.getByRole('button',{name:'关闭参数面板'}).click()
   await openAnalysis(page)
-  const handle=page.getByRole('separator',{name:'调整分析面板高度'})
+  const handle=page.getByRole('separator',{name:'调整分析面板宽度'})
   const panel=page.getByRole('region',{name:'数据分析'})
-  const before=(await panel.boundingBox())!.height
-  await handle.press('ArrowUp')
-  await expect.poll(async()=>(await panel.boundingBox())!.height).toBeGreaterThan(before)
+  const before=(await panel.boundingBox())!.width
+  await handle.press('ArrowLeft')
+  await expect.poll(async()=>(await panel.boundingBox())!.width).toBeGreaterThan(before)
 })

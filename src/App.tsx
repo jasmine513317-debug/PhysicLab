@@ -250,7 +250,7 @@ function MechanicsWorkspace({search,active,updateSavedAddress}:{search:string;ac
     else {
       const requested=params.get('template')
       const template=templates.find(t=>t.id===requested)
-      setScene(params.has('new')?emptyExperiment():instantiate((template?.id??'projectile') as TemplateId))
+      setScene(params.has('new')?emptyExperiment():instantiate((template?.id??'projectile') as TemplateId,{lineSurfaces:true}))
     }
     return ()=>{mounted=false}
   },[id,params])

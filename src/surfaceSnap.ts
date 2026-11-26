@@ -85,8 +85,10 @@ function surfaceFrame(surface:BodyConfig,position:Point) {
   // A ramp drawn right-to-left has the same upward normal as one drawn left-to-right.
   const angle=surface.angle-Math.round(surface.angle/Math.PI)*Math.PI
   if(Math.abs(Math.cos(angle))<EPS)return
-  const relative=rotate({x:position.x-surface.position.x,y:position.y-surface.position.y},-angle)
-  return {angle,relative,halfWidth:surface.geometry.width/2,halfHeight:surface.geometry.height/2}
+  const offset=surface.surfaceLine?rotate({x:0,y:surface.geometry.height/2},surface.angle):{x:0,y:0}
+  const origin={x:surface.position.x+offset.x,y:surface.position.y+offset.y}
+  const relative=rotate({x:position.x-origin.x,y:position.y-origin.y},-angle)
+  return {angle,relative,origin,halfWidth:surface.geometry.width/2,halfHeight:surface.surfaceLine?0:surface.geometry.height/2}
 }
 
 function penetrates(cut:Section,centerY:number,halfHeight:number) {
@@ -101,7 +103,7 @@ export function findSurfaceSnap(body: BodyConfig, position: Point, bodies: reado
   for (const surface of bodies) {
     const frame=surfaceFrame(surface,position)
     if(!frame)continue
-    const {angle:surfaceAngle,relative,halfWidth,halfHeight}=frame
+    const {angle:surfaceAngle,relative,origin,halfWidth,halfHeight}=frame
     const raw=section(body.geometry,body.angle-surfaceAngle,relative.x,halfWidth)
     if(!raw)continue
     const overlaps=penetrates(raw,relative.y,halfHeight)
@@ -109,9 +111,11 @@ export function findSurfaceSnap(body: BodyConfig, position: Point, bodies: reado
     if(!overlaps && (overlapOnly || upperGap < -EPS || upperGap>tolerance || Math.abs(surfaceAngle)>=85*Math.PI/180))continue
     let center=relative.y+raw.centerY
     if(Math.abs(center)<EPS && previousPosition) {
-      center=rotate({x:previousPosition.x-surface.position.x,y:previousPosition.y-surface.position.y},-surfaceAngle).y+raw.centerY
+      center=rotate({x:previousPosition.x-origin.x,y:previousPosition.y-origin.y},-surfaceAngle).y+raw.centerY
     }
     const below=overlaps && center < -EPS
+    const normalAbove=Math.cos(surface.angle-surfaceAngle)>0
+    if(surface.contactSide==='left'&&below===normalAbove || surface.contactSide==='right'&&below!==normalAbove)continue
     const face=below ? -halfHeight : halfHeight
     let angle=keepAngle?body.angle:parallelAngle(body.geometry,body.angle,surfaceAngle+(below?Math.PI:0))
     let aligned=angle===body.angle?raw:section(body.geometry,angle-surfaceAngle,relative.x,halfWidth)
@@ -121,7 +125,7 @@ export function findSurfaceSnap(body: BodyConfig, position: Point, bodies: reado
     const distance=Math.abs(targetY-relative.y)
     function toWorld(x: number, y: number) {
       const offset = rotate({x, y}, surfaceAngle)
-      return {x:surface.position.x + offset.x, y:surface.position.y + offset.y}
+      return {x:origin.x + offset.x, y:origin.y + offset.y}
     }
     const snap:SurfaceSnap = {bodyId:body.id, surfaceName:surface.name, side:below?'below':'above', position:toWorld(relative.x,targetY),
       angle, contact:[toWorld(edge.left,face),toWorld(edge.right,face)]}
@@ -149,7 +153,8 @@ export function separateEditedBodies(previous:readonly BodyConfig[], proposed:Bo
   function changed(body:BodyConfig) {
     const old=before.get(body.id)
     return !old || body.type!==old.type || body.position.x!==old.position.x || body.position.y!==old.position.y ||
-      body.angle!==old.angle || (body.geometry!==old.geometry && JSON.stringify(body.geometry)!==JSON.stringify(old.geometry))
+      body.angle!==old.angle || body.surfaceLine!==old.surfaceLine || body.contactSide!==old.contactSide ||
+      (body.geometry!==old.geometry && JSON.stringify(body.geometry)!==JSON.stringify(old.geometry))
   }
   const surfaces=proposed.filter(body=>body.geometry.kind==='surface')
   const editedSurfaces=surfaces.filter(changed)

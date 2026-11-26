@@ -8,6 +8,7 @@ import { appUrl } from './routes'
 import { extendedTemplates, extensionUrl } from './extended-experiments'
 import type { Point } from './model'
 import { formatNumber } from './numberFormat'
+import { ExperimentData } from './ExperimentData'
 import './electrostatic.css'
 
 const tools=[
@@ -80,6 +81,7 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
   const [selected,setSelected]=useState(initial.charges[0]?.id??'')
   const [saving,setSaving]=useState(false)
   const [error,setError]=useState('')
+  const [variables,setVariables]=useState(false)
   const charge=scene.charges.find(candidate=>candidate.id===selected)
   const field=sampleElectricField(scene.charges,scene.probe)
   const capacity=scene.charges.length>=MAX_CHARGES
@@ -163,6 +165,15 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
             <Reading label="Eᵧ">{format(field.y)} N/C</Reading>
           </dl>:<p role="status" className="muted">探针位于点电荷的奇点，电场与电势无有限读数。</p>}
         </section>
+        <button className="button compact" aria-expanded={variables} onClick={()=>setVariables(!variables)}>变量分析</button>
+        {variables&&<ExperimentData title={scene.title} mode="静电理论场 · 探针 Y 截线" axis="x"
+          variables={[[ 'x','探针 X','m'],['potential','电势','V','理论'],['magnitude','电场强度','N/C','理论'],
+            ['ex','电场 X','N/C','理论'],['ey','电场 Y','N/C','理论']]}
+          subjects={[{id:'scan',name:'探针截线',rows:Array.from({length:201},(_,i)=>{
+            const x=scene.probe.x+(i-100)*.04
+            const value=sampleElectricField(scene.charges,{x,y:scene.probe.y})
+            return {x,potential:value?.potential,magnitude:value?.magnitude,ex:value?.x,ey:value?.y}
+          })}]}/>}
       </section>
 
       <aside className="electric-sidebar" aria-label="静电参数">

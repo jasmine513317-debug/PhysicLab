@@ -1,4 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import { runFixedSolver } from './simulation'
+import { ExperimentData,type Variable } from './ExperimentData'
 import { Download, Pause, Play, RotateCcw, Save, StepForward } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { createExtendedExperiment, extendedSchema, extendedTemplates, extensionUrl, type ExtendedExperiment, type Extension, type GravityBody } from './extended-experiments'
@@ -116,18 +118,28 @@ const charts:Record<Extension,{title:string;series:readonly Series[]}>={
 }
 
 function SampleChart({engine}:{engine:ExtendedSimulation}) {
+  const [variables,setVariables]=useState(false)
   const chart=charts[engine.scene.extension],unit=engine.gravity?' 年':' s'
   const history=engine.history.at(-1)===engine.current?engine.history:[...engine.history,engine.current]
   const stride=Math.max(1,Math.ceil(history.length/500))
-  const data=history.filter((_,index)=>index%stride===0||index===history.length-1)
-    .map(sample=>({
+  const normalized=history.map(sample=>({
       time:sample.time,angleDeg:sample.angle*180/Math.PI,vx:sample.vx,vy:sample.vy,voltage:sample.voltage,currentMa:sample.current*1000,
       divergence:sample.doublePendulum?.divergence??sample.gravity?.divergence,resolutionError:sample.doublePendulum?.resolutionError,
       flux:sample.induction?.flux,emf:sample.induction?.emf,energyDrift:sample.gravity&&sample.gravity.energyDrift*100,
       starSpeed:sample.gravity?.starSpeed,planetSpeed:sample.gravity?.planetSpeed,
+      x:sample.x,y:sample.y,energy:sample.energy,
     }))
+  const data=normalized.filter((_,index)=>index%stride===0||index===history.length-1)
+  const descriptors:Variable[]=chart.series.map(([key,name])=>{
+    const match=name.match(/^(.*)（(.*)）$/)
+    return [key,match?.[1]??name,match?.[2]??'',key==='energyDrift'||key==='resolutionError'?'误差':undefined]
+  })
   return <section className="astronomy-analysis" aria-label="扩展实验图表">
     <h2>{chart.title}</h2>
+    <button className="button compact" onClick={()=>setVariables(!variables)} aria-expanded={variables}>变量分析</button>
+    {variables&&<ExperimentData title={engine.scene.title} variables={[[ 'time','模拟时间',unit.trim()],...descriptors,
+      ...(engine.scene.extension==='particle'?[['x','X 坐标','m'],['y','Y 坐标','m'],['energy','动能','J']] as Variable[]:[])]}
+      subjects={[{id:engine.scene.id,name:engine.scene.title,rows:normalized}]}/>}
     <div className="extended-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{top:6,right:4,bottom:1,left:6}}>
       <CartesianGrid stroke="var(--line)" vertical={false} strokeDasharray="3 4"/>
       <XAxis dataKey="time" type="number" domain={[data[0].time,data.at(-1)!.time||engine.dt]} tickFormatter={value=>number(value)+unit} tick={{fill:'var(--dim)',fontSize:10}}/>
@@ -194,22 +206,8 @@ function Editor({initial,initiallySaved,active,updateSavedAddress}:{initial:Exte
   useEffect(()=>{
     if(!active){if(running)setRunning(false);return}
     if(!running)return
-    let frame=0,last:number|undefined,remaining=0
-    function tick(now:number) {
-      if(last!==undefined)remaining+=Math.min(.05,(now-last)/1000)*speed*engine.rate
-      last=now
-      let steps=0
-      while(remaining>=engine.dt&&steps<240) {
-        engine.step()
-        if(engine.stopped){setRunning(false);redraw(value=>value+1);return}
-        remaining-=engine.dt;steps++
-      }
-      if(steps===240)remaining%=engine.dt
-      if(steps)redraw(value=>value+1)
-      frame=requestAnimationFrame(tick)
-    }
-    frame=requestAnimationFrame(tick)
-    return ()=>cancelAnimationFrame(frame)
+    return runFixedSolver({dt:engine.dt,step:()=>{engine.step();return !engine.stopped}},
+      {speed:speed*engine.rate,maxDelta:.05,maxSteps:240,updated:()=>redraw(value=>value+1),stopped:()=>setRunning(false)})
   },[active,engine,running,speed])
 
   function updateSetting(key:string,value:number|string|boolean) {

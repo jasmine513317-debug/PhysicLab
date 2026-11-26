@@ -62,7 +62,12 @@ export const bodySchema = z.object({
   color: bodyColorSchema,
   strokeWidth: z.number().min(1).max(8).optional(),
   role:objectRoleSchema.optional(),charge:z.number().min(-1000).max(1000).optional(),provenance:inkProvenanceSchema.optional(),
+  contactSide:z.enum(['both','left','right']).optional(),
+  surfaceLine:z.literal(true).optional(),
+  rail:z.string().min(1).optional(),
 }).refine(b => b.role!=='constraint','约束必须使用弹簧连接，不能作为独立物体。')
+.refine(b => !b.surfaceLine || b.geometry.kind==='surface','线段地面需要表面几何。')
+.refine(b => !b.contactSide || b.surfaceLine || b.geometry.kind==='track','碰撞侧只适用于线段地面与轨道。')
 .refine(b => (b.geometry.kind !== 'surface'&&b.geometry.kind!=='track') || b.type === 'static', '表面和轨道必须设为静态。')
 .refine(b => b.type==='static' || !b.role || b.role==='body','标记、边界、轨道和场源必须设为静态。')
 .refine(b => !b.role || !['marker','boundary','track','field'].includes(b.role) || !['surface'].includes(b.geometry.kind),'此角色不支持表面几何。')
@@ -88,9 +93,15 @@ const worldBoundsSchema=z.object({minX:finite,maxX:finite,minY:finite,maxY:finit
 )
 export const environmentSchema = z.object({
   gravity: z.number().min(0).max(100), speed: z.number().min(0.1).max(4),
+  gravityAngle:z.number().min(-360).max(360).optional(), linearDrag:z.number().min(0).max(20).optional(),
   boundaries: z.boolean(), worldBounds:worldBoundsSchema.optional(),
   collisions: z.boolean(), timeStep: z.literal(FIXED_TIME_STEP),
 })
+export function gravityVector(env:Experiment['environment']):Point {
+  if(env.gravityAngle===undefined||env.gravityAngle===-90)return {x:0,y:-env.gravity}
+  const angle=env.gravityAngle*Math.PI/180
+  return {x:env.gravity*Math.cos(angle),y:env.gravity*Math.sin(angle)}
+}
 export const cameraSchema = z.object({ x: finite, y: finite, scale: z.number().min(5).max(400) })
 export const coordinatesSchema = z.object({
   mode: z.enum(['cartesian','polar','none']),
@@ -103,16 +114,24 @@ export const experimentSchema = z.object({
   createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), notes: z.string().max(10000),
   kind: z.enum(['custom','projectile','spring','collision','friction','fall']),
   environment: environmentSchema, camera: cameraSchema, coordinates: coordinatesSchema.default(defaultCoordinates),
+  physicalMode:z.enum(['strict','free']).optional(),
   bodies: z.array(bodySchema).max(100), joints: z.array(springSchema).max(200),
 }).superRefine((scene, ctx) => {
+  if(scene.version<3&&scene.physicalMode)ctx.addIssue({code:'custom',message:'物理模式需要版本 3 的实验文件。'})
   if(scene.version===1&&scene.bodies.some(body=>body.geometry.kind==='track'||body.geometry.kind==='freeform')) {
     ctx.addIssue({code:'custom',message:'手绘图形和曲线轨道需要使用版本 2 的实验文件。'})
   }
-  if(scene.version<3&&(scene.bodies.some(body=>body.role||body.provenance||body.charge!==undefined||body.geometry.kind==='ellipse')||scene.joints.some(joint=>joint.role))) {
+  if(scene.version<3&&(scene.bodies.some(body=>body.role||body.provenance||body.charge!==undefined||body.geometry.kind==='ellipse'||body.surfaceLine||body.contactSide||body.rail)||scene.joints.some(joint=>joint.role))) {
     ctx.addIssue({code:'custom',message:'对象角色、场源和识别来源需要使用版本 3 的实验文件。'})
   }
   if(scene.version===3&&scene.bodies.some(body=>body.role==='field'&&body.charge===undefined))ctx.addIssue({code:'custom',message:'场源必须设置电荷量。'})
   const bodies = new Map(scene.bodies.map(body => [body.id, body]))
+  for(const body of scene.bodies)if(body.rail) {
+    const track=bodies.get(body.rail)
+    if(body.type!=='dynamic'||body.geometry.kind!=='circle'||track?.geometry.kind!=='track'||track.role==='marker'||track.role==='field'
+      ||scene.joints.some(joint=>joint.a===body.id||joint.b===body.id))
+      ctx.addIssue({code:'custom',message:'理想轨道需要未连接弹簧的动态圆形物体和静态链式轨道。'})
+  }
   if (bodies.size !== scene.bodies.length || new Set(scene.joints.map(j => j.id)).size !== scene.joints.length) {
     ctx.addIssue({code:'custom', message:'物体和弹簧各自的标识必须唯一。'})
   }

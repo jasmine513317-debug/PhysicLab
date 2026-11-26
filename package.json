@@ -12,6 +12,7 @@
     "example": "vite-node scripts/example.ts"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "0.21.0",
     "@fontsource-variable/inter": "^5.2.0",
     "@fontsource-variable/jetbrains-mono": "^5.2.0",
     "lucide-react": "^0.468.0",

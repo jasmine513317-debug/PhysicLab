@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import type { Camera, Experiment, Point } from '../src/model'
 
 export async function openImportedScene(page: Page, scene: Experiment) {
@@ -54,6 +54,27 @@ export async function dragMouse(page: Page, from: Point, to: Point, button: 'lef
 }
 
 export async function touchStroke(page: Page, points: readonly Point[], holdMs = 0) {
+  if(page.context().browser()?.browserType().name()!=='chromium') {
+    const canvas=page.getByLabel('物理场景')
+    // These engines expose native tap through Playwright but have no CDP touch-move API.
+    await canvas.evaluate(async (element,{points,holdMs})=>{
+      const node=element as HTMLCanvasElement
+      const id=200
+      const capture=node.setPointerCapture
+      node.setPointerCapture=function(pointerId){if(pointerId!==id)capture.call(this,pointerId)}
+      function send(type:string,point:Point) {
+        node.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:id,pointerType:'touch',
+          isPrimary:true,button:0,buttons:type==='pointerup'?0:1,clientX:point.x,clientY:point.y}))
+      }
+      try {
+        send('pointerdown',points[0])
+        for(const point of points.slice(1))send('pointermove',point)
+        if(holdMs)await new Promise(resolve=>setTimeout(resolve,holdMs))
+        send('pointerup',points.at(-1)!)
+      } finally {delete (node as Partial<HTMLCanvasElement>).setPointerCapture}
+    },{points,holdMs})
+    return
+  }
   const cdp = await page.context().newCDPSession(page)
   try {
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x: points[0].x, y: points[0].y}]})
@@ -65,4 +86,31 @@ export async function touchStroke(page: Page, points: readonly Point[], holdMs =
   } finally {
     await cdp.detach()
   }
+}
+
+export async function pinchOut(page:Page,canvas:Locator) {
+  const box=(await canvas.boundingBox())!
+  const x=box.x+box.width/2,y=box.y+box.height*.55
+  const start=[{id:201,x:x-30,y},{id:202,x:x+30,y}]
+  const end=[{...start[0],x:x-55},{...start[1],x:x+55}]
+  if(page.context().browser()?.browserType().name()==='chromium') {
+    const cdp=await page.context().newCDPSession(page)
+    try {
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:start})
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:end})
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+    } finally {await cdp.detach()}
+    return
+  }
+  await canvas.evaluate((element,{start,end})=>{
+    const node=element as HTMLCanvasElement
+    const capture=node.setPointerCapture
+    node.setPointerCapture=function(pointerId){if(!start.some(point=>point.id===pointerId))capture.call(this,pointerId)}
+    function send(type:string,points:typeof start) {
+      for(const point of points)node.dispatchEvent(new PointerEvent(type,{bubbles:true,cancelable:true,pointerId:point.id,
+        pointerType:'touch',isPrimary:point.id===start[0].id,button:0,buttons:type==='pointerup'?0:1,clientX:point.x,clientY:point.y}))
+    }
+    try {send('pointerdown',start);send('pointermove',end);send('pointerup',end)}
+    finally {delete (node as Partial<HTMLCanvasElement>).setPointerCapture}
+  },{start,end})
 }

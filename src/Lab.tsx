@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Maximize2, Minimize2, MoreHorizontal, Pause, Play, Plus, Redo2, RotateCcw, Save, SlidersHorizontal, StepForward, Undo2, X } from 'lucide-react'
-import { decodeExperiment, type Camera, type Experiment } from './model'
+import { body, decodeExperiment, type Camera, type Experiment } from './model'
 import { Physics } from './physics'
-import { Tools, Viewport, type Tool } from './Viewport'
+import { Tools, Viewport, type Primitive, type Tool } from './Viewport'
 import { Inspector } from './Inspector'
 import { AnalysisPanel, type Baseline } from './AnalysisPanel'
 import { defaultDisplay } from './render'
@@ -16,13 +16,23 @@ import { encodeBackup } from './backup'
 import { appUrl } from './routes'
 import { separateEditedBodies } from './surfaceSnap'
 import { loadInkPrefs, normalizeInkPrefs, saveInkPrefs, type InkPrefs } from './inkPrefs'
+import type { PhysicalInput, RunTimeline } from './interventions'
+import { INK_HOLD_MS } from './inkHold'
+import { runSimulationFrames } from './simulation'
+import type { DataView,PlanarBranch } from './spatialWorkspace'
 
 const fit=(camera:Camera)=>({...camera,scale:Math.min(camera.scale,Math.max(25,(window.innerWidth-(window.innerWidth>1000?450:80))/10.6))})
+const SpatialWorkbench=lazy(async()=>{
+  const feature=await import('./SpatialWorkbench')
+  await feature.initializeSpatialRigid()
+  return feature
+})
 type EditSnapshot = {
   scene: Experiment
   selected: string
   resetPhysics: boolean
   resetCamera: boolean
+  timeline?:RunTimeline
 }
 const maxUndoSteps = 50
 const errorText=(e:unknown)=>e instanceof Error&&'issues' in e?(e.issues as {message:string}[]).map(x=>x.message).join(' · '):e instanceof Error?e.message:'操作未完成，请重试。'
@@ -31,6 +41,8 @@ type Props={initial:Experiment;initiallySaved:boolean;active:boolean;updateSaved
 
 export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [scene,setScene]=useState(initial)
+  const [spatial,setSpatial]=useState(false)
+  const [spatialBase,setSpatialBase]=useState<{scene:Experiment;physics:Physics}>()
   const [camera,setCamera]=useState(()=>initiallySaved?initial.camera:fit(initial.camera))
   const [engine,setEngine]=useState(()=>new Physics(initial))
   const [selected,select]=useState(initial.bodies.find(b=>b.type==='dynamic')?.id??'')
@@ -44,6 +56,7 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [panel,setPanel]=useState<'none'|'properties'>('none')
   const [propertyTab,setPropertyTab]=useState<'object'|'world'>('object')
   const [analysisOpen,setAnalysisOpen]=useState(false)
+  const [analysisView,setAnalysisView]=useState<DataView>()
   const [immersive,setImmersive]=useState(false)
   const [moreOpen,setMoreOpen]=useState(false)
   const [time,showTime]=useState(0)
@@ -77,6 +90,12 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   },[initial.id,initial.version,initiallySaved])
 
   useEffect(()=>{saveInkPrefs(ink)},[ink])
+  useEffect(()=>{
+    if(new URLSearchParams(window.location.search).has('spatial')) {
+      setSpatialBase({scene:initial,physics:activeEngine.current})
+      setSpatial(true)
+    }
+  },[initial])
 
   function reset(source=current.current) {
     try {
@@ -98,22 +117,25 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
       const candidate={...previous,...patch}
       let upgraded=candidate
       if(candidate.version===1&&candidate.bodies.some(b=>b.geometry.kind==='freeform'||b.geometry.kind==='track'))upgraded={...upgraded,version:2}
-      if(upgraded.version<3&&(upgraded.bodies.some(b=>b.role||b.provenance||b.charge!==undefined||b.geometry.kind==='ellipse')||upgraded.joints.some(j=>j.role))) {
+      if(upgraded.version<3&&(upgraded.physicalMode||upgraded.bodies.some(b=>b.role||b.provenance||b.charge!==undefined||b.geometry.kind==='ellipse'||b.surfaceLine||b.contactSide||b.rail)||upgraded.joints.some(j=>j.role))) {
         upgraded={...upgraded,version:3}
       }
       const next=decodeExperiment(upgraded)
       const a=previous.environment.worldBounds,b=next.environment.worldBounds
       const mechanics=patch.bodies||patch.joints||(patch.environment&&(
         previous.environment.gravity!==next.environment.gravity||
+        previous.environment.gravityAngle!==next.environment.gravityAngle||
+        previous.environment.linearDrag!==next.environment.linearDrag||
         previous.environment.collisions!==next.environment.collisions||
         previous.environment.boundaries!==next.environment.boundaries||
         a?.minX!==b?.minX||a?.minY!==b?.minY||a?.maxX!==b?.maxX||a?.maxY!==b?.maxY))
+      const timeline=mechanics?activeEngine.current.timeline():undefined
       if(mechanics) {
         if(!reset(next))return false
         if(engine.time>0)setNotice('参数已更新，模拟已回到初始状态。')
       }
       const history=editHistory.current
-      history.undo.push({scene:previous,selected,resetPhysics:Boolean(mechanics),resetCamera:Boolean(patch.camera)})
+      history.undo.push({scene:previous,selected,resetPhysics:Boolean(mechanics),resetCamera:Boolean(patch.camera),timeline})
       if(history.undo.length>maxUndoSteps)history.undo.shift()
       history.redo.length=0
       current.current=next;setScene(next);setSaved(false);setError('')
@@ -128,51 +150,76 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     const source=history[direction]
     const snapshot=source.at(-1)
     if(!snapshot)return
-    if(snapshot.resetPhysics&&!reset(snapshot.scene))return
+    const timeline=snapshot.resetPhysics?activeEngine.current.timeline():undefined
+    if(snapshot.timeline) {
+      try {
+        const next=Physics.restoreTimeline(snapshot.scene,snapshot.timeline)
+        activeEngine.current=next;setEngine(next);setRunning(false);showTime(next.time);setTrailSince(0)
+      } catch(e) {setError(errorText(e));return}
+    } else if(snapshot.resetPhysics&&!reset(snapshot.scene))return
     const destination=direction==='undo'?history.redo:history.undo
-    destination.push({...snapshot,scene:current.current,selected})
+    destination.push({...snapshot,scene:current.current,selected,timeline})
     source.pop()
     current.current=snapshot.scene
     setScene(snapshot.scene)
     setTitle(snapshot.scene.title)
     select(snapshot.selected)
     if(snapshot.resetCamera)setCamera(fit(snapshot.scene.camera))
-    setSaved(snapshot.scene===lastSavedScene.current)
+    setSaved(!snapshot.timeline&&snapshot.scene===lastSavedScene.current)
     setError('')
     setNotice(direction==='undo'?'已撤销编辑。':'已重做编辑。')
   }
   function remove(id:string) {
     if(!id)return
     const existing=current.current
-    if(change({bodies:existing.bodies.filter(b=>b.id!==id),joints:existing.joints.filter(j=>j.id!==id&&j.a!==id&&j.b!==id)})) {
+    if(change({bodies:existing.bodies.filter(b=>b.id!==id).map(b=>b.rail===id?{...b,rail:undefined}:b),
+      joints:existing.joints.filter(j=>j.id!==id&&j.a!==id&&j.b!==id)})) {
       if(selected===id||!existing.joints.filter(j=>j.a===id||j.b===id).every(j=>j.id!==selected))select('')
     }
   }
+  function applyInput(id:string,input:PhysicalInput) {
+    try {
+      if(input.kind==='velocity'&&current.current.physicalMode!=='free')throw new Error('覆盖速度需要开启自由干预模式。')
+      const timeline=activeEngine.current.timeline()
+      activeEngine.current.schedule(id,input)
+      const history=editHistory.current
+      history.undo.push({scene:current.current,selected,resetPhysics:true,resetCamera:false,timeline})
+      if(history.undo.length>maxUndoSteps)history.undo.shift()
+      history.redo.length=0
+      setError('')
+      setSaved(false)
+      setNotice('干预将在下一个模拟步生效。')
+    } catch(e) {setError(errorText(e))}
+  }
+  function addPrimitive(kind:Primitive) {
+    const {x,y}=liveCamera.current
+    const created=kind==='circle'?body('圆形刚体',{kind:'circle',radius:.4},x,y)
+      :kind==='rectangle'?body('矩形刚体',{kind:'rectangle',width:1,height:.65},x,y)
+      :body(kind==='floor'?'地面':'斜面',{kind:'surface',width:5,height:.02},x,y-1,{angle:kind==='ramp'?-.32:0,surfaceLine:true})
+    if(change({bodies:[...current.current.bodies,created]}))select(created.id)
+  }
   useEffect(()=>{
-    if(!active) {
+    if(!active||spatial) {
       if(running){setRunning(false);showTime(engine.time)}
       return
     }
     if(!running)return
-    let frame=0,last:number|undefined,lastUI=0
-    function tick(now:number) {
+    let lastUI=0
+    const stop=runSimulationFrames((elapsed,now)=>{
       try {
-        if(last!==undefined)engine.advance((now-last)/1000,current.current.environment.speed)
-        last=now
+        if(elapsed)engine.advance(elapsed,current.current.environment.speed)
         if(now-lastUI>80) {showTime(engine.time);lastUI=now}
-        frame=requestAnimationFrame(tick)
-      }catch(e){setRunning(false);setError(errorText(e))}
-    }
-    frame=requestAnimationFrame(tick)
-    return ()=>{cancelAnimationFrame(frame);engine.discardRemainder()}
-  },[active,running,engine])
+      }catch(e){setRunning(false);setError(errorText(e));return false}
+    },.15)
+    return ()=>{stop();engine.discardRemainder()}
+  },[active,running,engine,spatial])
   useEffect(()=>{
     if(!notice)return
     const timer=setTimeout(()=>setNotice(''),3800)
     return ()=>clearTimeout(timer)
   },[notice])
   useEffect(()=>{
-    if(!active)return
+    if(!active||spatial)return
     function shortcuts(e:KeyboardEvent) {
       if(e.defaultPrevented||e.isComposing)return
       if(e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,[contenteditable]'))return
@@ -274,7 +321,28 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const hasReplay=Boolean(recentReplay||savedReplay||(time>0&&engine.samples.size))
   const velocity=live?.getLinearVelocity()
   const status=isReplay?'回放中':running?'运行中':time>0?'已暂停':'编辑模式'
+  function enterSpatial() {
+    setRunning(false)
+    setMoreOpen(false)
+    if(!spatialBase)setSpatialBase({scene:current.current,physics:activeEngine.current})
+    setSpatial(true)
+  }
+  function snapshotPlanar():PlanarBranch {
+    const timeline=activeEngine.current.timeline()
+    return {scene:{...current.current,camera:liveCamera.current},timeline:{...timeline,events:[...timeline.events]},display,analysis:analysisView}
+  }
+  function restorePlanar(branch:PlanarBranch,asCopy:boolean) {
+    const next=asCopy?{...branch.scene,id:crypto.randomUUID()}:branch.scene
+    const restored=Physics.restoreTimeline(next,branch.timeline)
+    activeEngine.current=restored;current.current=next
+    setScene(next);setEngine(restored);setRunning(false);showTime(restored.time);setTrailSince(0)
+    setCamera(next.camera);setTitle(next.title);setSaved(false);setRecentReplay(undefined);setSavedReplay(undefined);setReplay(undefined)
+    setDisplay(branch.display??defaultDisplay);setAnalysisView(branch.analysis)
+    select(next.bodies.find(body=>body.type==='dynamic')?.id??'')
+    editHistory.current={undo:[],redo:[]}
+  }
   const secondaryActions=<>
+    <button className="button compact" aria-label="切换到三维工作台" title="三维工作台预览" disabled={isReplay} onClick={enterSpatial}>3D</button>
     <button className="icon" aria-label="撤销" title="撤销编辑（Ctrl / ⌘ + Z）" disabled={isReplay||!editHistory.current.undo.length} onClick={()=>restoreEdit('undo')}><Undo2 size={17}/></button>
     <button className="icon" aria-label="重做" title="重做编辑（Ctrl + Y 或 Ctrl / ⌘ + Shift + Z）" disabled={isReplay||!editHistory.current.redo.length} onClick={()=>restoreEdit('redo')}><Redo2 size={17}/></button>
     <button className="button compact" aria-label="属性" title="物体属性" onClick={()=>{setPropertyTab('object');setPanel('properties');setMoreOpen(false)}}>属性</button>
@@ -283,7 +351,7 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     <button className="icon" aria-label={immersive?'退出沉浸模式':'进入沉浸模式'} title={immersive?'退出沉浸模式':'进入沉浸模式'} aria-pressed={immersive} onClick={()=>setImmersive(value=>!value)}>{immersive?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button>
     <button className="icon" aria-label="实验台帮助" title="实验台帮助" onClick={()=>{setHelp(!help);setMoreOpen(false)}}><CircleHelp size={19}/></button>
   </>
-  return <main className="lab">
+  return <><main className="lab" hidden={spatial}>
     <div className="lab-top">
       <div className="lab-identity">
         <a className="icon back" href={appUrl('/')} aria-label="返回首页" title="返回首页"><ArrowLeft size={17}/></a>
@@ -324,43 +392,53 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     </div>}
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" title="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
       <p>绘制工具支持任意曲线：电脑上按住鼠标左键绘制，触屏或触控笔可直接书写。选中“绘制”后，右侧可直接切换红、蓝、白和最近使用的自定义颜色，也可调整线宽；“更多”或再次点击“绘制”会打开完整调色板。</p>
-      <p>规整有“停留 / 立即 / 关闭”三档。默认在曲线末端停留 1.5 秒再松手，会自动规整为直线、圆、矩形、多边形或平滑曲线；切到“立即”会松手即规整，“关闭”则始终保留手绘。开放曲线会成为静态斜面或碰撞曲线，封闭图形会成为动态物块；线宽只影响视觉，不改变物理参数。</p>
+      <p>规整有“停留 / 立即 / 关闭”三档。保持按下并停止移动 {INK_HOLD_MS/1000} 秒可触发规整。“立即”在松开时识别，“关闭”保留手绘。用“用途”选项决定笔迹是标记、刚体、碰撞边界、轨道还是场源。</p>
       <p>橡皮提供“按笔画擦除”和“按拖动擦除”两种方式，可切换小、中、大号并选择是否擦完自动回到绘制。选择工具中左键拖动物体移动、拖空白平移；双击打开属性，右键选择“变换物体”后显示缩放手柄，拖动圆形手柄旋转。</p>
       <p>在两个物体上分别选择连接点，即可添加弹簧。右键点击或在触屏上长按目标，可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除，按 <kbd>Esc</kbd> 退出编辑。</p>
       <p>播放快捷键：<kbd>P</kbd> 运行或暂停，<kbd>.</kbd> 单步推进 1/60 s，<kbd>Shift</kbd>+<kbd>R</kbd> 重置模拟。焦点在输入框或按钮上时，快捷键不生效。空格仍用于按住拖动平移画布。</p>
       <p>环境设置中的重力预设可一键切换到地球、月球、火星或失重，用于比较同一场景在不同重力下的运动。修改重力会回到初始状态重新模拟。</p>
       <p>物块与地面或斜面重叠时，会贴到物块中心所在一侧的表面。拖动时可看绿色接触线，按住 <kbd>Alt</kbd> 可自由摆放。</p>
-      <p>接触摩擦由引擎近似计算。力矢量显示外力、重力和弹簧力，接触冲量不在其中。斜抛理论轨迹采用恒定重力、忽略空气阻力。</p>
+      <p>接触力按求解器上一物理步的接触冲量除以步长估算。斜抛理论轨迹采用恒定重力、忽略空气阻力。</p>
     </section>}
     {error&&<div className="lab-message error-banner" role="alert">{error}<button className="icon" aria-label="关闭错误提示" title="关闭错误提示" onClick={()=>setError('')}><X size={15}/></button></div>}
     {notice&&<div className="lab-message toast" role="status"><Check size={16}/>{notice}</div>}
     <div className={'workbench'+(immersive?' immersive':'')}>
       <div className="work-center">
-        <Viewport scene={replay?.scene??scene} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
+        <Viewport scene={replay?.scene??scene} active={active&&!spatial} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
           replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}
           display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}
-          ink={ink} openProperties={id=>{select(id);setPropertyTab('object');setPanel('properties')}}/>
+          ink={ink} applyInput={applyInput} openProperties={id=>{select(id);setPropertyTab('object');setPanel('properties')}}/>
         {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>
           <span><Clock3 size={13}/><time aria-label="模拟时间">{(replayTime??time).toFixed(3)} s</time></span>
           <span className="status-steps">固定步长 · 60 Hz</span>
+          {scene.physicalMode==='free'&&!isReplay&&<span>自由干预</span>}
           {velocity&&!isReplay&&<span className="live-speed">|v| {Math.hypot(velocity.x,velocity.y).toFixed(2)} m/s</span>}
           <button className="text-button trail-clear" disabled={isReplay} onClick={()=>setTrailSince(engine.time+0.000001)}>清除轨迹</button>
         </div>
         {analysisOpen&&<div id="analysis-panel"><AnalysisPanel scene={replay?.scene??scene} results={replayTracks??engine.samples} selected={selected} select={select}
           baseline={isReplay?undefined:baseline} setBaseline={setBaseline} replay={isReplay} onClose={()=>setAnalysisOpen(false)}
+          settings={analysisView} onSettings={setAnalysisView}
+          interventions={replay?replay.interventions:engine.interventions}
           externalForceApplied={replay?replay.externalForceApplied:engine.externalForceApplied}/></div>}
         <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}
-          ink={ink} setInk={setInk}/>
+          ink={ink} setInk={setInk} addPrimitive={addPrimitive}/>
       </div>
       {panel==='properties'&&<div className="inspector-wrap">
         <fieldset className="inspector-lock" disabled={isReplay}>
           <Inspector scene={scene} selected={selected} select={select} change={change} initialTab={propertyTab} onClose={()=>setPanel('none')}
             livePosition={live?live.getPosition():undefined} liveVelocity={velocity}
-            force={(id,x,y)=>{try {engine.setForce(id,{x,y});setNotice('已更新本次运行的外力。')}catch(e){setError(errorText(e))}}}/>
+            applyInput={applyInput} simulationTime={engine.time} applyTarget={(id,value,quantity)=>{
+              try {applyInput(id,quantity==='support'?engine.inputForSupport(id,value.y):engine.inputForNetForce(id,value,quantity))}
+              catch(e) {setError(errorText(e))}
+            }}/>
         </fieldset>
       </div>}
     </div>
   </main>
+  {spatialBase&&<main className="lab" hidden={!spatial}><Suspense fallback={<p className="muted">正在打开三维工作台…</p>}>
+    <SpatialWorkbench source={spatialBase.scene} physics={spatialBase.physics} active={active&&spatial} exit={()=>setSpatial(false)}
+      snapshotPlanar={snapshotPlanar} restorePlanar={restorePlanar}/>
+  </Suspense></main>}</>
 }

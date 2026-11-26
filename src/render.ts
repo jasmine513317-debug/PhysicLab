@@ -1,6 +1,6 @@
 import { rotate, screenPoint, worldPoint, displayPoint, polarComponents, polarPosition, type View } from './coordinates'
 import { ballisticDuration, projectile, type Sample } from './analysis'
-import { DEFAULT_WORLD_BOUNDS, type BodyConfig, type Camera, type Experiment, type Point } from './model'
+import { DEFAULT_WORLD_BOUNDS, gravityVector, type BodyConfig, type Camera, type Experiment, type Point } from './model'
 import type { Physics } from './physics'
 import type { RecordedSample } from './replay'
 import type { SurfaceSnap } from './surfaceSnap'
@@ -20,7 +20,13 @@ export function inkColors(color:string):[string,string] {
   }
   return /^#[0-9a-fA-F]{6}$/.test(color)?[color+'55',color]:['#d2d2d055','#d2d2d0']
 }
-export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number}
+export const extraVectors = {displacement:'位移',momentum:'动量',netForce:'合力',omega:'角速度',impulse:'冲量',electric:'电场强度'} as const
+export type ExtraVector = keyof typeof extraVectors
+export const forceLabels=['重力','外力','电场力','弹簧力','接触法向力','接触摩擦力','轨道约束力'] as const
+export type VectorUnit = 'm'|'m/s'|'m/s²'|'kg·m/s'|'N'|'N·s'|'N/C'
+export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number
+  extraVectors?:Partial<Record<ExtraVector,boolean>>; unitScale?:Partial<Record<VectorUnit,number>>; vectorLabels?:'none'|'name'|'magnitude'|'components'; editForce?:boolean;hiddenForces?:string[]}
+export const forceScale=(display:Display)=>0.075*display.vectorScale*(display.unitScale?.N??1)
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
 export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
 export type Overlay = {points:Point[]; color?:string; strokeWidth?:number; dash?:number[]}
@@ -57,8 +63,10 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
   ctx.save()
   ctx.translate(center.x,center.y)
   ctx.rotate(-angle)
-  if((g.kind==='track')||(g.kind==='freeform'&&!g.closed)) {
-    const vertices=g.vertices.map(p=>({x:p.x*scale,y:-p.y*scale}))
+  if(g.kind==='surface'||g.kind==='track'||(g.kind==='freeform'&&!g.closed)) {
+    const vertices=g.kind==='surface'
+      ?[{x:-g.width*scale/2,y:-g.height*scale/2},{x:g.width*scale/2,y:-g.height*scale/2}]
+      :g.vertices.map(p=>({x:p.x*scale,y:-p.y*scale}))
     if(g.kind==='track'&&g.closed)vertices.push(vertices[0])
     const strokeWidth=b.strokeWidth??2.4
     ctx.lineWidth=selected?strokeWidth+.8:strokeWidth
@@ -96,15 +104,6 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     ctx.fillStyle='#f5f5f2';ctx.font='bold 11px "JetBrains Mono Variable", monospace'
     ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(visual.badge,0,.5)
   }
-  if (g.kind==='surface') {
-    ctx.save();ctx.clip()
-    const halfWidth=g.width*scale/2, halfHeight=g.height*scale/2
-    ctx.beginPath()
-    for (let x=-halfWidth-halfHeight*2;x<halfWidth;x+=12) {
-      ctx.moveTo(x,halfHeight);ctx.lineTo(x+halfHeight*2,-halfHeight)
-    }
-    ctx.strokeStyle='#adadb855';ctx.stroke();ctx.restore()
-  }
   if (selected) {
     const radius=g.kind==='circle'?g.radius*scale:0
     ctx.strokeStyle='#f5f5f2'
@@ -117,7 +116,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
     else if (g.kind==='polygon'||g.kind==='freeform') {
       g.vertices.forEach((p,i)=>i===0?ctx.moveTo(p.x*scale*1.08,-p.y*scale*1.08):ctx.lineTo(p.x*scale*1.08,-p.y*scale*1.08))
       ctx.closePath()
-    } else if (g.kind==='rectangle'||g.kind==='surface') ctx.rect(-g.width*scale/2-5,-g.height*scale/2-5,g.width*scale+10,g.height*scale+10)
+    } else if (g.kind==='rectangle') ctx.rect(-g.width*scale/2-5,-g.height*scale/2-5,g.width*scale+10,g.height*scale+10)
     ctx.stroke()
   }
   ctx.restore()
@@ -126,6 +125,7 @@ function shape(ctx:CanvasRenderingContext2D,b:BodyConfig,center:Point,angle:numb
 export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera, scene:Experiment, display:Display, options:{
   physics?:Physics; selected?:string; overlay?:Overlay; trailSince?:number; baseline?:Sample[]; diagram?:boolean; replay?:ReplayView; move?:Map<string,Point>; snap?:SurfaceSnap; highlight?:string; dash?:number
   editing?:string; edit?:{body:BodyConfig;scaleAnchor?:(anchor:Point)=>Point}; rotating?:boolean; hidden?:ReadonlySet<string>; erase?:EraseView
+  forcePreview?:Point; inkPreview?:BodyConfig;selection?:ReadonlySet<string>
 }={}) {
   const {width,height}=view
   const {physics, selected, overlay, baseline, diagram, replay, move, snap, highlight, dash, edit, hidden, erase}=options
@@ -208,6 +208,10 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     }
   }
   const manyBodies=scene.bodies.length>=40
+  if(options.inkPreview) {
+    const body=options.inkPreview
+    shape(ctx,body,p(body.position),body.angle,camera.scale,true,false)
+  }
   for (const b of scene.bodies) {
     if(hidden?.has(b.id))continue
     const live=physics?.bodies.get(b.id)
@@ -218,15 +222,47 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
     const at=p(position)
     const angle=edited?.angle??snapped?.angle??pose?.angle??live?.getAngle()??b.angle
     const velocity=pose?{x:pose.vx,y:pose.vy}:live?.getLinearVelocity()??b.velocity
-    shape(ctx,edited??b,at,angle,camera.scale,b.id===selected,manyBodies&&b.id!==selected,b.id===highlight?dash:undefined)
+    const acceleration=pose?{x:pose.ax,y:pose.ay}:physics?.acceleration.get(b.id)??gravityVector(scene.environment)
+    shape(ctx,edited??b,at,angle,camera.scale,b.id===selected||Boolean(options.selection?.has(b.id)),manyBodies&&b.id!==selected,b.id===highlight?dash:undefined)
     if (b.type==='static') continue
-    function drawVector(vector:Point, scale:number, color:string, label:string) {
-      const factor=scale*display.vectorScale*camera.scale
-      arrow(ctx,at,{x:at.x+vector.x*factor,y:at.y-vector.y*factor},color,manyBodies&&b.id!==selected?'':label)
+    function drawVector(vector:Point, scale:number, color:string, label:string,unit:VectorUnit) {
+      const factor=scale*(display.unitScale?.[unit]??1)*display.vectorScale*camera.scale
+      const format=(number:number)=>Number(number.toPrecision(3)).toString()
+      let text=label
+      if(display.vectorLabels==='magnitude')text+=' '+format(Math.hypot(vector.x,vector.y))+' '+unit
+      if(display.vectorLabels==='components')text+=' ('+format(vector.x)+', '+format(vector.y)+') '+unit
+      if(display.vectorLabels==='none'||(manyBodies&&b.id!==selected))text=''
+      arrow(ctx,at,{x:at.x+vector.x*factor,y:at.y-vector.y*factor},color,text)
     }
-    if (display.velocity) drawVector(velocity,0.17,'#a6bfff','v')
-    if (display.acceleration) drawVector(pose?{x:pose.ax,y:pose.ay}:physics?.acceleration.get(b.id)??{x:0,y:-scene.environment.gravity},0.09,'#f2c38b','a')
-    if (display.forces && physics) for(const force of physics.forceVectors(b.id)) drawVector(force.vector,0.075,force.color,force.name)
+    const mass=live?.getMass()??b.mass
+    if (display.velocity) drawVector(velocity,0.17,'#a6bfff','速度','m/s')
+    if (display.acceleration) drawVector(acceleration,0.09,'#f2c38b','加速度','m/s²')
+    if (display.extraVectors?.displacement) drawVector({x:position.x-b.position.x,y:position.y-b.position.y},1,'#c6c6c6','位移','m')
+    if (display.extraVectors?.momentum) drawVector({x:mass*velocity.x,y:mass*velocity.y},0.1,'#9ec7d6','动量','kg·m/s')
+    if (display.extraVectors?.netForce&&(pose||physics?.time)) drawVector({x:mass*acceleration.x,y:mass*acceleration.y},0.075,'#dfb1b9','合力（步平均）','N')
+    const impulse=display.extraVectors?.impulse?physics?.lastImpulse(b.id):undefined
+    if(impulse)drawVector(impulse,.2,'#edc8f0','冲量','N·s')
+    if(display.extraVectors?.electric&&physics)drawVector(physics.electricField(b.id),.025,'#bec2f0','电场','N/C')
+    if(display.extraVectors?.omega&&!pose) {
+      const omega=live?.getAngularVelocity()??b.angularVelocity
+      if(omega!==0) {
+        ctx.fillStyle='#d1c6a9'
+        const direction=omega>0?'⊙':'⊗'
+        ctx.fillText(direction+(display.vectorLabels==='none'?'':' ω '+omega.toPrecision(3)+' rad/s'),at.x+14,at.y-13)
+      }
+    }
+    const editingForce=display.editForce&&physics&&b.id===selected
+    if (display.forces && physics) for(const force of physics.forceVectors(b.id)) {
+      if(!display.hiddenForces?.includes(force.name)&&!(editingForce&&force.name==='外力')) drawVector(force.vector,0.075,force.color,force.name,'N')
+    }
+    if(editingForce && physics.samples.has(b.id)) {
+      const force=options.forcePreview??physics.externalForceAt(b.id)??{x:0,y:0}
+      drawVector(force,0.075,'#f1a0ca','外力','N')
+      const k=forceScale(display)*camera.scale
+      ctx.beginPath()
+      ctx.arc(at.x+k*force.x,at.y-k*force.y,5,0,2*Math.PI)
+      ctx.strokeStyle='#f1a0ca';ctx.stroke()
+    }
     if (b.id===selected && !diagram) {
       ctx.fillStyle='#f5f5f2';ctx.fillText(b.name,at.x+22,at.y+25)
       if(scene.coordinates.mode==='cartesian') {
