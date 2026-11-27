@@ -196,7 +196,7 @@ for (const viewport of viewports) {
         await expect(page.getByRole('button', { name, exact: true })).toBeInViewport()
       }
       const tools = page.getByRole('complementary', { name: '场景工具' })
-      for (const name of ['绘制', '弹簧']) {
+      for (const name of ['绘制', '连接工具箱']) {
         const tool = tools.getByRole('button', { name, exact: true })
         await expect(tool).toBeInViewport()
         await tool.click()

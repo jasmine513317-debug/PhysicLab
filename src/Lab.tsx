@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Maximize2, Minimize2, MoreHorizontal, Pause, Play, Plus, Redo2, RotateCcw, Save, SlidersHorizontal, StepForward, Undo2, X } from 'lucide-react'
-import { body, decodeExperiment, type Camera, type Experiment } from './model'
+import { body, decodeExperiment, type Camera, type Experiment, type Point } from './model'
 import { Physics } from './physics'
 import { Tools, Viewport, type Primitive, type Tool } from './Viewport'
+import type { DrawnShape } from './drawnShapes'
+import { connectionAssembly,type ConnectionTool } from './springs'
 import { Inspector } from './Inspector'
 import { AnalysisPanel, type Baseline } from './AnalysisPanel'
 import { defaultDisplay } from './render'
@@ -17,7 +19,6 @@ import { appUrl } from './routes'
 import { separateEditedBodies } from './surfaceSnap'
 import { loadInkPrefs, normalizeInkPrefs, saveInkPrefs, type InkPrefs } from './inkPrefs'
 import type { PhysicalInput, RunTimeline } from './interventions'
-import { INK_HOLD_MS } from './inkHold'
 import { runSimulationFrames } from './simulation'
 import type { DataView,PlanarBranch } from './spatialWorkspace'
 
@@ -47,6 +48,9 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   const [engine,setEngine]=useState(()=>new Physics(initial))
   const [selected,select]=useState(initial.bodies.find(b=>b.type==='dynamic')?.id??'')
   const [tool,setTool]=useState<Tool>('select')
+  const [drawShape,setDrawShape]=useState<DrawnShape>('circle')
+  const [connectionTool,setConnectionTool]=useState<ConnectionTool>('spring')
+  const [anglePreview,setAnglePreview]=useState<{id:string;from:number;to:number;start:number}>()
   const [ink,setInkState]=useState<InkPrefs>(loadInkPrefs)
   function setInk(patch:Partial<InkPrefs>) {
     setInkState(previous=>normalizeInkPrefs({...previous,...patch}))
@@ -172,9 +176,11 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
   function remove(id:string) {
     if(!id)return
     const existing=current.current
-    if(change({bodies:existing.bodies.filter(b=>b.id!==id).map(b=>b.rail===id?{...b,rail:undefined}:b),
-      joints:existing.joints.filter(j=>j.id!==id&&j.a!==id&&j.b!==id)})) {
-      if(selected===id||!existing.joints.filter(j=>j.a===id||j.b===id).every(j=>j.id!==selected))select('')
+    const groups=new Set(existing.joints.filter(j=>j.group&&(j.group===id||j.id===id||j.a===id||j.b===id)).map(j=>j.group!))
+    const removed=new Set([id,...[...groups].flatMap(group=>connectionAssembly(existing,group)?.nodes.map(node=>node.id)??[])])
+    const joints=existing.joints.filter(j=>j.id!==id&&!removed.has(j.a)&&!removed.has(j.b)&&!(j.group&&groups.has(j.group)))
+    if(change({bodies:existing.bodies.filter(b=>!removed.has(b.id)).map(b=>b.rail&&removed.has(b.rail)?{...b,rail:undefined}:b),joints})) {
+      if(removed.has(selected)||groups.has(selected)||existing.joints.some(j=>j.id===selected&&!joints.includes(j)))select('')
     }
   }
   function applyInput(id:string,input:PhysicalInput) {
@@ -190,6 +196,16 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
       setSaved(false)
       setNotice('干预将在下一个模拟步生效。')
     } catch(e) {setError(errorText(e))}
+  }
+  function applyVelocity(id:string,value:Point) {
+    if(running||engine.time>0)applyInput(id,{kind:'velocity',vector:value})
+    else change({bodies:current.current.bodies.map(b=>b.id===id?{...b,velocity:value}:b)},true)
+  }
+  function applyAngle(id:string,to:number) {
+    const from=engine.bodies.get(id)?.getAngle()??0
+    if(!change({bodies:current.current.bodies.map(b=>b.id===id?{...b,angle:to}:b)},true))return false
+    setAnglePreview({id,from,to,start:performance.now()})
+    return true
   }
   function addPrimitive(kind:Primitive) {
     const {x,y}=liveCamera.current
@@ -391,10 +407,9 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
       </select></label>
     </div>}
     {help&&<section className="help-panel" aria-label="实验台帮助"><div><h2>实验台操作</h2><button className="icon" aria-label="关闭帮助" title="关闭帮助" onClick={()=>setHelp(false)}><X size={16}/></button></div>
-      <p>绘制工具支持任意曲线：电脑上按住鼠标左键绘制，触屏或触控笔可直接书写。选中“绘制”后，右侧可直接切换红、蓝、白和最近使用的自定义颜色，也可调整线宽；“更多”或再次点击“绘制”会打开完整调色板。</p>
-      <p>规整有“停留 / 立即 / 关闭”三档。保持按下并停止移动 {INK_HOLD_MS/1000} 秒可触发规整。“立即”在松开时识别，“关闭”保留手绘。用“用途”选项决定笔迹是标记、刚体、碰撞边界、轨道还是场源。</p>
-      <p>橡皮提供“按笔画擦除”和“按拖动擦除”两种方式，可切换小、中、大号并选择是否擦完自动回到绘制。选择工具中左键拖动物体移动、拖空白平移；双击打开属性，右键选择“变换物体”后显示缩放手柄，拖动圆形手柄旋转。</p>
-      <p>在两个物体上分别选择连接点，即可添加弹簧。右键点击或在触屏上长按目标，可看到删除选项。按 <kbd>R</kbd> 旋转，按 <kbd>Delete</kbd> 删除，按 <kbd>Esc</kbd> 退出编辑。</p>
+      <p>打开「绘制」，从「图形」选择刚体、线段、光滑曲线或圆弧轨道，在画布上拖出范围。线段可作地面或斜面。</p>
+      <p>橡皮提供“按笔画擦除”和“按拖动擦除”两种方式，可切换小、中、大号并选择是否擦完自动回到绘制。选择工具中左键拖动物体移动、拖空白平移；双击打开属性，单击物体显示缩放手柄，拖动圆形手柄旋转。</p>
+      <p>连接工具箱支持两个物体间的连接。先点一个物体，再点空白，可创建固定端或轻小物体。有质量连接由多个有质量的节点近似。按 <kbd>Delete</kbd> 删除选中目标。</p>
       <p>播放快捷键：<kbd>P</kbd> 运行或暂停，<kbd>.</kbd> 单步推进 1/60 s，<kbd>Shift</kbd>+<kbd>R</kbd> 重置模拟。焦点在输入框或按钮上时，快捷键不生效。空格仍用于按住拖动平移画布。</p>
       <p>环境设置中的重力预设可一键切换到地球、月球、火星或失重，用于比较同一场景在不同重力下的运动。修改重力会回到初始状态重新模拟。</p>
       <p>物块与地面或斜面重叠时，会贴到物块中心所在一侧的表面。拖动时可看绿色接触线，按住 <kbd>Alt</kbd> 可自由摆放。</p>
@@ -407,7 +422,7 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
         <Viewport scene={replay?.scene??scene} active={active&&!spatial} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
           replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}
           display={display} setDisplay={setDisplay} trailSince={trailSince} baseline={isReplay?undefined:baseline?.samples} select={select} change={change} remove={remove} report={setError}
-          ink={ink} applyInput={applyInput} openProperties={id=>{select(id);setPropertyTab('object');setPanel('properties')}}/>
+          ink={ink} drawShape={drawShape} connectionTool={connectionTool} applyInput={applyInput} applyVelocity={applyVelocity} anglePreview={running?undefined:anglePreview} openProperties={id=>{select(id);setPropertyTab('object');setPanel('properties')}}/>
         {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>
@@ -423,16 +438,13 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
           interventions={replay?replay.interventions:engine.interventions}
           externalForceApplied={replay?replay.externalForceApplied:engine.externalForceApplied}/></div>}
         <Tools locked={isReplay} tool={tool} setTool={setTool} display={display} toggle={key=>setDisplay({...display,[key]:!display[key]})}
-          ink={ink} setInk={setInk} addPrimitive={addPrimitive}/>
+          ink={ink} setInk={setInk} addPrimitive={addPrimitive} drawShape={drawShape} setDrawShape={setDrawShape}
+          connectionTool={connectionTool} setConnectionTool={setConnectionTool} setVectorEdit={mode=>setDisplay({...display,editForce:mode==='force',editVelocity:mode==='velocity'})}/>
       </div>
       {panel==='properties'&&<div className="inspector-wrap">
         <fieldset className="inspector-lock" disabled={isReplay}>
-          <Inspector scene={scene} selected={selected} select={select} change={change} initialTab={propertyTab} onClose={()=>setPanel('none')}
-            livePosition={live?live.getPosition():undefined} liveVelocity={velocity}
-            applyInput={applyInput} simulationTime={engine.time} applyTarget={(id,value,quantity)=>{
-              try {applyInput(id,quantity==='support'?engine.inputForSupport(id,value.y):engine.inputForNetForce(id,value,quantity))}
-              catch(e) {setError(errorText(e))}
-            }}/>
+          <Inspector scene={scene} selected={selected} select={select} change={change} applyAngle={applyAngle} initialTab={propertyTab} onClose={()=>setPanel('none')}
+            livePosition={live?live.getPosition():undefined} liveVelocity={velocity}/>
         </fieldset>
       </div>}
     </div>

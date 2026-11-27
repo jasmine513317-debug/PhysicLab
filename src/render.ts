@@ -22,11 +22,12 @@ export function inkColors(color:string):[string,string] {
 }
 export const extraVectors = {displacement:'位移',momentum:'动量',netForce:'合力',omega:'角速度',impulse:'冲量',electric:'电场强度'} as const
 export type ExtraVector = keyof typeof extraVectors
-export const forceLabels=['重力','外力','电场力','弹簧力','接触法向力','接触摩擦力','轨道约束力'] as const
+export const forceLabels=['重力','外力','电场力','弹簧力','连接约束力','接触法向力','接触摩擦力','轨道约束力'] as const
 export type VectorUnit = 'm'|'m/s'|'m/s²'|'kg·m/s'|'N'|'N·s'|'N/C'
 export type Display = {grid:boolean; reference:boolean; trails:boolean; velocity:boolean; acceleration:boolean; forces:boolean; vectorScale:number
-  extraVectors?:Partial<Record<ExtraVector,boolean>>; unitScale?:Partial<Record<VectorUnit,number>>; vectorLabels?:'none'|'name'|'magnitude'|'components'; editForce?:boolean;hiddenForces?:string[]}
+  extraVectors?:Partial<Record<ExtraVector,boolean>>; unitScale?:Partial<Record<VectorUnit,number>>; vectorLabels?:'none'|'name'|'magnitude'|'components'; editForce?:boolean;editVelocity?:boolean;hiddenForces?:string[]}
 export const forceScale=(display:Display)=>0.075*display.vectorScale*(display.unitScale?.N??1)
+export const velocityScale=(display:Display)=>0.17*display.vectorScale*(display.unitScale?.['m/s']??1)
 export const defaultDisplay: Display = {grid:true, reference:true,trails:true,velocity:true,acceleration:false,forces:false,vectorScale:1}
 export type ReplayView = {tracks:ReadonlyMap<string,RecordedSample[]>;index:number;externalForceApplied?:true}
 export type Overlay = {points:Point[]; color?:string; strokeWidth?:number; dash?:number[]}
@@ -196,9 +197,10 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       const offset=i<2||i>20?0:(i%2?1:-1)*7
       return {x:a.x+(b.x-a.x)*i/22-(b.y-a.y)*offset/len,y:a.y+(b.y-a.y)*i/22+(b.x-a.x)*offset/len}
     })
-    ctx.lineWidth=j.id===selected?2.8:1.6
-    path(ctx,pts,j.id===selected?'#ffe0a6':'#dcab70')
-    if(j.id===highlight) {
+    const selectedJoint=j.id===selected||j.group===selected
+    ctx.lineWidth=selectedJoint?2.8:1.6
+    path(ctx,j.connection?[a,b]:pts,selectedJoint?'#ffe0a6':'#dcab70',j.connection==='rope'?[4,3]:[])
+    if(j.id===highlight||(highlight&&j.group===highlight)) {
       ctx.save()
       ctx.translate(a.x,a.y)
       ctx.rotate(Math.atan2(b.y-a.y,b.x-a.x))
@@ -235,7 +237,13 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       arrow(ctx,at,{x:at.x+vector.x*factor,y:at.y-vector.y*factor},color,text)
     }
     const mass=live?.getMass()??b.mass
-    if (display.velocity) drawVector(velocity,0.17,'#a6bfff','速度','m/s')
+    const editVelocity=display.editVelocity&&physics?.samples.has(b.id)&&b.id===selected
+    if (display.velocity||editVelocity) drawVector(editVelocity?options.forcePreview??velocity:velocity,0.17,'#a6bfff','速度','m/s')
+    if(editVelocity) {
+      const value=options.forcePreview??velocity,k=velocityScale(display)*camera.scale
+      ctx.beginPath();ctx.arc(at.x+k*value.x,at.y-k*value.y,6,0,2*Math.PI)
+      ctx.strokeStyle='#a6bfff';ctx.stroke()
+    }
     if (display.acceleration) drawVector(acceleration,0.09,'#f2c38b','加速度','m/s²')
     if (display.extraVectors?.displacement) drawVector({x:position.x-b.position.x,y:position.y-b.position.y},1,'#c6c6c6','位移','m')
     if (display.extraVectors?.momentum) drawVector({x:mass*velocity.x,y:mass*velocity.y},0.1,'#9ec7d6','动量','kg·m/s')
@@ -285,8 +293,15 @@ export function drawScene(ctx:CanvasRenderingContext2D, view:View, camera:Camera
       const center=p(position)
       ctx.save()
       ctx.fillStyle='#cceaff';ctx.strokeStyle='#1f5471';ctx.lineWidth=1.5
-      for(const h of resizeHandles(body.geometry)) {
+      for(const h of resizeHandles(body.geometry,body.surfaceLine)) {
         const offset=rotate(h.point,angle)
+        if(h.curvature) {
+          ctx.beginPath()
+          ctx.arc(center.x+offset.x*camera.scale,center.y-offset.y*camera.scale,6,0,Math.PI*2)
+          ctx.fillStyle='#f2c38b';ctx.fill();ctx.stroke()
+          ctx.fillStyle='#cceaff'
+          continue
+        }
         const x=center.x+offset.x*camera.scale-3.5,y=center.y-offset.y*camera.scale-3.5
         ctx.fillRect(x,y,7,7);ctx.strokeRect(x,y,7,7)
       }

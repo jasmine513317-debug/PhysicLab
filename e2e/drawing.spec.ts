@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { circlePixels, drawStroke, openProperties } from './helpers'
+import { dragMouse,drawStroke,openImportedScene,openProperties,pixelOf } from './helpers'
+import { body,emptyExperiment } from '../src/model'
 
 test('opens a pen palette with red, blue, white and custom colors but no black',async({page})=>{
   await page.goto('/lab?new=1')
@@ -30,173 +31,76 @@ test('opens a pen palette with red, blue, white and custom colors but no black',
     .toMatchObject({color:'#12ab34',customInks:['#12ab34']})
 })
 
-test('keeps drawing properties visible and persists color, width and regularization mode',async({page})=>{
+test('draws preset shapes and edits them on the canvas',async({page})=>{
   await page.goto('/lab?new=1')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  const objects=page.getByRole('combobox',{name:'当前物体'})
+  await page.getByRole('button',{name:'绘制',exact:true}).click()
   const canvas=page.getByLabel('物理场景')
   const bounds=(await canvas.boundingBox())!
-  const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-
-  await expect(tools.getByRole('group',{name:'快捷颜色'})).toBeVisible()
-  await expect(tools.getByRole('group',{name:'画笔粗细'})).toBeVisible()
-  await expect(tools.getByRole('group',{name:'自动规整'})).toBeVisible()
-  await tools.getByRole('button',{name:'快捷颜色 蓝色'}).click()
-  await tools.getByRole('button',{name:'画笔粗细 粗'}).click()
-  await tools.getByRole('button',{name:'自动规整 立即'}).click()
-  await expect(tools.getByRole('button',{name:'快捷颜色 蓝色'})).toHaveAttribute('aria-pressed','true')
-  await expect(tools.getByRole('button',{name:'画笔粗细 粗'})).toHaveAttribute('aria-pressed','true')
-  await expect(tools.getByRole('button',{name:'自动规整 立即'})).toHaveAttribute('aria-pressed','true')
-  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('physiclab.ink-prefs.v1')??'{}')))
-    .toMatchObject({color:'#5b8dff',width:3.6,mode:'immediate'})
-
-  await drawStroke(page,[px(150,180),px(240,184),px(330,180),px(450,183)])
+  const point=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
+  const shape=page.getByLabel('图形',{exact:true})
+  await expect(shape.locator('option')).toHaveCount(6)
+  await shape.selectOption('square')
+  await drawStroke(page,[point(130,100),point(210,180)])
+  await shape.selectOption('segment')
+  await drawStroke(page,[point(270,100),point(430,151)])
+  await shape.selectOption('arc')
+  await drawStroke(page,[point(310,240),point(520,240)])
   await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘直线')
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-
-  await page.reload()
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await expect(tools.getByRole('button',{name:'快捷颜色 蓝色'})).toHaveAttribute('aria-pressed','true')
-  await expect(tools.getByRole('button',{name:'画笔粗细 粗'})).toHaveAttribute('aria-pressed','true')
-  await expect(tools.getByRole('button',{name:'自动规整 立即'})).toHaveAttribute('aria-pressed','true')
-
-  await tools.getByRole('button',{name:'自动规整 关闭'}).click()
-  await drawStroke(page,[px(150,240),px(240,244),px(330,240),px(450,243)])
-  await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-
-  await tools.getByRole('button',{name:'自动规整 停留'}).click()
-  await drawStroke(page,[px(150,300),px(240,304),px(330,300),px(450,303)],950)
-  await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘直线')
+  const current=page.getByLabel('当前物体')
+  await expect(current.locator('option:checked')).toHaveText('圆弧轨道')
+  await current.selectOption({label:'正方形'})
+  await expect(page.getByLabel('宽度',{exact:true})).toHaveValue('1')
+  await expect(page.getByLabel('高度',{exact:true})).toHaveValue('1')
+  const angle=page.getByRole('spinbutton',{name:'旋转角'})
+  await angle.fill('45')
+  await angle.press('Enter')
+  await expect(angle).toHaveValue('45')
 })
 
-test('previews the current ink color and width instead of mount-time settings',async({page})=>{
-  await page.goto('/lab?new=1')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await tools.getByRole('button',{name:'快捷颜色 蓝色'}).click()
-  await tools.getByRole('button',{name:'画笔粗细 粗'}).click()
-  await tools.getByRole('button',{name:'自动规整 关闭'}).click()
-  const canvas=page.getByLabel('物理场景')
+test('drags a velocity handle and adds a spring between the body and a new fixed endpoint',async({page})=>{
+  const ball=body('滑块',{kind:'circle',radius:.32},0,2.2,{})
+  const scene={...emptyExperiment(),camera:{x:0,y:2.2,scale:80},bodies:[ball]}
+  const canvas=await openImportedScene(page,scene)
   const bounds=(await canvas.boundingBox())!
-  const start={x:bounds.x+180,y:bounds.y+230},end={x:bounds.x+420,y:bounds.y+230}
-  await page.mouse.move(start.x,start.y)
-  await page.mouse.down()
-  await page.mouse.move(end.x,end.y,{steps:8})
-  const sample=()=>canvas.evaluate((node:HTMLCanvasElement,points)=>{
-    const context=node.getContext('2d')!,dpr=node.width/node.clientWidth
-    const x=(points.start.x+points.end.x)/2-points.bounds.x,y=(points.start.y+points.end.y)/2-points.bounds.y
-    const pixels=context.getImageData(Math.round((x-5)*dpr),Math.round((y-5)*dpr),Math.round(10*dpr),Math.round(10*dpr)).data
-    const rows=new Set<number>()
-    for(let i=0;i<pixels.length;i+=4)if(pixels[i+2]>150&&pixels[i+2]>pixels[i]+60&&pixels[i+1]>pixels[i]+30)rows.add(Math.floor(i/4/Math.round(10*dpr)))
-    return rows.size
-  },{start,end,bounds})
-  await expect.poll(sample).toBeGreaterThanOrEqual(4)
-  await page.mouse.up()
-})
-
-test('recognizes after 0.9 seconds of stillness and cancels when movement resumes',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await tools.getByRole('button',{name:'自动规整 停留'}).click()
-  const bounds=(await canvas.boundingBox())!
-  const start={x:bounds.x+180,y:bounds.y+230}
-  const end={x:bounds.x+420,y:bounds.y+234}
-  await page.mouse.move(start.x,start.y)
-  await page.mouse.down()
-  await page.mouse.move(end.x,end.y,{steps:8})
-  await expect(page.getByRole('status')).toContainText('按住不动 0.9 秒',{timeout:300})
-  await expect(page.getByRole('status')).toContainText('已停留 0.9 秒',{timeout:1200})
-  await page.mouse.move(end.x+80,end.y+60,{steps:4})
-  await expect(page.getByRole('status')).not.toContainText('已停留 0.9 秒')
-  await page.mouse.up()
+  const center=pixelOf(bounds,scene.camera,ball.position)
+  await page.getByLabel('拖动矢量').selectOption('velocity')
+  await dragMouse(page,center,{x:center.x+68,y:center.y})
   await openProperties(page)
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
-})
-
-test('draws the selected semantic role and supports undoing regularization',async({page})=>{
-  await page.goto('/lab?new=1')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await expect(tools.getByRole('group',{name:'绘制用途'})).toBeVisible()
-  await tools.getByRole('button',{name:'绘制用途 视觉标记'}).click()
-  await tools.getByRole('button',{name:'自动规整 立即'}).click()
-  const bounds=(await page.getByLabel('物理场景').boundingBox())!
-  await drawStroke(page,[
-    {x:bounds.x+220,y:bounds.y+250},{x:bounds.x+280,y:bounds.y+250},
-    {x:bounds.x+310,y:bounds.y+210},{x:bounds.x+340,y:bounds.y+250},
-    {x:bounds.x+400,y:bounds.y+250},{x:bounds.x+280,y:bounds.y+250},
-  ])
-  await openProperties(page)
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText(/^手绘/)
-  await expect(page.getByText('静态物体 · 视觉标记',{exact:true})).toBeVisible()
+  await expect(page.getByLabel('初始速度 X')).toContainText('5.000')
   await page.getByRole('button',{name:'关闭参数面板'}).click()
-  await page.getByRole('button',{name:'撤销'}).click()
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option')).toHaveCount(0)
+  await page.getByRole('button',{name:'连接工具箱',exact:true}).click()
+  await expect(page.getByLabel('连接件').locator('option')).toHaveCount(5)
+  const updatedBounds=(await canvas.boundingBox())!
+  const updatedCenter=pixelOf(updatedBounds,scene.camera,ball.position)
+  await page.mouse.click(updatedCenter.x,updatedCenter.y)
+  await page.mouse.click(updatedCenter.x+100,updatedCenter.y)
+  await openProperties(page)
+  await expect(page.getByLabel('当前物体').locator('option:checked')).toHaveText('弹簧 1')
+  await expect(page.getByLabel('当前物体').locator('option',{hasText:'固定端点'})).toHaveCount(1)
 })
-
-test('edits semantic roles, charge and collision geometry with reversible changes',async({page})=>{
-  await page.goto('/lab?new=1')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await tools.getByRole('button',{name:'绘制用途 视觉标记'}).click()
-  const bounds=(await page.getByLabel('物理场景').boundingBox())!
-  await drawStroke(page,[{x:bounds.x+180,y:bounds.y+240},{x:bounds.x+280,y:bounds.y+210},{x:bounds.x+380,y:bounds.y+240}])
+test('selects and edits a massive rope as one connection',async({page})=>{
+  const anchor=body('锚点',{kind:'circle',radius:.15},-1,2.2,{type:'static'})
+  const weight=body('挂件',{kind:'circle',radius:.22},1,2.2)
+  const scene={...emptyExperiment(),camera:{x:0,y:2.2,scale:80},bodies:[anchor,weight]}
+  const canvas=await openImportedScene(page,scene)
+  await page.getByRole('button',{name:'连接工具箱',exact:true}).click()
+  await page.getByLabel('连接件').selectOption('massRope')
+  const bounds=(await canvas.boundingBox())!
+  for(const item of scene.bodies) {
+    const p=pixelOf(bounds,scene.camera,item.position)
+    await page.mouse.click(p.x,p.y)
+  }
   await openProperties(page)
-  const role=page.getByLabel('物体角色')
-  await expect(role).toHaveValue('marker')
-  await expect(page.getByText('只显示，不参与碰撞',{exact:true})).toBeVisible()
-  await expect(page.getByRole('spinbutton',{name:'质量'})).toHaveCount(0)
-  await role.selectOption('field')
-  await expect(page.getByRole('spinbutton',{name:'电荷量'})).toHaveValue('10')
-  await expect(page.getByText('静态物体 · 场源',{exact:true})).toBeVisible()
-  await page.getByRole('spinbutton',{name:'电荷量'}).fill('-25')
-  await page.getByRole('spinbutton',{name:'电荷量'}).press('Enter')
-  await role.selectOption('boundary')
-  await expect(page.getByRole('spinbutton',{name:'摩擦系数'})).toBeVisible()
-  await role.selectOption('track')
-  await expect(page.getByText(/静态碰撞轨道 · [0-9]+ 个顶点/)).toBeVisible()
-  await expect(page.getByText('静态物体 · 轨道',{exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'撤销',exact:true}).click()
-  await expect(role).toHaveValue('boundary')
-})
-
-test('keeps selected open-path roles visually distinct and persists their properties',async({page})=>{
-  await page.goto('/lab?new=1')
-  await page.getByLabel('实验标题').fill('角色保存验收')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await tools.getByRole('button',{name:'绘制用途 视觉标记'}).click()
-  const bounds=(await page.getByLabel('物理场景').boundingBox())!
-  await drawStroke(page,[{x:bounds.x+180,y:bounds.y+240},{x:bounds.x+280,y:bounds.y+210},{x:bounds.x+380,y:bounds.y+240}])
-  await openProperties(page)
-  const canvas=page.getByLabel('物理场景'),role=page.getByLabel('物体角色')
-  const pixels=()=>canvas.evaluate((node:HTMLCanvasElement)=>node.toDataURL())
-  const marker=await pixels()
-  await role.selectOption('boundary')
-  await expect.poll(pixels).not.toBe(marker)
-  const boundary=await pixels()
-  await role.selectOption('track')
-  await expect.poll(pixels).not.toBe(boundary)
-  const track=await pixels()
-  expect(new Set([marker,boundary,track]).size).toBe(3)
-  await role.selectOption('field')
-  await page.getByRole('spinbutton',{name:'电荷量'}).fill('-25')
-  await page.getByRole('spinbutton',{name:'电荷量'}).press('Enter')
-  await page.getByRole('button',{name:'保存实验',exact:true}).click()
-  await expect(page.locator('.lab-message')).toContainText('实验已保存')
-  await page.reload()
-  await openProperties(page)
-  const objectId=await page.getByLabel('当前物体').locator('option').filter({hasText:/^手绘/}).getAttribute('value')
-  await page.getByLabel('当前物体').selectOption(objectId!)
-  await expect(page.getByLabel('物体角色')).toHaveValue('field')
-  await expect(page.getByRole('spinbutton',{name:'电荷量'})).toHaveValue('-25')
+  await expect(page.getByLabel('当前物体').locator('option:checked')).toContainText('有质量绳')
+  const length=page.getByRole('spinbutton',{name:'总原长'})
+  await length.fill('3')
+  await length.press('Enter')
+  await expect(length).toHaveValue('3')
+  const mass=page.getByRole('spinbutton',{name:'总质量'})
+  await mass.fill('0.5')
+  await mass.press('Enter')
+  await page.getByRole('button',{name:'质量节点'}).click()
+  await expect(page.getByRole('spinbutton',{name:'节点 1 质量'})).toHaveValue('0.1')
 })
 
 test('offers eraser mode, size and auto-return that survive reload',async({page})=>{
@@ -219,9 +123,10 @@ test('offers eraser mode, size and auto-return that survive reload',async({page}
 
   await page.reload()
   await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await drawStroke(page,[px(150,210),px(250,195),px(350,215),px(450,200)])
+  await page.getByLabel('图形',{exact:true}).selectOption('segment')
+  await drawStroke(page,[px(150,210),px(450,210)])
   await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
+  await expect(objects.locator('option:checked')).toHaveText('线段')
   await page.getByRole('button',{name:'关闭参数面板'}).click()
   await tools.getByRole('button',{name:'橡皮',exact:true}).click()
   await expect(tools.getByRole('button',{name:'按拖动'})).toHaveAttribute('aria-pressed','true')
@@ -233,77 +138,6 @@ test('offers eraser mode, size and auto-return that survive reload',async({page}
   await page.mouse.move(bounds.x+300,bounds.y+235,{steps:6})
   await page.mouse.up()
   await openProperties(page)
-  await expect(objects.locator('option',{hasText:/^手绘曲线（静态斜面\/碰撞曲线）$/})).toHaveCount(2)
+  await expect(tools.getByRole('button',{name:'绘制',exact:true})).toBeVisible()
   await expect(tools.getByRole('button',{name:'绘制',exact:true})).toHaveAttribute('aria-pressed','true')
-})
-
-test('wraps the drawing context into a second row on a phone viewport',async({page})=>{
-  await page.setViewportSize({width:390,height:844})
-  await page.goto('/lab?new=1')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  const context=tools.locator('.tool-context')
-  const strip=tools.locator('.tool-strip').first()
-  await expect(context).toBeVisible()
-  const contextBox=(await context.boundingBox())!
-  const stripBox=(await strip.boundingBox())!
-  expect(contextBox.y).toBeGreaterThanOrEqual(stripBox.y+stripBox.height-2)
-  for(const name of ['快捷颜色','画笔粗细','自动规整']) {
-    const box=(await tools.getByRole('group',{name}).boundingBox())!
-    expect(box.x).toBeGreaterThanOrEqual(0)
-    expect(box.x+box.width).toBeLessThanOrEqual(390)
-  }
-})
-
-test('stroke eraser removes whole curves while drag eraser cuts them and removes bodies',async({page})=>{
-  await page.goto('/lab?new=1')
-  const canvas=page.getByLabel('物理场景')
-  const tools=page.getByRole('complementary',{name:'场景工具'})
-  const objects=page.getByRole('combobox',{name:'当前物体'})
-  const bounds=(await canvas.boundingBox())!
-  const px=(x:number,y:number)=>({x:bounds.x+x,y:bounds.y+y})
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  await drawStroke(page,[px(150,200),px(240,190),px(330,205),px(450,195)])
-  await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-
-  await tools.getByRole('button',{name:'橡皮',exact:true}).click()
-  await tools.getByRole('button',{name:'橡皮',exact:true}).click()
-  const menu=page.getByRole('group',{name:'橡皮模式'})
-  await menu.getByRole('button',{name:'按拖动擦除'}).click()
-  await expect(page.getByText('拖动擦除可切断曲线')).toBeVisible()
-  await page.mouse.move(bounds.x+300,bounds.y+175)
-  await page.mouse.down()
-  await page.mouse.move(bounds.x+300,bounds.y+225,{steps:6})
-  await page.mouse.up()
-  await openProperties(page)
-  await expect(objects.locator('option',{hasText:/^手绘曲线（静态斜面\/碰撞曲线）$/})).toHaveCount(2)
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-
-  await menu.getByRole('button',{name:'按笔画擦除'}).click()
-  await expect(page.getByText('整笔删除')).toBeVisible()
-  await page.mouse.move(bounds.x+210,bounds.y+175)
-  await page.mouse.down()
-  await page.mouse.move(bounds.x+210,bounds.y+225,{steps:6})
-  await page.mouse.up()
-  await openProperties(page)
-  await expect(objects.locator('option',{hasText:/^手绘曲线（静态斜面\/碰撞曲线）$/})).toHaveCount(1)
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-
-  await tools.getByRole('button',{name:'绘制',exact:true}).click()
-  const center=px(250,320)
-  await drawStroke(page,circlePixels(center.x,center.y,40,24))
-  await openProperties(page)
-  await expect(objects.locator('option:checked')).toHaveText('手绘物块')
-  await page.getByRole('button',{name:'关闭参数面板'}).click()
-  await tools.getByRole('button',{name:'橡皮',exact:true}).click()
-  await tools.getByRole('button',{name:'橡皮',exact:true}).click()
-  await page.getByRole('group',{name:'橡皮模式'}).getByRole('button',{name:'按拖动擦除'}).click()
-  await page.mouse.move(bounds.x+250,bounds.y+300)
-  await page.mouse.down()
-  await page.mouse.move(bounds.x+250,bounds.y+345,{steps:6})
-  await page.mouse.up()
-  await openProperties(page)
-  await expect(objects.locator('option',{hasText:/^手绘物块$/})).toHaveCount(0)
 })

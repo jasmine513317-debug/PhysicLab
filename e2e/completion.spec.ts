@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { circlePixels, drawStroke, openAnalysis, openProperties, touchStroke } from './helpers'
+import { openAnalysis, openProperties, touchStroke } from './helpers'
 
 test('records poses, scrubs history, and restores the saved recording after reload',async({page})=>{
   await page.goto('/lab?template=collision')
@@ -29,27 +29,6 @@ test('records poses, scrubs history, and restores the saved recording after relo
   await expect(page.getByRole('region',{name:'历史回放'}).getByLabel('回放时间',{exact:true})).toHaveText('0.100 s')
   await page.getByRole('button',{name:'退出回放'}).click()
   await expect(page.getByRole('button',{name:'运行',exact:true})).toBeEnabled()
-})
-
-test('classifies a quick open stroke as a static curve and a closed stroke as a body',async({page})=>{
-  await page.goto('/lab?new=1')
-  await openProperties(page)
-  const canvas=page.getByLabel('物理场景')
-  const bounds=(await canvas.boundingBox())!
-  await page.getByRole('button',{name:'绘制',exact:true}).click()
-  await drawStroke(page,[
-    {x:bounds.x+140,y:bounds.y+150},{x:bounds.x+220,y:bounds.y+185},
-    {x:bounds.x+320,y:bounds.y+140},{x:bounds.x+430,y:bounds.y+175},
-  ])
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘曲线（静态斜面/碰撞曲线）')
-  await expect(page.getByText(/手绘曲线（静态斜面\/碰撞曲线） · \d+ 个点/)).toBeVisible()
-  await drawStroke(page,circlePixels(bounds.x+250,bounds.y+300,45))
-  await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
-  await expect(page.getByText(/手绘物块 · \d+ 个点/)).toBeVisible()
-  await page.getByRole('button',{name:'运行',exact:true}).click()
-  await openAnalysis(page)
-  await expect(page.getByRole('button',{name:'设为基准'})).toBeEnabled()
-  await page.getByRole('button',{name:'暂停',exact:true}).click()
 })
 
 test('edits the initial spring displacement and shows vector velocity in comparisons',async({page})=>{
@@ -113,10 +92,10 @@ test.describe('mobile touch emulation',()=>{
     await page.getByRole('button',{name:'绘制',exact:true}).tap()
     const canvas=page.getByLabel('物理场景')
     const bounds=(await canvas.boundingBox())!
-    await touchStroke(page,circlePixels(bounds.x+bounds.width/2,bounds.y+bounds.height/2,45,28))
+    await touchStroke(page,[{x:bounds.x+bounds.width/2-30,y:bounds.y+bounds.height/2},{x:bounds.x+bounds.width/2+30,y:bounds.y+bounds.height/2}])
     await page.getByRole('button',{name:'选择',exact:true}).click()
     await openProperties(page)
-    await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('手绘物块')
+    await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('圆形')
     // A raw CDP touch stroke leaves Chromium's gesture state so the next synthesized tap emits no click.
     await page.getByRole('button',{name:'运行',exact:true}).click()
     await openAnalysis(page)

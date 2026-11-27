@@ -19,7 +19,8 @@ const geometry = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('ellipse'), radiusX: positive, radiusY: positive }),
   z.object({ kind: z.literal('rectangle'), width: positive, height: positive }),
   z.object({ kind: z.literal('surface'), width: positive, height: positive }),
-  z.object({ kind:z.literal('track'), vertices:z.array(pointSchema).min(2).max(TRACK_VERTEX_LIMIT), closed:z.boolean() })
+  z.object({ kind:z.literal('track'), vertices:z.array(pointSchema).min(2).max(TRACK_VERTEX_LIMIT), closed:z.boolean(),
+    profile:z.enum(['curve','arc']).optional() })
     .superRefine(({vertices,closed},ctx)=>{
       if(vertices.length>TRACK_VERTEX_LIMIT)return
       const message=trackError(vertices,closed)
@@ -78,6 +79,8 @@ export const bodySchema = z.object({
 export const springSchema = z.object({
   id, a: id, b: id, anchorA: pointSchema, anchorB: pointSchema,
   stiffness: z.number().min(0.01).max(100000), damping: z.number().min(0).max(5), restLength: positive,
+  connection:z.enum(['rope','rod']).optional(),
+  group:id.optional(),
   role:z.literal('constraint').optional(),
 })
 export const DEFAULT_WORLD_BOUNDS={minX:-11.9,maxX:11.9,minY:-0.9,maxY:18.9}
@@ -139,7 +142,7 @@ export const experimentSchema = z.object({
     const a = bodies.get(j.a), b = bodies.get(j.b)
     if (!a || !b || j.a === j.b || (a.type === 'static' && b.type === 'static')) {
       ctx.addIssue({code:'custom', message:'弹簧必须连接两个不同的物体，且至少一个是动态物体。'})
-    } else if (springFrequency(j.stiffness, a, b) >= 30) {
+    } else if (!j.connection&&springFrequency(j.stiffness, a, b) >= 30) {
       ctx.addIssue({code:'custom', message:'弹簧频率必须低于 30 Hz。请降低刚度或增加质量。'})
     }
   }

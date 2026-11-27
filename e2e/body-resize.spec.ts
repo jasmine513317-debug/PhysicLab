@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { body, emptyExperiment } from '../src/model'
-import { openImportedScene, openProperties, pixelOf, touchStroke } from './helpers'
+import { openImportedScene, openProperties, pixelOf } from './helpers'
 
 function rectangleScene(title:string) {
   return {...emptyExperiment(),title,camera:{x:0,y:2.2,scale:80},
@@ -57,22 +57,20 @@ test('opens transform from the target menu, drags a block edge and interior, and
 
 test.describe('touch editing',()=>{
   test.use({hasTouch:true,viewport:{width:390,height:844}})
-  test('double-tap opens properties and long-press opens transform',async({page})=>{
+  test('tap exposes transform handles and double-tap opens properties without a delete menu',async({page})=>{
     const scene=rectangleScene('触控方块')
     const canvas=await openImportedScene(page,scene)
     const bounds=(await canvas.boundingBox())!
     const p=pixelOf(bounds,scene.camera,{x:0,y:2.2})
     const position={x:p.x-bounds.x,y:p.y-bounds.y}
     await canvas.tap({position})
+    await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toBeVisible()
     await canvas.tap({position})
     await expect(page.getByRole('complementary',{name:'参数面板'})).toBeVisible()
     await openProperties(page)
     await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('触控方块')
-    await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toHaveCount(0)
-    await page.getByRole('button',{name:'关闭参数面板'}).click()
-    await touchStroke(page,[p],550)
-    await page.getByRole('button',{name:'变换物体',exact:true}).tap()
-    await expect(page.getByText('拖内部移动 · 拖边缘缩放 · 拖圆形手柄旋转')).toBeVisible()
+    await expect(page.getByRole('group',{name:'目标操作'})).toHaveCount(0)
+    await expect(page.getByRole('button',{name:'删除目标'})).toHaveCount(0)
   })
 })
 

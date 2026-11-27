@@ -27,6 +27,7 @@ export function liftPlanarExperiment(scene:Experiment,physics:Physics):{scene?:S
     (body.contactSide!==undefined&&body.contactSide!=='both'))
     .map(body=>body.name)
   const byId=new Map(scene.bodies.map(body=>[body.id,body]))
+  if(scene.joints.some(joint=>joint.connection))unsupported.push('二维轻绳或刚性杆')
   if(scene.joints.some(joint=>[joint.anchorA.x,joint.anchorA.y,joint.anchorB.x,joint.anchorB.y].some(Boolean)||
     springFrequency(joint.stiffness,byId.get(joint.a)!,byId.get(joint.b)!)*2*Math.PI>50))unsupported.push('偏心或高刚度弹簧')
   if(scene.environment.boundaries)unsupported.push('封闭边界')

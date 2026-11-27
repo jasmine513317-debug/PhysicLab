@@ -1,4 +1,4 @@
-import { Box, Chain, Circle, DistanceJoint, Edge, Polygon, Vec2, World, type Body } from 'planck'
+import { Box, Chain, Circle, DistanceJoint, Edge, Polygon, RopeJoint, Vec2, World, type Body } from 'planck'
 import { area, decodeExperiment, DEFAULT_WORLD_BOUNDS, gravityVector, springFrequency, type Experiment, type Point } from './model'
 import { energies } from './analysis'
 import { COULOMB_CONSTANT } from './electrostatics'
@@ -15,7 +15,7 @@ export class Physics {
   readonly bodies = new Map<string,Body>()
   readonly samples = new Map<string,RecordedSample[]>()
   readonly acceleration = new Map<string,Point>()
-  readonly springJoints = new Map<string,DistanceJoint>()
+  readonly springJoints = new Map<string,DistanceJoint|RopeJoint>()
   private readonly applied = new Map<string,Extract<PhysicalInput,{kind:'continuous'|'timed'}>>()
   private readonly pending: Intervention[] = []
   private readonly appliedEvents: Intervention[] = []
@@ -129,10 +129,12 @@ export class Physics {
     for (const j of scene.joints) {
       const bodyA = this.bodies.get(j.a)!, bodyB = this.bodies.get(j.b)!
       const a = scene.bodies.find(b=>b.id===j.a)!, b = scene.bodies.find(b=>b.id===j.b)!
-      const joint = this.world.createJoint(new DistanceJoint({
+      const joint = this.world.createJoint(j.connection==='rope'?new RopeJoint({
+        bodyA,bodyB,localAnchorA:j.anchorA,localAnchorB:j.anchorB,maxLength:j.restLength,collideConnected:false,
+      }):new DistanceJoint({
         bodyA,bodyB, localAnchorA:j.anchorA, localAnchorB:j.anchorB,
-        length:j.restLength, frequencyHz:springFrequency(j.stiffness,a,b),
-        dampingRatio:j.damping, collideConnected:true,
+        length:j.restLength, frequencyHz:j.connection==='rod'?0:springFrequency(j.stiffness,a,b),
+        dampingRatio:j.damping, collideConnected:!j.connection,
       }))
       if (!joint) throw new Error('无法创建弹簧连接。')
       this.springJoints.set(j.id,joint)
@@ -388,7 +390,7 @@ export class Physics {
       const joint = this.springJoints.get(j.id)!
       const reaction = joint.getReactionForce(1/this.scene.environment.timeStep)
       const side = j.a===id ? -1 : 1
-      vectors.push({name:'弹簧力',vector:{x:reaction.x*side,y:reaction.y*side},color:'#e6a273'})
+      vectors.push({name:j.connection?'连接约束力':'弹簧力',vector:{x:reaction.x*side,y:reaction.y*side},color:'#e6a273'})
     }
     const contact=this.contactLoads.get(id)
     if(contact) {
@@ -419,6 +421,7 @@ export class Physics {
     const samples = new Map<string,RecordedSample>()
     const springEnergy = new Map<string,number>()
     for (const j of this.scene.joints) {
+      if(j.connection)continue
       const joint = this.springJoints.get(j.id)!
       const a = joint.getAnchorA(), b = joint.getAnchorB()
       const total = j.stiffness*(Math.hypot(a.x-b.x,a.y-b.y)-j.restLength)**2/2

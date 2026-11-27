@@ -49,7 +49,7 @@ test('keeps drawing tools usable when analysis opens on short desktops', async (
     if (!box) throw new Error('tools have no box')
     expect(box.y).toBeGreaterThanOrEqual(0)
     expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
-    for (const name of ['绘制', '橡皮', '弹簧']) {
+    for (const name of ['绘制', '橡皮', '连接工具箱']) {
       const tool = tools.getByRole('button', { name, exact: true })
       await tool.click()
       await expect(tool).toHaveAttribute('aria-pressed', 'true')

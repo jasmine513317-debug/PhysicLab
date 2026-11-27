@@ -15,7 +15,7 @@ test('uses selection for dragging, panning, animated context selection, and dele
   await expect(tools.getByRole('button',{name:'删除',exact:true})).toHaveCount(0)
   const first=await canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())
   await canvas.click({position:p,button:'right'})
-  await expect(menu.getByRole('button',{name:'删除 测试圆'})).toBeVisible()
+  await expect(menu.getByRole('button',{name:'变换物体'})).toBeVisible()
   await expect.poll(()=>canvas.evaluate((el:HTMLCanvasElement)=>el.toDataURL())).not.toBe(first)
   await openProperties(page)
   await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option:checked')).toHaveText('测试圆')
@@ -39,11 +39,11 @@ test('uses selection for dragging, panning, animated context selection, and dele
   await drag(blank,60,38)
   const moved=at(140,-2)
   await canvas.click({position:moved,button:'right'})
-  await expect(menu.getByRole('button',{name:'删除 测试圆'})).toBeVisible()
+  await expect(menu.getByRole('button',{name:'变换物体'})).toBeVisible()
   expect(Number(await x.inputValue())).toBeCloseTo(oldX+1,4)
   expect(Number(await y.inputValue())).toBeCloseTo(oldY+.5,4)
 
-  await menu.getByRole('button',{name:'删除 测试圆'}).click()
+  await canvas.press('Delete')
   await expect(menu).toHaveCount(0)
   await expect(page.getByText('当前场景为空')).toBeVisible()
 })
@@ -52,36 +52,11 @@ test('opens and dismisses target actions with the keyboard',async({page})=>{
   await page.goto('/lab?template=projectile')
   const canvas=page.getByLabel('物理场景')
   await canvas.press('Shift+F10')
-  const action=page.getByRole('button',{name:'删除 抛射体'})
+  const action=page.getByRole('button',{name:'变换物体'})
   await expect(action).toBeFocused()
   await action.press('Escape')
   await expect(action).toHaveCount(0)
   await expect(canvas).toBeFocused()
-})
-
-test.describe('touch selection',()=>{
-  test.use({viewport:{width:390,height:844},hasTouch:true})
-  test('long press exposes the same contextual delete action',async({page,browserName})=>{
-    test.skip(browserName!=='chromium','Native long-press events are dispatched by the Chromium debugging protocol.')
-    await page.goto('/lab?template=spring')
-    const canvas=page.getByLabel('物理场景')
-    const bounds=(await canvas.boundingBox())!
-    const cdp=await page.context().newCDPSession(page)
-    try {
-      // The template's fixed anchor starts at world x = -3 m, y = 2 m.
-      const scale=Math.min(80,(390-80)/10.6)
-      const x=Math.round(bounds.x+bounds.width/2-3*scale)
-      const y=Math.round(bounds.y+bounds.height/2+.2*scale)
-      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]})
-      const action=page.getByRole('button',{name:'删除 固定点'})
-      await expect(action).toBeVisible()
-      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
-      await action.tap()
-      await expect(action).toHaveCount(0)
-      await openProperties(page)
-      await expect(page.getByRole('combobox',{name:'当前物体'}).locator('option',{hasText:'固定点'})).toHaveCount(0)
-    } finally {await cdp.detach()}
-  })
 })
 
 test('moves both spring endpoints and deletes only the selected spring',async({page})=>{

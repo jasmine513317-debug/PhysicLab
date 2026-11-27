@@ -1,14 +1,25 @@
 import { rotate } from './coordinates'
 import type { BodyConfig, Point } from './model'
+import { trackProfile } from './drawnShapes'
 
 type Geometry = BodyConfig['geometry']
-type Handle = {point:Point; direction:Point; edge?:[Point,Point]; corner?:boolean}
+type Handle = {point:Point; direction:Point; edge?:[Point,Point]; corner?:boolean; curvature?:boolean}
 const dot = (a:Point,b:Point) => a.x*b.x+a.y*b.y
 const minus = (a:Point,b:Point) => ({x:a.x-b.x,y:a.y-b.y})
 const limit = (n:number,min=.02,max=1000) => Math.max(min,Math.min(max,n))
 
-export function resizeHandles(g:Geometry):Handle[] {
-  if(g.kind==='track'||g.kind==='freeform')return []
+export function resizeHandles(g:Geometry,surfaceLine=false):Handle[] {
+  if(g.kind==='surface'&&surfaceLine)return [-1,1].map(x=>({
+    point:{x:x*g.width/2,y:g.height/2},direction:{x,y:0},
+  }))
+  if(g.kind==='track'||g.kind==='freeform'){
+    const handles:Handle[]=[g.vertices[0],g.vertices.at(-1)!].map(point=>{
+    const length=Math.hypot(point.x,point.y)||1
+    return {point,direction:{x:point.x/length,y:point.y/length}}
+    })
+    if(g.kind==='track'&&g.profile)handles.unshift({point:g.vertices[Math.floor(g.vertices.length/2)],direction:{x:0,y:1},curvature:true})
+    return handles
+  }
   if(g.kind==='circle')return [{x:1,y:0},{x:0,y:1},{x:-1,y:0},{x:0,y:-1}].map(direction=>({
     point:{x:direction.x*g.radius,y:direction.y*g.radius},direction,
   }))
@@ -46,7 +57,8 @@ export function resizeHandleAt(body:BodyConfig,world:Point,tolerance:number) {
       return {point:p,direction:{x:p.x/r,y:p.y/r}}
     return
   }
-  if(g.kind==='track'||g.kind==='freeform')return
+  if(g.kind==='track'||g.kind==='freeform')return resizeHandles(g).find(handle=>Math.hypot(p.x-handle.point.x,p.y-handle.point.y)<=tolerance)
+  if(body.surfaceLine)return resizeHandles(g,true).find(handle=>Math.hypot(p.x-handle.point.x,p.y-handle.point.y)<=tolerance)
   if(g.kind==='ellipse') {
     const radial=Math.hypot(p.x/g.radiusX,p.y/g.radiusY)
     for(const handle of resizeHandles(g)) {
@@ -82,7 +94,20 @@ export function resizeCursor(handle:Handle,angle:number) {
 
 export function resizeBody(body:BodyConfig,handle:Handle,from:Point,to:Point) {
   const delta=rotate(minus(to,from),-body.angle),g=body.geometry,n=handle.direction
-  if(g.kind==='track'||g.kind==='freeform')return {body,scaleAnchor:(p:Point)=>p}
+  if(g.kind==='track'||g.kind==='freeform'){
+    if(g.kind==='track'&&g.profile&&handle.curvature) {
+      const span=g.vertices.at(-1)!.x-g.vertices[0].x
+      const depth=limit(handle.point.y+delta.y,-10000,10000)
+      return {body:{...body,geometry:{...g,vertices:trackProfile(g.profile,span,depth)}}}
+    }
+    const radius=Math.hypot(handle.point.x,handle.point.y)
+    const shortest=Math.min(...g.vertices.slice(1).map((p,i)=>Math.hypot(p.x-g.vertices[i].x,p.y-g.vertices[i].y)))
+    if(!radius||!shortest)return {body,scaleAnchor:(p:Point)=>p}
+    const extent=Math.max(...g.vertices.map(p=>Math.max(Math.abs(p.x),Math.abs(p.y))))
+    const factor=limit(1+dot(delta,n)/radius,.020001/shortest,10000/extent)
+    const scaleAnchor=(p:Point)=>({x:p.x*factor,y:p.y*factor})
+    return {body:{...body,geometry:{...g,vertices:g.vertices.map(scaleAnchor)}},scaleAnchor}
+  }
   let geometry:Geometry
   let offset={x:0,y:0}
   let scaleAnchor:(p:Point)=>Point
