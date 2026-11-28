@@ -3,6 +3,6 @@ import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './styles.css'
-import { App } from './App'
+import { Startup } from './splash/Startup'
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App/></StrictMode>)
+createRoot(document.getElementById('root')!).render(<StrictMode><Startup/></StrictMode>)

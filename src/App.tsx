@@ -11,7 +11,7 @@ import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
 import { appPath, appUrl } from './routes'
 import { domains, type Domain } from './domains'
-import { PHYSICS_HZ, SAMPLE_HZ } from './simulation'
+import { SplashScreen } from './splash/SplashScreen'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
 const GeometryStudio = lazy(() => import('./GeometryStudio').then(module => ({default:module.GeometryStudio})))
 const ElectrostaticLab = lazy(() => import('./ElectrostaticLab').then(module => ({default:module.ElectrostaticLab})))
@@ -124,19 +124,6 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
     </header>
     <main className="app-content" id="app-content">{children}</main>
   </>
-}
-function Home() {
-  return <main className="home" id="app-content">
-    <div className="home-shell">
-      <h1>让想法，成为实验</h1>
-      <a className="button primary home-create" href={newLab}><Plus size={17}/>创建实验<ArrowRight size={15}/></a>
-      <div className="home-metrics" aria-label="实验配置">
-        <div><strong>{PHYSICS_HZ}<small>Hz</small></strong><span>固定物理步长</span></div>
-        <div><strong>{SAMPLE_HZ}<small>Hz</small></strong><span>数据采样频率</span></div>
-        <div><strong>SI</strong><span>国际标准单位</span></div>
-      </div>
-    </div>
-  </main>
 }
 function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:ReturnType<typeof useLibrary>) {
   const [editing,setEditing]=useState('')
@@ -273,5 +260,5 @@ function WorkspaceApp({page}:{page:Page}) {
 export function App() {
   const path=appPath(location.pathname)
   const page=path==='/lab'?'lab':path==='/experiments'?'library':path==='/geometry'?'geometry':undefined
-  return <ErrorBoundary>{page?<WorkspaceApp page={page}/>:<Home/>}</ErrorBoundary>
+  return <ErrorBoundary>{page?<WorkspaceApp page={page}/>:<SplashScreen ready/>}</ErrorBoundary>
 }

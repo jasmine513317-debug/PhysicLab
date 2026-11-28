@@ -53,6 +53,10 @@ async function transaction<T>(mode: IDBTransactionMode, operation: (store:IDBObj
     })
   } finally { db.close() }
 }
+export async function prepareExperimentStorage() {
+  const database=await openDatabase()
+  database.close()
+}
 export async function listExperiments() {
   const scopes=[1,2,3,'electrostatic','astronomy','extended'] as const
   const results = await Promise.allSettled(scopes.map(scope=>transaction('readonly',store=>store.getAll(),STORE,scope)))

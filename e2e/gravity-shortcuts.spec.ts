@@ -28,7 +28,7 @@ test('fills gravity from a preset and restarts the simulation', async ({ page })
 
 test('plays, pauses, steps and resets from the keyboard', async ({ page }) => {
   await page.goto('/lab?template=fall')
-  await page.locator('canvas').first().focus()
+  await page.getByLabel('物理场景').focus()
 
   await page.keyboard.press('p')
   await expect(page.getByRole('button', { name: '暂停', exact: true })).toBeVisible()
