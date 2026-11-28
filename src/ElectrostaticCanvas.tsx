@@ -61,13 +61,13 @@ function paintPotential(ctx:CanvasRenderingContext2D,view:View,scene:Electrostat
   ctx.setLineDash([])
 }
 
-function paint(ctx:CanvasRenderingContext2D,view:View,scene:ElectrostaticExperiment,selected:string) {
+function paint(ctx:CanvasRenderingContext2D,view:View,scene:ElectrostaticExperiment,selected:string,axisOrigin:Point) {
   const camera=cameraFor(scene,view)
   const toWorld=(point:Point)=>worldPoint(point,camera,view)
   const toScreen=(point:Point)=>screenPoint(point,camera,view)
   ctx.fillStyle='#101012';ctx.fillRect(0,0,view.width,view.height)
   if(scene.charges.length&&(scene.layers.heat||scene.layers.contours))paintPotential(ctx,view,scene,toWorld)
-  const origin=toScreen({x:0,y:0})
+  const origin=toScreen(axisOrigin)
   const gridUnit=10**Math.round(Math.log10(52/camera.scale)),spacing=gridUnit*camera.scale
   ctx.beginPath()
   for(let x=(origin.x%spacing+spacing)%spacing;x<view.width;x+=spacing) {ctx.moveTo(x,0);ctx.lineTo(x,view.height)}
@@ -129,13 +129,15 @@ interface Props {
   probe:(point:Point)=>void
   moveCharge:(id:string,point:Point)=>void
   moveCamera:(point:Point)=>void
+  axisOrigin:Point
+  moveOrigin?:(point:Point)=>void
 }
 
-export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCharge,moveCamera}:Props) {
+export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCharge,moveCamera,axisOrigin,moveOrigin}:Props) {
   const canvas=useRef<HTMLCanvasElement>(null)
-  const latest=useRef({scene,selected})
+  const latest=useRef({scene,selected,axisOrigin})
   const frame=useRef(0)
-  const drag=useRef<{pointer:number;start:Point;origin:Point;scale:number;charge?:string}|null>(null)
+  const drag=useRef<{pointer:number;start:Point;origin:Point;scale:number;charge?:string;axis?:boolean}|null>(null)
   function schedulePaint() {
     if(frame.current)return
     frame.current=requestAnimationFrame(()=>{
@@ -147,10 +149,10 @@ export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCh
       if(element.width!==width)element.width=width
       if(element.height!==height)element.height=height
       ctx.setTransform(dpr,0,0,dpr,0,0)
-      paint(ctx,view,latest.current.scene,latest.current.selected)
+      paint(ctx,view,latest.current.scene,latest.current.selected,latest.current.axisOrigin)
     })
   }
-  useLayoutEffect(()=>{latest.current={scene,selected};schedulePaint()},[scene,selected])
+  useLayoutEffect(()=>{latest.current={scene,selected,axisOrigin};schedulePaint()},[scene,selected,axisOrigin])
   useLayoutEffect(()=>{
     const observer=new ResizeObserver(schedulePaint)
     observer.observe(canvas.current!)
@@ -165,6 +167,11 @@ export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCh
     if(event.button!==0||drag.current)return
     event.currentTarget.focus({preventScroll:true})
     const {view,pixel}=position(event),camera=cameraFor(scene,view),world=worldPoint(pixel,camera,view)
+    if(moveOrigin) {
+      drag.current={pointer:event.pointerId,start:pixel,origin:axisOrigin,scale:camera.scale,axis:true}
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
     if(tool==='positive'||tool==='negative') {add(tool==='positive'?1:-1,world);return}
     if(tool==='probe') {probe(world);return}
     const charge=tool==='select'?[...scene.charges].reverse().find(candidate=>{
@@ -181,7 +188,8 @@ export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCh
     if(!active||active.pointer!==event.pointerId)return
     const {pixel}=position(event)
     const dx=(pixel.x-active.start.x)/active.scale,dy=(active.start.y-pixel.y)/active.scale
-    if(active.charge)moveCharge(active.charge,{x:active.origin.x+dx,y:active.origin.y+dy})
+    if(active.axis)moveOrigin?.({x:active.origin.x+dx,y:active.origin.y+dy})
+    else if(active.charge)moveCharge(active.charge,{x:active.origin.x+dx,y:active.origin.y+dy})
     else moveCamera({x:active.origin.x-dx,y:active.origin.y-dy})
   }
   function end(event:PointerEvent<HTMLCanvasElement>) {

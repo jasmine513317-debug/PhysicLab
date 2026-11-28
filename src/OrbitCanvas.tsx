@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { screenPoint, worldPoint, type View } from './coordinates'
 import { barycentricPosition, referenceEllipse, TwoBodyOrbit } from './orbital-physics'
 import { MAX_ORBIT_AXIS_AU, MIN_ORBIT_AXIS_AU, orbitalPrimary, type AstronomyExperiment, type CelestialBody } from './astronomy'
@@ -50,7 +50,7 @@ function stroke(ctx:CanvasRenderingContext2D,points:Point[],color:string,width=1
   ctx.strokeStyle=color;ctx.lineWidth=width;ctx.stroke()
 }
 
-function paint(ctx:CanvasRenderingContext2D,view:View,scene:AstronomyExperiment,selected:string,orbit:TwoBodyOrbit|undefined,bodies:CelestialBody[],camera:Camera,system?:AstronomySystem,anchorId?:string) {
+function paint(ctx:CanvasRenderingContext2D,view:View,scene:AstronomyExperiment,selected:string,orbit:TwoBodyOrbit|undefined,bodies:CelestialBody[],camera:Camera,system?:AstronomySystem,anchorId?:string,axisOrigin?:Point) {
   const layers=scene.layers
   const reference=orbit?.elements
   const initialDistance=orbit?Math.hypot(orbit.initial.relative.x,orbit.initial.relative.y):1
@@ -64,12 +64,12 @@ function paint(ctx:CanvasRenderingContext2D,view:View,scene:AstronomyExperiment,
   ctx.fillStyle='#101012';ctx.fillRect(0,0,view.width,view.height)
   const unit=10**Math.round(Math.log10(57/camera.scale)),spacing=unit*camera.scale
   ctx.beginPath()
-  const gridOrigin=screen(anchor?.position??{x:0,y:0})
+  const gridOrigin=axisOrigin?screen(axisOrigin):center
   for(let x=gridOrigin.x%spacing;x<view.width;x+=spacing) {ctx.moveTo(x,0);ctx.lineTo(x,view.height)}
   for(let y=gridOrigin.y%spacing;y<view.height;y+=spacing) {ctx.moveTo(0,y);ctx.lineTo(view.width,y)}
   ctx.strokeStyle='#2a2a30';ctx.lineWidth=1;ctx.stroke()
-  stroke(ctx,[{x:center.x,y:0},{x:center.x,y:view.height}],'#4b4b55')
-  stroke(ctx,[{x:0,y:center.y},{x:view.width,y:center.y}],'#4b4b55')
+  stroke(ctx,[{x:gridOrigin.x,y:0},{x:gridOrigin.x,y:view.height}],'#4b4b55')
+  stroke(ctx,[{x:0,y:gridOrigin.y},{x:view.width,y:gridOrigin.y}],'#4b4b55')
 
   ctx.font='11px monospace';ctx.textAlign='left';ctx.textBaseline='alphabetic'
   ctx.fillStyle='#bcbcc2';ctx.fillText((anchor?anchor.name+'相对视图':'系统坐标')+' · '+Number(unit.toPrecision(3))+' AU / 格',12,view.height-13)
@@ -188,6 +188,11 @@ type Drag = {
 }
 
 export function OrbitCanvas(props:Props) {
+  const [axisMode,setAxisMode]=useState<'world'|'manual'|'body'>('world')
+  const axisModeRef=useRef(axisMode)
+  axisModeRef.current=axisMode
+  const axisOrigin=useRef<Point>({x:0,y:0})
+  const axisDrag=useRef<{pointer:number;pixel:Point;origin:Point;scale:number}>(undefined)
   const element=useRef<HTMLCanvasElement>(null)
   const current=useRef(props)
   const painted=useRef<ReturnType<typeof paint>|undefined>(undefined)
@@ -274,11 +279,13 @@ export function OrbitCanvas(props:Props) {
         try {reference=new TwoBodyOrbit([drawing[0],drawing[1]])}catch{reference=undefined}
       }
     }
-    painted.current=paint(ctx,view,p.scene,p.selected,reference,drawing,camera.current,d?undefined:p.system,p.system?anchor?.id:undefined)
+    const origin=axisModeRef.current==='manual'?axisOrigin.current:axisModeRef.current==='body'?drawing.find(body=>body.id===p.selected)?.position:undefined
+    painted.current=paint(ctx,view,p.scene,p.selected,reference,drawing,camera.current,d?undefined:p.system,p.system?anchor?.id:undefined,origin)
     const moving=Math.abs(t.x-camera.current.x)+Math.abs(t.y-camera.current.y)+Math.abs(t.scale-camera.current.scale)/Math.max(1,t.scale)>.000001
     if(p.active&&(p.running||d||moving))schedule()
   }
   useLayoutEffect(()=>{current.current=props;schedule()},[props])
+  useLayoutEffect(()=>{schedule()},[axisMode])
   useLayoutEffect(()=>{
     const observer=new ResizeObserver(schedule)
     observer.observe(element.current!)
@@ -297,16 +304,33 @@ export function OrbitCanvas(props:Props) {
     return {x:event.clientX-r.left,y:event.clientY-r.top}
   }
   function cancel() {
+    axisDrag.current=undefined
     drag.current=undefined
     if(camera.current)target.current={...camera.current}
     schedule()
   }
+  function moveAxis(event:{pointerId:number;clientX:number;clientY:number}) {
+    const d=axisDrag.current
+    if(!d||d.pointer!==event.pointerId)return false
+    const point=pixel(event)
+    axisOrigin.current={x:d.origin.x+(point.x-d.pixel.x)/d.scale,y:d.origin.y-(point.y-d.pixel.y)/d.scale}
+    schedule()
+    return true
+  }
   return <>
+    <select className="orbit-axis-control" aria-label="轨道坐标参考" value={axisMode} onChange={event=>setAxisMode(event.target.value as typeof axisMode)}>
+      <option value="world">默认原点</option><option value="manual">拖动坐标原点</option><option value="body">坐标跟随选中天体</option>
+    </select>
     <canvas ref={element} tabIndex={0} aria-label="轨道画布" className="astronomy-canvas"
       onKeyDown={e=>{if(e.key==='Escape')cancel()}}
       onPointerDown={e=>{
         if(e.button!==0||drag.current||!painted.current)return
         const point=pixel(e),frame=painted.current
+        if(axisMode==='manual'){
+          axisDrag.current={pointer:e.pointerId,pixel:point,origin:axisOrigin.current,scale:frame.camera.scale}
+          e.currentTarget.setPointerCapture(e.pointerId)
+          return
+        }
         const body=[...frame.points].reverse().find(b=>Math.hypot(point.x-b.point.x,point.y-b.point.y)<=b.radius+9)
         const onTrack=frame.tracks.some(points=>points.some((b,i)=>{
           if(!i)return false
@@ -323,8 +347,9 @@ export function OrbitCanvas(props:Props) {
         e.currentTarget.setPointerCapture(e.pointerId)
         schedule()
       }}
-      onPointerMove={e=>{if(drag.current?.pointer===e.pointerId){drag.current.now=pixel(e);schedule()}}}
+      onPointerMove={e=>{if(!moveAxis(e)&&drag.current?.pointer===e.pointerId){drag.current.now=pixel(e);schedule()}}}
       onPointerUp={e=>{
+        if(moveAxis(e)){axisDrag.current=undefined;return}
         const d=drag.current
         if(!d||d.pointer!==e.pointerId)return
         d.now=pixel(e)

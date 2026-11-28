@@ -584,6 +584,15 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
 .spatial-view {position:relative;flex:1;min-height:120px}
 .spatial-canvas {position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .spatial-canvas:active {cursor:grabbing}
+.celestial-workbench .spatial-view {background-color:#080d18;background-image:radial-gradient(ellipse at 45% 64%,#16213a 0%,transparent 68%)}
+.celestial-diagnostics {border:1px solid var(--line-strong);border-radius:8px;padding:.65rem;overflow-wrap:anywhere}
+.celestial-diagnostics summary,.celestial-contacts summary {cursor:pointer}
+.celestial-diagnostics dl {display:grid;grid-template-columns:1fr;gap:.2rem}
+.celestial-diagnostics dd {margin:0 0 .4rem;font-variant-numeric:tabular-nums}
+.celestial-diagnostics label {display:flex;flex-direction:column;gap:.3rem}
+.celestial-figure {display:block;width:100%;max-height:8rem;margin:.45rem 0;background:#101828;border-radius:6px}
+.celestial-contacts {max-height:10rem;overflow:auto;padding:.35rem .75rem;font-size:.8rem}
+.celestial-contacts p {overflow-wrap:anywhere}
 .spatial-camera {position:absolute;top:8px;left:8px;display:flex;gap:4px}
 .spatial-movement {display:flex;gap:4px}
 .spatial-camera {right:8px;flex-wrap:wrap}
@@ -698,3 +707,5 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
 @media (prefers-reduced-motion:reduce) {
   .app-sidebar,.app-content,.mobile-topbar,.sidebar-scrim,.template-card {transition:none}
 }
+.observation-controls {display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 9px}
+.orbit-axis-control {position:absolute;z-index:2;top:7px;right:8px;max-width:calc(100% - 16px);background:var(--panel);border-radius:6px}

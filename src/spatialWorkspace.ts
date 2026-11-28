@@ -33,12 +33,17 @@ export type PlanarBranch=z.infer<typeof planarBranchSchema>
 export const spatialViewSchema=z.object({
   camera:z.object({yaw:scalar,pitch:z.number().min(-1.57).max(1.57),distance:z.number().min(.1).max(1e14),
     focus:point,mode:z.enum(['orbit','first','xy'])}),
-  trail:z.enum(['off','history','prediction','both']),trailWindow:z.number().positive().max(120),vectors:z.boolean(),
+  trail:z.enum(['off','history','prediction','both']),trailWindow:z.number().positive().max(31557600),vectors:z.boolean(),
   trailCount:z.number().int().min(10).max(1800).optional(),
   color:z.string().regex(/^#[a-f0-9]{6}$/i),alpha:z.number().min(.15).max(1),markers:z.boolean(),
   analysis:dataViewSchema.optional(),
   vectorView:z.object({kinds:z.array(z.enum(vectorKinds)).max(vectorKinds.length),
     labels:z.enum(['name','size','components','none']),scales:z.record(z.string(),z.number().min(.01).max(100)),
+  }).optional(),
+  observation:z.object({
+    selected:z.string().optional(),reference:z.enum(['world','com','body','target']),
+    originMode:z.enum(['world','manual','body']),origin:point,gridOpacity:z.number().min(.1).max(1),
+    showAxes:z.boolean().optional(),showGrid:z.boolean().optional(),lensRays:z.boolean(),compare:z.boolean(),
   }).optional(),
 })
 export const workspaceSchema=z.object({

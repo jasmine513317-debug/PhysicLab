@@ -1,4 +1,4 @@
-import { appendCelestial,astronomyScene,celestialUnits,orbitInclination,spatialPreset,withOrbitInclination } from './spatialTemplates'
+import { appendCelestial,celestialUnits,orbitInclination,spatialPreset,withOrbitInclination } from './spatialTemplates'
 import { useCallback,useEffect,useRef,useState } from 'react'
 import { ArrowLeft, Download, Focus, Pause, Play, Plus, Redo2, RotateCcw, Save, StepForward, Undo2, Upload } from 'lucide-react'
 import type { Experiment } from './model'
@@ -6,6 +6,13 @@ import type { Physics } from './physics'
 import { downloadText } from './download'
 import { runFixedSolver } from './simulation'
 import { appUrl } from './routes'
+import { astronomicalUniverse,celestialAssets,insertAsset,phenomenonPreset,referenceOrbit,solarSystem,sourceOrbitScene } from './celestialAssets'
+import { densityOf,radiusForDensity } from './celestialPhysics'
+import { binaryStrain,kerrDisk,kerrHorizon } from './blackHolePhysics'
+import { CelestialDiagnostics } from './CelestialDiagnostics'
+import { CelestialPhenomena } from './CelestialPhenomena'
+import { sxsMerger } from './celestialMergerReplay'
+import { readCelestialModels,storeCelestialModel,writeCelestialModels } from './celestialModelLibrary'
 import { liftPlanarExperiment,projectSpatialExperiment,type ProjectionPlane } from './spatialConversion'
 import { changeSpatialView,defaultSpatialCamera,moveFirstPerson,SpatialCanvas,zoomSpatialCamera,type SpatialCamera,type SpatialGizmo,type SpatialEditAxis } from './SpatialCanvas'
 import { meshRadius,spatialGeometrySchema,spatialMesh,spatialRibbon,type SpatialGeometry } from './spatialGeometry'
@@ -83,7 +90,8 @@ function sceneCamera(scene:SpatialScene):SpatialCamera {
   const maximum=[0,1,2].map(i=>Math.max(...scene.bodies.map(item=>item.position[i])))
   const focus=minimum.map((value,i)=>(value+maximum[i])/2) as Vec3
   const span=Math.max(...maximum.map((value,i)=>value-minimum[i]))
-  return {...defaultSpatialCamera,focus,distance:Math.max(11,span*1.9)}
+  const surface=scene.celestial?Math.max(...scene.bodies.map(b=>b.visualRadius??b.radius))*5:0
+  return {...defaultSpatialCamera,focus,distance:Math.max(11,span*1.9,surface)}
 }
 
 export default function SpatialWorkbench({source,physics,active,astronomy=false,exit,snapshotPlanar,restorePlanar}:Props) {
@@ -101,19 +109,28 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
       }
     } catch {}
     const requested=new URLSearchParams(location.search).get('spaceModel')
-    const initial=astronomy?(requested&&['orbit','three','escape','assist'].includes(requested)?spatialPreset(requested):astronomyScene()):lifted.scene??emptySpatialScene()
+    const initial=astronomy?(requested==='solar'?solarSystem():requested&&['orbit','three','escape','assist'].includes(requested)
+      ?{...spatialPreset(requested),celestial:astronomicalUniverse().celestial}:phenomenonPreset(requested??'')??astronomicalUniverse()):lifted.scene??emptySpatialScene()
     return {engine:new SpatialPhysics(initial),workspace:undefined}
   })
   const [engine,setEngine]=useState(stored.engine)
   const restoredView=stored.workspace?.view
+  const restoredObservation=restoredView?.observation
+  const [lensRays,setLensRays]=useState(restoredObservation?.lensRays??false)
+  const [savedModels,setSavedModels]=useState(()=>astronomy?readCelestialModels():[])
+  const [chosenModel,setChosenModel]=useState('')
   const [camera,setCamera]=useState<SpatialCamera>(()=>restoredView?.camera??(astronomy?sceneCamera(engine.scene):defaultSpatialCamera))
   const [paused,setPaused]=useState(true)
   const [revision,redraw]=useState(0)
-  const [selected,select]=useState(()=>engine.bodies[0]?.id??'')
+  const previousPositions=useRef<Map<string,Vec3>>(undefined)
+  const interpolation=useRef(1)
+  const [selected,select]=useState(()=>engine.bodies.find(b=>b.id===restoredObservation?.selected)?.id??engine.bodies[0]?.id??'')
   const [speed,setSpeed]=useState(1)
   const [trail,setTrail]=useState<'history'|'prediction'|'both'|'off'>(restoredView?.trail??'history')
   const [forecast,setForecast]=useState<Map<string,SpatialSample[]>>()
-  const [trailWindow,setTrailWindow]=useState(restoredView?.trailWindow??120)
+  const [comparison,setComparison]=useState<Map<string,SpatialSample[]>>()
+  const [compare,setCompare]=useState(restoredObservation?.compare??false)
+  const [trailWindow,setTrailWindow]=useState(restoredView?.trailWindow??(engine.stepSeconds>1?31557600:120))
   const [trailCount,setTrailCount]=useState(restoredView?.trailCount??1800)
   const [vectors,setVectors]=useState(restoredView?.vectors??true)
   const [vectorView,setVectorView]=useState<VectorView>(restoredView?.vectorView??defaultVectorView)
@@ -131,12 +148,17 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   const [fieldLines,setFieldLines]=useState<Vec3[][]>()
   const [potentialFaces,setPotentialFaces]=useState<Vec3[][]>()
   const [trace,setTrace]=useState({color:restoredView?.color??'#9ab8db',alpha:restoredView?.alpha??.75,markers:restoredView?.markers??false})
-  const [reference,setReference]=useState<'world'|'com'|'body'>('world')
-  const [gizmoTarget,setGizmoTarget]=useState<'none'|'position'|'force'>('none')
+  const [reference,setReference]=useState<'world'|'com'|'body'|'target'>(restoredObservation?.reference??'world')
+  const [originMode,setOriginMode]=useState<'world'|'manual'|'body'>(restoredObservation?.originMode??'world')
+  const [axisOrigin,setAxisOrigin]=useState<Vec3>(restoredObservation?.origin??[0,0,0])
+  const [gizmoTarget,setGizmoTarget]=useState<'none'|'position'|'force'|'velocity'>('none')
+  const [gridChoice,setGridChoice]=useState(restoredObservation?.showGrid)
+  const [axesChoice,setAxesChoice]=useState(restoredObservation?.showAxes)
+  const [gridOpacity,setGridOpacity]=useState(restoredObservation?.gridOpacity??.55)
   const [axisMode,setAxisMode]=useState<SpatialEditAxis>('xy')
   const [localAxes,setLocalAxes]=useState(false)
   const [free,setFree]=useState(false)
-  const [command,setCommand]=useState<SpatialControl['kind']>('force')
+  const [command,setCommand]=useState<SpatialControl['kind']|'acceleration'>('force')
   const [input,setInput]=useState<Vec3>([0,0,0])
   const [duration,setDuration]=useState(1)
   const [entry,setEntry]=useState<'cartesian'|'direction'>('cartesian')
@@ -163,15 +185,25 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
       for(const item of [liveEngine.current,...edits.current.undo,...edits.current.redo])item.dispose()
     })
   },[])
-  const body=engine.bodies.find(b=>b.id===selected)
+  const replay=engine.scene.celestial?.special==='mergerReplay'
+  const visibleBodies=replay?engine.bodies.filter(b=>engine.visibleBody(b.id)):engine.bodies
+  const body=visibleBodies.find(b=>b.id===selected)??(replay?visibleBodies[0]:undefined)
+  const displayPositions=!paused&&astronomy&&!replay&&previousPositions.current
+    ?new Map(visibleBodies.map(item=>{
+      const previous=previousPositions.current?.get(item.id)
+      return [item.id,previous?add(previous,multiply(subtract(item.position,previous),interpolation.current)):item.position]
+    })):undefined
+  const sourceOrbit=body?.celestial?.preset?referenceOrbit(body.celestial.preset):undefined
   const predictionRevision=paused?revision:0
   const totalMass=engine.bodies.reduce((sum,item)=>sum+item.mass,0)
   const center=totalMass?engine.bodies.reduce((sum,item)=>add(sum,multiply(item.position,item.mass/totalMass)),[0,0,0] as Vec3):undefined
-  const following=reference==='com'?center:reference==='body'?body?.position:undefined
-  const observation=following&&camera.mode!=='first'?{...camera,focus:add(camera.focus,following)}:camera
+  const following=reference==='com'?center:reference==='body'||reference==='target'?body&&(displayPositions?.get(body.id)??body.position):undefined
+  const observation=following&&camera.mode!=='first'?{...camera,focus:reference==='target'?following:add(camera.focus,following)}:camera
   const coil=inductionMeasurements(engine.scene,engine.time)
-  const gizmo:SpatialGizmo|undefined=gizmoTarget==='none'||gizmoTarget==='position'&&!paused?undefined:{target:gizmoTarget,axis:axisMode,local:localAxes,
-    commit:value=>gizmoTarget==='position'?edit({position:value}):control({kind:'force',value})}
+  const special=engine.scene.celestial?.special
+  const gizmo:SpatialGizmo|undefined=gizmoTarget==='none'||!paused||special?undefined:{target:gizmoTarget,axis:axisMode,local:localAxes,
+    value:body&&gizmoTarget!=='position'?engine.pendingVector(body.id,gizmoTarget):undefined,
+    commit:value=>gizmoTarget==='position'?edit({position:value}):control({kind:gizmoTarget,value})}
 
   function step() {
     try {engine.step();redraw(value=>value+1)}
@@ -179,24 +211,34 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   }
   useEffect(()=>{
     if(!active||paused)return
-    return runFixedSolver(engine,{speed,maxSteps:12,maxDelta:.1,updated:()=>redraw(value=>value+1),failed:error=>{
+    previousPositions.current=undefined
+    interpolation.current=1
+    const smooth=astronomy&&!replay
+    const solver=smooth?{dt:engine.dt,step:()=>{
+      previousPositions.current=new Map(engine.bodies.map(item=>[item.id,item.position]))
+      return engine.step()
+    }}:engine
+    return runFixedSolver(solver,{speed,maxSteps:12,maxDelta:.1,updated:()=>{if(!smooth)redraw(value=>value+1)},
+      render:smooth?ratio=>{interpolation.current=ratio;redraw(value=>value+1)}:undefined,stopped:()=>setPaused(true),failed:error=>{
       setError(error instanceof Error?error.message:String(error));setPaused(true)
     }})
-  },[active,engine,paused,speed])
+  },[active,engine,paused,speed,astronomy,replay])
   useEffect(()=>{
-    if(!active||trail!=='both'&&trail!=='prediction'){setForecast(undefined);return}
+    if(!active||replay||trail!=='both'&&trail!=='prediction'){setForecast(undefined);setComparison(undefined);return}
+    const overlay=compare&&Boolean(engine.scene.celestial)&&!special
+    if(!overlay)setComparison(undefined)
     let pending=false,alive=true
     function calculate() {
       if(pending)return
       function fallback() {
-        try {setForecast(engine.prediction())}
-        catch {setForecast(undefined);setError('预测范围内出现数值不稳定。')}
+        try {setForecast(engine.prediction());if(overlay)setComparison(engine.prediction(120,true))}
+        catch {setForecast(undefined);setComparison(undefined);setError('预测范围内出现数值不稳定。')}
       }
       try {
-        pending=compute({kind:'prediction',snapshot:engine.capture(false)},reply=>{
+        pending=compute({kind:'prediction',snapshot:engine.capture(false),compare:overlay},reply=>{
           pending=false
           if(!alive)return
-          if(reply.kind==='prediction')setForecast(reply.forecast)
+          if(reply.kind==='prediction'){setForecast(reply.forecast);setComparison(reply.comparison)}
           else fallback()
         })
         if(!pending)fallback()
@@ -205,7 +247,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     calculate()
     const timer=paused?undefined:setInterval(calculate,500)
     return ()=>{alive=false;clearInterval(timer)}
-  },[active,engine,trail,paused,predictionRevision,compute])
+  },[active,engine,trail,paused,predictionRevision,compute,compare,special,replay])
 
   useEffect(()=>{
     if(!active||!fields.electric&&!fields.potential){setFieldLines(undefined);setPotentialFaces(undefined);return}
@@ -310,7 +352,9 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   }
   function addCelestial(kind:string) {
     try {
-      const next=appendCelestial(engine.state(),kind,selected)
+      const state=engine.state()
+      const saved=savedModels.find(model=>kind==='saved:'+model.id)
+      const next=saved||celestialAssets.some(asset=>asset.id===kind)?insertAsset(state,saved??kind,selected):appendCelestial(state,kind,selected)
       keepAndShow(new SpatialPhysics(next))
       select(next.bodies.at(-1)!.id)
       setPanel('body')
@@ -318,9 +362,12 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     } catch(error) {setError(error instanceof Error?error.message:String(error))}
   }
   function loadTemplate(name:string) {
-    const template=spatialPreset(name)
+    const template=name==='solar'?solarSystem():name==='universe'?astronomicalUniverse():
+      astronomy?phenomenonPreset(name)??(name.startsWith('source:')?sourceOrbitScene(name.slice(7)):undefined)??{...spatialPreset(name),celestial:astronomicalUniverse().celestial}:spatialPreset(name)
     replace(template)
     setCamera(sceneCamera(template))
+    if(name==='mergerReplay')setSpeed(.25)
+    if(astronomy)setTrailWindow((template.celestial?.secondsPerTick??0)>1?31557600:120)
     setFields({...fields,electric:name==='electric',magnetic:name==='induction'})
   }
   function save() {
@@ -334,7 +381,8 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   }
   function captureWorkspace() {
     return workspaceSchema.parse({kind:'physiclab-unified-workspace',version:1,planar:snapshotPlanar(),
-      spatial:engine.capture(),view:{camera,trail,trailWindow,trailCount,vectors,...trace,analysis:analysisView,vectorView},
+      spatial:engine.capture(),view:{camera,trail,trailWindow,trailCount,vectors,...trace,analysis:analysisView,vectorView,
+        observation:{selected,reference,originMode,origin:axisOrigin,gridOpacity,showGrid:gridChoice,showAxes:axesChoice,lensRays,compare}},
       numerics:{fixedStepSeconds:SPATIAL_DT,rigidSubsteps:4,randomSeed:null}})
   }
   function applyWorkspace(workspace:SpatialWorkspace) {
@@ -346,6 +394,12 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     setTrailCount(view.trailCount??1800);setVectorView(view.vectorView??defaultVectorView)
     setTrace({color:view.color,alpha:view.alpha,markers:view.markers})
     setAnalysisView(view.analysis)
+    const observation=view.observation
+    if(observation?.selected&&next.bodies.some(b=>b.id===observation.selected))select(observation.selected)
+    setReference(observation?.reference??'world');setOriginMode(observation?.originMode??'world')
+    setAxisOrigin(observation?.origin??[0,0,0]);setGridOpacity(observation?.gridOpacity??.55)
+    setGridChoice(observation?.showGrid);setAxesChoice(observation?.showAxes)
+    setLensRays(observation?.lensRays??false);setCompare(observation?.compare??false)
   }
   function control(input:SpatialControl) {
     if(!body)return
@@ -366,17 +420,18 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     ].join(','))
     downloadText(engine.scene.title,'csv','text/csv;charset=utf-8',rows.join('\r\n'))
   }
-  return <section className="spatial-workbench" aria-label="三维实验工作台" data-domain="astrophysics">
+  const latest=engine.contactEvents.at(-1)
+  return <section className={astronomy?'spatial-workbench celestial-workbench':'spatial-workbench'} aria-label="三维实验工作台" data-domain="astrophysics">
     <header className="spatial-controls">
       {astronomy?<a className="button compact" href={appUrl('/lab?new=1&choose=1')}><ArrowLeft size={16}/> 实验方向</a>:
         <button className="button compact" onClick={()=>{setPaused(true);exit()}}><ArrowLeft size={16}/> 返回 2D</button>}
       <strong>{engine.scene.title}</strong>
-      <button className="button compact primary" onClick={()=>setPaused(!paused)}>{paused?<Play size={15}/>:<Pause size={15}/>} {paused?'运行':'暂停'}</button>
-      <button className="icon" title="三维单步" aria-label="三维单步" disabled={!paused} onClick={step}><StepForward size={16}/></button>
+      <button className="button compact primary" disabled={engine.modelEnded} onClick={()=>{setPaused(!paused);setGridChoice(undefined);setAxesChoice(undefined)}}>{paused?<Play size={15}/>:<Pause size={15}/>} {paused?'运行':'暂停'}</button>
+      <button className="icon" title="三维单步" aria-label="三维单步" disabled={!paused||engine.modelEnded} onClick={step}><StepForward size={16}/></button>
       <button className="icon" title="重置三维实验" aria-label="重置三维实验" onClick={()=>replace(engine.scene)}><RotateCcw size={16}/></button>
       <button className="icon" aria-label="撤销三维编辑" title="撤销三维编辑" disabled={!edits.current.undo.length} onClick={()=>restoreEdit('undo')}><Undo2 size={16}/></button>
       <button className="icon" aria-label="重做三维编辑" title="重做三维编辑" disabled={!edits.current.redo.length} onClick={()=>restoreEdit('redo')}><Redo2 size={16}/></button>
-      <label>速度 <select value={speed} onChange={e=>setSpeed(+e.target.value)}>{[.25,.5,1,2,4].map(value=><option key={value} value={value}>{value}×</option>)}</select></label>
+      <label>速度 <select aria-label="三维播放速度" value={speed} onChange={e=>setSpeed(+e.target.value)}>{[.25,.5,1,2,4].map(value=><option key={value} value={value}>{value}×</option>)}</select></label>
       <button className="icon" aria-label="保存三维实验" title="保存三维实验" onClick={save}><Save size={16}/></button>
       <button type="button" className="button compact" onClick={()=>setPanel(panel==='settings'?'none':'settings')}>环境</button>
       <button type="button" className="button compact" onClick={()=>setPanel(panel==='body'?'none':'body')}>属性</button>
@@ -387,8 +442,15 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     {lifted.unsupported.length>0&&engine.bodies.length===0&&<p className="spatial-message">二维场景已保留。以下对象需要其他三维模型，当前空间从空白开始：{lifted.unsupported.join('、')}</p>}
     {engine.scene.source&&<p className="spatial-message">从二维 {engine.scene.source.time.toFixed(3)} s 的状态创建空间分支，各自计时。</p>}
     <div className="spatial-view stage-bezel">
-      <SpatialCanvas {...{engine,selected,select,forecast,vectors,revision,trailWindow,trailCount,fieldLines,potentialFaces,gizmo,vectorView}}
+      <SpatialCanvas {...{engine,select,forecast,comparison,vectors,revision,trailWindow,trailCount,fieldLines,potentialFaces,gizmo,vectorView}}
+        selected={body?.id??selected}
+        displayPositions={displayPositions}
         camera={observation} setCamera={next=>setCamera(following&&next.mode!=='first'?{...next,focus:add(next.focus,multiply(following,-1))}:next)}
+        axisOrigin={originMode==='body'?body?.position??axisOrigin:originMode==='manual'?axisOrigin:[0,0,0]}
+        showGrid={!astronomy||(gridChoice??paused)} showAxes={!astronomy||(axesChoice??paused)} gridOpacity={astronomy?gridOpacity:1} celestial={astronomy}
+        lensRays={lensRays}
+        focusBody={id=>{const target=engine.bodies.find(item=>item.id===id);if(target){setReference('world');setCamera({...camera,mode:'orbit',focus:target.position})}}}
+        moveAxis={originMode==='manual'?setAxisOrigin:undefined}
         drawing={drawing?{plane:drawingPlane,offset:drawingOffset,commit:points=>{
           try {
             const geometry=spatialRibbon(points,.45,drawingPlane==='xy'?'z':drawingPlane==='yz'?'x':undefined)
@@ -398,13 +460,21 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
         }}:undefined}
         showMagnetic={fields.magnetic} trailColor={trace.color} trailAlpha={trace.alpha} timeMarkers={trace.markers} history={trail==='history'||trail==='both'}/>
       <div className="spatial-camera">
+        {astronomy&&<><button className="button compact" aria-pressed={gridChoice??paused} onClick={()=>setGridChoice(!(gridChoice??paused))}>坐标网格</button>
+          <button className="button compact" aria-pressed={axesChoice??paused} onClick={()=>setAxesChoice(!(axesChoice??paused))}>坐标轴</button>
+          {!replay&&body?.celestial?.kind==='blackHole'&&<button className="button compact" aria-pressed={lensRays}
+            title="弱场教学截面。虚线表示无偏折光路，实线表示计算出的光路。" onClick={()=>setLensRays(!lensRays)}>弱场光线</button>}
+          <button className="button compact" onClick={()=>{setReference('world');setCamera(sceneCamera(engine.state()))}}>全局观察</button></>}
+        <select aria-label="三维坐标参考" value={originMode} onChange={e=>setOriginMode(e.target.value as typeof originMode)}>
+          <option value="world">世界原点</option><option value="manual">拖动坐标原点</option><option value="body">坐标跟随选中物体</option>
+        </select>
         <select aria-label="三维观察方式" value={camera.mode} onChange={e=>{
           const mode=e.target.value as SpatialCamera['mode']
           const next=changeSpatialView(observation,mode)
           setCamera(following&&next.mode!=='first'?{...next,focus:subtract(next.focus,following)}:next)
         }}><option value="orbit">轨道观察</option><option value="first">第一人称</option><option value="xy">XY 正交观察</option></select>
-        <button className="icon" aria-label="聚焦三维物体" title="聚焦三维物体" disabled={!body} onClick={()=>body&&setCamera({...camera,mode:'orbit',focus:body.position})}><Focus size={17}/></button>
-        <button className="icon" aria-label="重置三维视角" title="重置三维视角" onClick={()=>setCamera(defaultSpatialCamera)}><RotateCcw size={17}/></button>
+        <button className="icon" aria-label="聚焦三维物体" title="聚焦三维物体" disabled={!body} onClick={()=>{if(body){setReference('world');setCamera({...camera,mode:'orbit',focus:body.position})}}}><Focus size={17}/></button>
+        <button className="icon" aria-label="重置三维视角" title="重置三维视角" onClick={()=>{setReference('world');setCamera(astronomy?sceneCamera(engine.state()):defaultSpatialCamera)}}><RotateCcw size={17}/></button>
         <button className="button compact" aria-label="放近三维视角" onClick={()=>setCamera(zoomSpatialCamera(camera,.8))}>＋</button>
         <button className="button compact" aria-label="拉远三维视角" onClick={()=>setCamera(zoomSpatialCamera(camera,1.25))}>－</button>
         {camera.mode==='first'&&<div className="spatial-movement" role="group" aria-label="第一人称移动">
@@ -414,7 +484,20 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
       </div>
       {panel!=='none'&&<aside className="spatial-properties" aria-label={panel==='settings'?'三维环境':panel==='model'?'空间自由建模':panel==='data'?'三维分析':'三维属性'}>
         {panel==='settings'?<>
-          <VectorInput label="重力加速度 (m/s²)" value={engine.scene.gravity} commit={gravity=>update({gravity})}/>
+          {engine.scene.celestial&&!special&&<fieldset className="spatial-intervention">
+            <legend>天体积分</legend>
+            <label>积分器<select value={engine.scene.celestial.integrator} onChange={e=>update({celestial:{...engine.scene.celestial!,integrator:e.target.value==='rk4'?'rk4':'verlet'}})}>
+              <option value="verlet">Velocity Verlet</option><option value="rk4">RK4</option>
+            </select></label>
+            <DimensionField label="每步模拟时间 (s)" min={.0001} max={2e6} value={engine.stepSeconds} commit={secondsPerTick=>update({celestial:{...engine.scene.celestial!,secondsPerTick}})}/>
+            <DimensionField label="最大积分子步 (s)" min={.0001} max={2e6} value={engine.scene.celestial.maxStep} commit={maxStep=>update({celestial:{...engine.scene.celestial!,maxStep}})}/>
+            <DimensionField label="数值软化长度 (m)" min={.001} max={1e12} value={engine.scene.celestial.softening} commit={softening=>update({celestial:{...engine.scene.celestial!,softening}})}/>
+            <label><input type="checkbox" checked={engine.scene.celestial.adaptive} onChange={e=>update({celestial:{...engine.scene.celestial!,adaptive:e.target.checked}})}/> 自动缩短近距离交会步长</label>
+            <label>网格透明度<input type="range" min=".1" max="1" step=".05" value={gridOpacity} onChange={e=>setGridOpacity(+e.target.value)}/></label>
+            <small>软化长度用于数值正则化。修改积分设置会从当前状态开始新的运行。</small>
+          </fieldset>}
+          {!special&&<VectorInput label={engine.scene.celestial?'自定义均匀引力场 (m/s²)':'重力加速度 (m/s²)'} value={engine.scene.gravity} commit={gravity=>update({gravity})}/>}
+          {!engine.scene.celestial&&<>
           <VectorInput label="均匀电场 (N/C)" value={engine.scene.electric} commit={electric=>update({electric})}/>
           <VectorInput label="均匀磁场 (T)" value={engine.scene.magnetic} commit={magnetic=>update({magnetic})}/>
           <label><input type="checkbox" checked={engine.scene.ground} onChange={e=>update({ground:e.target.checked})}/> 地面 y = 0</label>
@@ -430,9 +513,16 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
           <label><input type="checkbox" checked={fields.potential} onChange={e=>setFields({...fields,potential:e.target.checked})}/> 等势面</label>
           {fields.potential&&<label>等势值 (V)<input type="number" step="any" value={fields.level} onChange={e=>setFields({...fields,level:+e.target.value})}/></label>}
           <label><input type="checkbox" checked={fields.magnetic} onChange={e=>setFields({...fields,magnetic:e.target.checked})}/> 磁场方向阵列</label>
+          </>}
+          {engine.scene.celestial&&!special&&<label><input type="checkbox" checked={engine.scene.collisions} onChange={e=>update({collisions:e.target.checked})}/> 球体碰撞</label>}
+          {engine.scene.celestial&&engine.scene.collisions&&<label>碰撞模型<select value={engine.scene.celestial.contact??'bounce'} onChange={e=>update({celestial:{...engine.scene.celestial!,contact:e.target.value as 'bounce'|'merge'|'fragment'}})}>
+            <option value="bounce">球体冲量与恢复系数</option><option value="merge">合并 · 体积相加</option><option value="fragment">三等质量碎片 · 教学模型</option>
+          </select><small>破碎阈值由材料强度和均匀球引力束缚能估算。法向碰撞比能超过阈值时形成三块等质量碎片。</small></label>}
           <label>跟踪参考系<select value={reference} onChange={e=>{
-            setReference(e.target.value as typeof reference);setCamera(current=>({...current,focus:defaultSpatialCamera.focus}))
-          }}><option value="world">世界</option><option value="com">质心</option><option value="body">选中物体</option></select></label>
+            const next=e.target.value as typeof reference
+            setReference(next)
+            setCamera(current=>({...current,mode:next==='target'?'orbit':current.mode,focus:astronomy?[0,0,0]:defaultSpatialCamera.focus}))
+          }}><option value="world">世界</option><option value="com">质心</option><option value="body">选中物体</option>{astronomy&&<option value="target">持续面向选中天体</option>}</select></label>
           <label>轨迹颜色<input type="color" value={trace.color} onChange={e=>setTrace({...trace,color:e.target.value})}/></label>
           <label>轨迹透明度<input type="range" min=".15" max="1" step=".05" value={trace.alpha} onChange={e=>setTrace({...trace,alpha:+e.target.value})}/></label>
           <label><input type="checkbox" checked={trace.markers} onChange={e=>setTrace({...trace,markers:e.target.checked})}/> 轨迹时间标记</label>
@@ -450,7 +540,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
               <input aria-label={'三维矢量比例 '+unit} type="range" min=".05" max="5" step=".05" value={vectorView.scales[unit]??1}
                 onChange={e=>setVectorView({...vectorView,scales:{...vectorView.scales,[unit]:+e.target.value}})}/></label>)}
           </details>
-          <small>{engine.usesRigidSolver?'Rapier 刚体、摩擦与连续碰撞检测。':'科学积分器与无摩擦球体接触。'} 四个内部子步，点源力以 0.01 m 软化。</small>
+          {!engine.scene.celestial&&<small>{engine.usesRigidSolver?'Rapier 刚体、摩擦与连续碰撞检测。':'科学积分器与无摩擦球体接触。'} 四个内部子步，点源力以 0.01 m 软化。</small>}
           {coil&&<small>准静态均匀磁场模型。磁通量 {coil.flux.toPrecision(4)} Wb，感应电动势 {coil.emf.toPrecision(4)} V。</small>}
         </>:panel==='model'?<><label>手绘工作平面<select value={drawingPlane} onChange={e=>setDrawingPlane(e.target.value as typeof drawingPlane)}>
           <option value="xz">XZ</option><option value="xy">XY</option><option value="yz">YZ</option>
@@ -459,19 +549,20 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
         {drawing&&<small>在画布上按住拖动。请让工作平面朝向相机。</small>}
         <SpatialModelingPanel report={setError} create={(name,geometry,fixed)=>appendObject({
           ...spatialObject(name),geometry,fixed,radius:meshRadius(geometry),position:fixed?[0,0,0]:[0,3,0],
-        })}/></>:panel==='data'?<SpatialData engine={engine} settings={analysisView} onSettings={setAnalysisView}/>:<>
-          <select aria-label="三维对象" value={selected} onChange={e=>select(e.target.value)}><option value="">选择物体</option>{engine.bodies.map(item=><option value={item.id} key={item.id}>{item.name}</option>)}</select>
-          {body&&<>
+        })}/></>:panel==='data'?<>{engine.scene.celestial&&!special&&<><CelestialDiagnostics engine={engine} body={body}/><CelestialPhenomena key={body?.id} engine={engine} body={body}/></>}<SpatialData engine={engine} settings={analysisView} onSettings={setAnalysisView}/></>:<>
+          <select aria-label="三维对象" value={body?.id??selected} onChange={e=>select(e.target.value)}><option value="">选择物体</option>{visibleBodies.map(item=><option value={item.id} key={item.id}>{item.name}</option>)}</select>
+          {body&&special&&<p>{body.name} · {replay?'视界面积等效半径 '+(body.visualRadius??body.radius).toExponential(4)+' m':'质量 '+body.mass.toExponential(4)+' kg · 当前半径 '+body.radius.toExponential(4)+' m'}。此预设使用专用模型和限定的初始条件。</p>}
+          {body&&!special&&<>
             <VectorInput label="位置 (m)" value={body.position} commit={position=>edit({position})}/>
-            <VectorInput label="速度 (m/s)" value={body.velocity} commit={velocity=>edit({velocity})}/>
-            <VectorInput label="持续外力 (N)" value={body.force} commit={force=>edit({force})}/>
+            <VectorInput label="速度 (m/s)" value={engine.pendingVector(body.id,'velocity')??body.velocity} commit={velocity=>astronomy?control({kind:'velocity',value:velocity}):edit({velocity})}/>
+            <VectorInput label="持续外力 (N)" value={engine.pendingVector(body.id,'force')??body.force} commit={force=>astronomy?control({kind:'force',value:force}):edit({force})}/>
             <VectorInput label="角速度 (rad/s)" value={body.angularVelocity} commit={angularVelocity=>edit({angularVelocity})}/>
             <VectorInput label="姿态欧拉角 (°)" value={angles} commit={value=>{
               const [x,y,z]=value.map(n=>n*Math.PI/360),[a,b,c]=[Math.sin(x),Math.sin(y),Math.sin(z)],[d,e,f]=[Math.cos(x),Math.cos(y),Math.cos(z)]
               setAngles(value);edit({orientation:[a*e*f-d*b*c,d*b*f+a*e*c,d*e*c-a*b*f,d*e*f+a*b*c]})
             }}/>
-            <label>空间拖动<select value={gizmoTarget} onChange={e=>{if(e.target.value==='position')setPaused(true);setGizmoTarget(e.target.value as typeof gizmoTarget)}}>
-              <option value="none">关闭</option><option value="position">移动物体</option><option value="force">持续外力端点</option></select></label>
+            <label>空间拖动<select value={gizmoTarget} onChange={e=>{if(e.target.value!=='none')setPaused(true);setGizmoTarget(e.target.value as typeof gizmoTarget)}}>
+              <option value="none">关闭</option><option value="position">移动物体</option><option value="force">持续外力端点</option>{astronomy&&<option value="velocity">速度箭头端点</option>}</select></label>
             {gizmoTarget!=='none'&&<>
               <label>工作轴或平面<select value={axisMode} onChange={e=>setAxisMode(e.target.value as SpatialEditAxis)}>
                 {(['x','y','z','xy','xz','yz'] as const).map(axis=><option key={axis} value={axis}>{axis.toUpperCase()}</option>)}
@@ -480,7 +571,55 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
               <small>拖动粉色圆点。工作轴与视线重合时可转动视角或使用数值输入。</small>
             </>}
             {([['mass','质量 (kg)'],['radius','半径 (m)'],['charge','电荷 (C)'],['restitution','恢复系数'],['friction','摩擦系数']] as const)
-              .filter(([field])=>field!=='radius'||!body.geometry).map(([field,label])=><label key={field}>{label}<input type="number" step="any" key={body[field]} defaultValue={body[field]??.35} onBlur={e=>{if(Number.isFinite(e.target.valueAsNumber)&&e.target.valueAsNumber!==body[field])edit({[field]:e.target.valueAsNumber})}}/></label>)}
+              .filter(([field])=>(field!=='radius'||!body.geometry&&body.celestial?.kind!=='blackHole')&&(!astronomy||field!=='charge'&&field!=='friction')).map(([field,label])=><label key={field}>{label}<input type="number" step="any" key={body[field]} defaultValue={body[field]??.35} onBlur={e=>{
+                const value=e.target.valueAsNumber
+                if(!Number.isFinite(value)||value===body[field])return
+                if(field!=='mass'){edit({[field]:value});return}
+                const radius=body.celestial?.kind==='blackHole'?kerrHorizon(value,body.celestial.spin)
+                  :body.densityLocked?radiusForDensity(value,densityOf(body.mass,body.radius)):body.radius
+                edit({mass:value,radius})
+              }}/></label>)}
+            {astronomy&&body.celestial&&<fieldset className="spatial-intervention">
+              <legend>天体模型</legend>
+              <label>名称<input key={body.id+body.name} defaultValue={body.name} maxLength={80} onBlur={e=>{if(e.target.value.trim()&&e.target.value.trim()!==body.name)edit({name:e.target.value.trim()})}}/></label>
+              <label>表面颜色<input type="color" value={body.celestial.color} onChange={e=>edit({celestial:{...body.celestial!,color:e.target.value}})}/></label>
+              {body.celestial.kind!=='blackHole'&&<label>表面材质<select value={body.celestial.kind} onChange={e=>edit({celestial:{...body.celestial!,preset:undefined,kind:e.target.value as NonNullable<SpatialBody['celestial']>['kind']}})}>
+                <option value="rock">岩质</option><option value="gas">气态条带</option><option value="ice">冰质云带</option><option value="star">恒星发光</option><option value="comet">彗核</option>
+              </select></label>}
+              {body.celestial.kind!=='blackHole'&&<DimensionField label="有符号自转周期 (s)" min={-1e12} max={1e12} value={body.celestial.rotationPeriod??0} commit={period=>edit({
+                angularVelocity:[0,period?2*Math.PI/period:0,0],celestial:{...body.celestial!,rotationPeriod:period||undefined},
+              })}/>}
+              {body.celestial.kind!=='blackHole'&&engine.scene.collisions&&<DimensionField label="材料破碎强度 (J/kg)" min={0} max={1e9}
+                value={body.disruptionStrength??(body.celestial.kind==='ice'?5e4:body.celestial.kind==='comet'?1e3:1e5)}
+                commit={disruptionStrength=>edit({disruptionStrength})}/>}
+              <label><input type="checkbox" checked={body.physicsEnabled!==false} onChange={e=>edit({physicsEnabled:e.target.checked})}/> 参与天体物理计算</label>
+              <label><input type="checkbox" checked={body.collisionEnabled!==false} onChange={e=>edit({collisionEnabled:e.target.checked})}/> 参与碰撞</label>
+              {engine.scene.title==='太阳系 · J2000'&&<small>初值来自 JPL 近似轨道要素。地球轨道使用地月质心近似，画布上的天体按显示半径放大。</small>}
+              {sourceOrbit&&<details>
+                <summary>参考轨道与数据来源</summary>
+                <p>参考状态 {sourceOrbit.epoch} · 半长轴 {sourceOrbit.axis.toPrecision(6)} AU · 偏心率 {sourceOrbit.e.toPrecision(6)} · 倾角 {sourceOrbit.inclination.toPrecision(6)}°</p>
+                <p>载入参考轨道会创建独立的日心双体预设，可用撤销回到当前实验。<a href={sourceOrbit.url} target="_blank" rel="noreferrer">查看 JPL 数据</a></p>
+                <button className="button compact" onClick={()=>loadTemplate('source:'+body.celestial?.preset)}>载入参考轨道</button>
+              </details>}
+              {body.celestial.kind==='blackHole'
+                ?<>
+                  <DimensionField label="无量纲自旋 χ" min={-.998} max={.998} value={body.celestial.spin??0} commit={spin=>edit({
+                    radius:kerrHorizon(body.mass,spin),celestial:{...body.celestial!,spin},
+                  })}/>
+                  <DimensionField label="吸积盘外缘 / 最内稳定圆轨道" min={1.2} max={12} value={body.celestial.diskExtent??2.4} commit={diskExtent=>edit({celestial:{...body.celestial!,diskExtent}})}/>
+                  <small>外视界 {body.radius.toExponential(4)} m · 最内稳定圆轨道 {kerrDisk(body.mass,body.celestial.spin).isco.toExponential(4)} m。自旋用于克尔几何和吸积盘内缘，天体引力采用牛顿外场近似。</small>
+                </>
+                :<>
+                  <label>修改质量时保留<select value={body.densityLocked?'density':'radius'} onChange={e=>edit({densityLocked:e.target.value==='density'})}>
+                    <option value="radius">半径</option><option value="density">密度</option>
+                  </select></label>
+                  <DimensionField label="密度 (kg/m³，保持质量并调整半径)" min={1e-8} value={densityOf(body.mass,body.radius)} commit={density=>edit({radius:radiusForDensity(body.mass,density)})}/>
+                </>}
+            </fieldset>}
+            {astronomy&&<button className="button compact" onClick={()=>{
+              try {setSavedModels(storeCelestialModel(body,savedModels));setMessage('已加入我的天体模型。')}
+              catch(error){setError(error instanceof Error?error.message:String(error))}
+            }}>保存到我的天体模型</button>}
             {!body.geometry&&(engine.scene.mutualGravity||body.visualRadius!==undefined)&&
               <DimensionField label="显示半径 (m)" min={.001} max={1e15} value={body.visualRadius??body.radius}
                 commit={visualRadius=>edit({visualRadius})}/>}
@@ -499,7 +638,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
               <option value="">选择其他几何体</option>{engine.bodies.filter(item=>item.id!==selected&&item.geometry).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
             </select></label><button className="button compact" disabled={!combineTarget} onClick={combine}>合并为一个物体</button></>}
             <label><input type="checkbox" checked={body.fixed} onChange={e=>edit({fixed:e.target.checked})}/> 固定物体</label>
-            <label>弹簧连接端点<select value={springTarget} onChange={e=>setSpringTarget(e.target.value)}>
+            {!astronomy&&<><label>弹簧连接端点<select value={springTarget} onChange={e=>setSpringTarget(e.target.value)}>
               <option value="">选择另一个物体</option>{engine.bodies.filter(item=>item.id!==body.id&&!(body.fixed&&item.fixed)).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
             </select></label>
             <button className="button compact" disabled={!engine.bodies.some(item=>item.id===springTarget&&item.id!==selected&&!(item.fixed&&body.fixed))} onClick={()=>{
@@ -507,7 +646,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
               if(!target)return
               const restLength=Math.max(.001,Math.hypot(...target.position.map((value,i)=>value-body.position[i])))
               update({springs:[...(engine.scene.springs??[]),{id:crypto.randomUUID(),a:body.id,b:target.id,restLength,stiffness:1,damping:0}]})
-            }}>添加弹簧</button>
+            }}>添加弹簧</button></>}
             <button className="button compact" onClick={()=>update({bodies:engine.state().bodies.filter(item=>item.id!==selected),
               springs:engine.scene.springs?.filter(spring=>spring.a!==selected&&spring.b!==selected),
               pivots:engine.scene.pivots?.filter(joint=>joint.a!==selected&&joint.b!==selected)})}>删除选中物体</button>
@@ -515,11 +654,12 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
             {!body.fixed&&<fieldset className="spatial-intervention">
               <legend>运行干预</legend>
               <label>物理模式<select value={free?'free':'strict'} onChange={e=>{
-                const enabled=e.target.value==='free';setFree(enabled);if(!enabled&&command==='velocity')setCommand('force')
+                const enabled=e.target.value==='free';setFree(enabled);if(!enabled&&(command==='velocity'||command==='acceleration'))setCommand('force')
               }}><option value="strict">严格物理</option><option value="free">自由干预</option></select></label>
-              <label>输入类型<select value={command} onChange={e=>setCommand(e.target.value as SpatialControl['kind'])}>
+              <label>输入类型<select value={command} onChange={e=>setCommand(e.target.value as typeof command)}>
                 <option value="force">持续外力 (N)</option><option value="timed">定时外力 (N)</option>
                 <option value="impulse">瞬时冲量 (N·s)</option>{free&&<option value="velocity">覆盖速度 (m/s)</option>}
+                {free&&astronomy&&<option value="acceleration">额外加速度 (m/s²)</option>}
               </select></label>
               <label>输入形式<select value={entry} onChange={e=>{setEntry(e.target.value as typeof entry);setInput([0,0,0])}}>
                 <option value="cartesian">XYZ 分量</option><option value="direction">大小、方位角、仰角</option>
@@ -530,7 +670,8 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
               <button type="button" className="button compact" onClick={()=>{
                 const [m,az,el]=input,theta=az*Math.PI/180,phi=el*Math.PI/180
                 const value:Vec3=entry==='cartesian'?input:[m*Math.cos(phi)*Math.cos(theta),m*Math.sin(phi),m*Math.cos(phi)*Math.sin(theta)]
-                control(command==='timed'?{kind:command,value,steps:Math.ceil(duration/SPATIAL_DT)}:{kind:command,value})
+                if(command==='acceleration')control({kind:'force',value:multiply(value,body.mass)})
+                else control(command==='timed'?{kind:command,value,steps:Math.ceil(duration/engine.stepSeconds)}:{kind:command,value})
               }}>应用运行干预</button>
             </fieldset>}
           </>}
@@ -552,22 +693,50 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
         <button className="button compact" onClick={()=>setConversion(false)}>取消</button>
       </aside>}
     </div>
-    <div className="spatial-status"><time aria-label="三维模拟时间">{engine.time.toFixed(3)} s</time>{body&&<span>{body.name} · {length(body.velocity).toFixed(2)} m/s</span>}<span>三维 · 固定步长 60 Hz · 采样 15 Hz</span></div>
+    <div className="spatial-status"><time aria-label="三维模拟时间">{engine.time.toFixed(special==='ringdown'||replay?6:3)} s</time>{body&&<output aria-label="三维观测状态">{body.name}{!replay&&' · '+length(body.velocity).toFixed(2)+' m/s'}{originMode==='body'&&' · XYZ '+body.position.map(value=>value.toPrecision(3)).join(', ')+' m'}</output>}<span>{engine.scene.celestial?'三维 · 每步 '+engine.stepSeconds.toPrecision(3)+' 模拟秒':'三维 · 固定步长 60 Hz · 采样 15 Hz'}</span></div>
+    {special&&<SpecialModelStatus key={special} engine={engine} loadScene={loadTemplate}/>}
+    {latest&&<details className="celestial-contacts">
+      <summary>碰撞记录 · {engine.contactEvents.length} 次 · 最近 {latest.time.toPrecision(4)} s</summary>
+      {[...engine.contactEvents.slice(-20)].reverse().map((event,i)=><p key={engine.contactEvents.length-i}>
+        {event.time.toPrecision(5)} s · {event.names.join(' / ')} · {({bounce:'碰撞',merge:'合并',fragment:'破碎'})[event.kind]} · 总质量 {event.mass.toPrecision(5)} kg · 平动动能损失 {event.kineticLoss.toPrecision(5)} J
+        <br/>碰撞前速度 {event.before.map(v=>'('+v.map(n=>n.toPrecision(3)).join(', ')+')').join(' / ')} m/s
+        <br/>碰撞后速度 {event.after.map(v=>'('+v.map(n=>n.toPrecision(3)).join(', ')+')').join(' / ')} m/s
+        {event.disruptionThreshold!==undefined&&<><br/>碰撞比能 {event.impactSpecificEnergy?.toPrecision(4)} J/kg · 破碎阈值 {event.disruptionThreshold.toPrecision(4)} J/kg</>}
+      </p>)}
+    </details>}
     <footer className="spatial-controls">
-      {astronomy?<select aria-label="添加天体模型" value="" onChange={e=>{if(e.target.value)addCelestial(e.target.value)}}>
-        <option value="">添加天体</option>{celestialUnits.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}
+      {astronomy?<select aria-label="添加天体模型" disabled={Boolean(special)} value="" onChange={e=>{if(e.target.value)addCelestial(e.target.value)}}>
+        <option value="">添加天体</option>{[...celestialUnits,...celestialAssets].map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}
+        {savedModels.length>0&&<optgroup label="我的天体模型">{savedModels.map(model=><option key={model.id} value={'saved:'+model.id}>{model.name}</option>)}</optgroup>}
       </select>:<>
       <button className="button compact" onClick={()=>create('sphere')}><Plus size={16}/> 球体</button>
       <select aria-label="添加空间几何体" value="" onChange={e=>{if(e.target.value)create(e.target.value)}}>
         <option value="">添加几何体</option><option value="cube">立方体</option><option value="box">长方体</option><option value="cylinder">圆柱体</option>
         <option value="cone">圆锥体</option><option value="plane">平面</option><option value="ramp">斜面</option><option value="charge">点电荷</option><option value="planet">天体</option>
       </select>
+      {astronomy&&savedModels.length>0&&<details className="celestial-library">
+        <summary>我的天体模型</summary>
+        <select aria-label="管理已保存的天体模型" value={chosenModel} onChange={e=>setChosenModel(e.target.value)}>
+          <option value="">选择模型</option>{savedModels.map(model=><option key={model.id} value={model.id}>{model.name}</option>)}
+        </select>
+        <button className="button compact" disabled={!chosenModel} onClick={()=>{
+          try {
+            const next=savedModels.filter(model=>model.id!==chosenModel)
+            writeCelestialModels(next);setSavedModels(next);setChosenModel('');setMessage('已移除保存的模型。')
+          } catch {setError('无法修改天体模型库。')}
+        }}>移除已选模型</button>
+      </details>}
       <button className="button compact" onClick={()=>setPanel(panel==='model'?'none':'model')}>建模</button>
       </>}
       <select aria-label="加载三维模板" value="" onChange={e=>{
         if(e.target.value)loadTemplate(e.target.value)
       }}>
-        <option value="">加载模板</option>{!astronomy&&<><option value="fall">空间自由落体</option><option value="throw">空间抛体</option><option value="spring">空间弹簧振子</option>
+        <option value="">加载模板</option>{astronomy&&<><option value="universe">空白宇宙</option><option value="solar">太阳系 · J2000</option>
+          <option value="binary">双星系统</option><option value="impact">行星碰撞</option>
+          <option value="tidalCapture">引力捕获 · 三体交换</option><option value="capture">引力捕获 · 人工耗能</option>
+          <option value="accretion">黑洞与周围天体</option><option value="blackholes">双黑洞系统 · 牛顿对照</option>
+          <option value="binaryPN">双黑洞 · 1PN 圆轨道</option><option value="mergerReplay">双黑洞合并 · SXS 数值回放</option><option value="ringdown">双黑洞合并残骸 · 振铃</option><option value="collapse">均匀无压球坍缩</option>
+        </>}{!astronomy&&<><option value="fall">空间自由落体</option><option value="throw">空间抛体</option><option value="spring">空间弹簧振子</option>
         <option value="rigid">空间刚体接触</option><option value="pendulum">球铰空间摆</option><option value="double">空间双摆</option>
         <option value="incline">空间斜面</option><option value="surface">空间曲线轨道</option>
         <option value="helix">均匀磁场螺旋</option>
@@ -576,10 +745,13 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
         <option value="three">空间三体</option><option value="escape">空间逃逸</option><option value="assist">空间引力飞掠</option>
       </select>
       <select aria-label="三维轨迹" value={trail} onChange={e=>setTrail(e.target.value as typeof trail)}>
-        <option value="off">隐藏轨迹</option><option value="history">历史轨迹</option><option value="prediction">预测 2 s</option><option value="both">历史与预测 2 s</option>
+        <option value="off">隐藏轨迹</option><option value="history">历史轨迹</option><option value="prediction">{engine.scene.celestial?'预测 120 步':'预测 2 s'}</option><option value="both">{engine.scene.celestial?'历史与预测 120 步':'历史与预测 2 s'}</option>
       </select>
+      {engine.scene.celestial&&!special&&(trail==='prediction'||trail==='both')&&<label title="混沌系统中，预测对初始条件和积分误差敏感。">
+        <input type="checkbox" checked={compare} onChange={e=>setCompare(e.target.checked)}/> 对照积分器（蓝线）
+      </label>}
       {['history','both'].includes(trail)&&<label>历史区间 <select value={trailWindow} onChange={e=>setTrailWindow(+e.target.value)}>
-        {[5,15,30,60,120].map(seconds=><option key={seconds} value={seconds}>{seconds} s</option>)}
+        {(engine.scene.celestial?[5,15,30,60,120,86400,2592000,31557600]:[5,15,30,60,120]).map(seconds=><option key={seconds} value={seconds}>{seconds>=86400?seconds/86400+' 天':seconds+' s'}</option>)}
       </select></label>}
       <label><input type="checkbox" checked={vectors} onChange={e=>setVectors(e.target.checked)}/> 速度矢量</label>
       <button className="button compact" onClick={csv} disabled={!engine.bodies.length}><Download size={16}/> 轨迹 CSV</button>
@@ -608,6 +780,58 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   </section>
 }
 
+function SpecialModelStatus({engine,loadScene}:{engine:SpatialPhysics;loadScene:(id:string)=>void}) {
+  const [wave,setWave]=useState(false)
+  const reading=engine.modelReading
+  if(!reading)return null
+  const value=(n:number)=>n.toPrecision(4)
+  return <details className="celestial-contacts" open>
+    <summary>模型读数 · {engine.modelEnded?'已到达计算边界':'演化中可实时观察'}</summary>
+    {reading.kind==='binaryPN'?<>
+      <p>间距 {value(reading.radius)} m · 引力波频率 {value(reading.frequency)} Hz · 辐射功率 {value(reading.power)} W · 累计辐射能量 {value(reading.radiatedEnergy)} J</p>
+      <p>角频率包含谐和坐标下的 1PN 修正，轨道收缩采用最低阶四极辐射。预设在 20 GM/c² 停止。</p>
+      <label><input type="checkbox" checked={wave} onChange={e=>setWave(e.target.checked)}/> 显示引力波波形</label>
+      {wave&&<BinaryWave engine={engine} frequency={reading.frequency}/>}
+      {engine.modelEnded&&<button className="button compact" onClick={()=>loadScene('mergerReplay')}>查看同质量系统的合并回放</button>}
+    </>:reading.kind==='collapse'
+      ?<p>半径 {value(reading.radius)} m · 密度 {value(reading.density)} kg/m³ · 势能 {value(reading.potential)} J · 表面内落速率 {value(reading.surfaceSpeed)} m/s。初始球体均匀、静止且无压，计算在强场之前停止。</p>
+      :reading.kind==='mergerReplay'?<>
+        <p>{reading.common?'已形成共同视界':'两个独立视界'} · SXS 数值坐标时间 {reading.sourceTime.toFixed(2)} M</p>
+        <p>使用数值相对论的视界中心和面积等效半径。球形标记表示面积尺度，真实视界形状可偏离球形。<a href={sxsMerger.source} target="_blank" rel="noreferrer">SXS:BBH:0180 · CC BY 4.0</a></p>
+        {reading.common&&<button className="button compact" onClick={()=>loadScene('ringdown')}>打开合并残骸的振铃实验</button>}
+      </>:<>
+        <p>残骸质量 {value(engine.bodies[0].mass)} kg · 自旋 χ {value(reading.spin)} · 振铃频率 {value(reading.frequency)} Hz · 衰减时间 {value(reading.tau)} s</p>
+        <p>等质量、初始无自旋双黑洞的数值相对论标定。约 4.838% 的初始总质量以引力波能量辐射。时间从振铃起点计，显示主模的相对应变。</p>
+        <svg className="celestial-figure" viewBox="0 0 300 70" role="img" aria-label="计算的黑洞振铃波形">
+          <path d="M0 35H300" stroke="#63718b"/>
+          <polyline points={Array.from({length:100},(_,i)=>{
+            const sample=engine.modelReadingAt(engine.time*i/99)
+            return [i*300/99,35-29*(sample?.kind==='ringdown'?sample.wave:0)].join(',')
+          }).join(' ')} fill="none" stroke="#a5dcff"/>
+        </svg>
+      </>}
+  </details>
+}
+
+function BinaryWave({engine,frequency}:{engine:SpatialPhysics;frequency:number}) {
+  const [a,b]=engine.bodies
+  const duration=Math.min(engine.time,4/frequency)
+  if(duration===0)return <p>运行或单步后显示波形。</p>
+  const strains=Array.from({length:120},(_,i)=>{
+    const reading=engine.modelReadingAt(engine.time-duration+duration*i/119)
+    return reading?.kind==='binaryPN'?binaryStrain(a.mass,b.mass,reading.radius,reading.phase,3.085677581e22):0
+  })
+  const amplitude=Math.max(...strains.map(Math.abs))
+  const points=strains.map((strain,i)=>[i*300/119,35-29*strain/amplitude].join(',')).join(' ')
+  return <figure>
+    <svg className="celestial-figure" viewBox="0 0 300 70" role="img" aria-label="计算的引力波加号偏振应变">
+      <path d="M0 35H300" stroke="#63718b"/>
+      <polyline points={points} fill="none" stroke="#a5dcff" strokeWidth="1.5"/>
+    </svg>
+    <figcaption>距离 1 Mpc，沿轨道轴观察。最近 {duration.toPrecision(3)} s，纵轴 ±{amplitude.toExponential(2)} 应变。</figcaption>
+  </figure>
+}
+
 function SpatialData({engine,settings,onSettings}:{engine:SpatialPhysics;settings?:DataView;onSettings:(settings:DataView)=>void}) {
   const variables:Variable[]=[
     ['time','模拟时间','s'],['y','Y 坐标','m'],['x','X 坐标','m'],['z','Z 坐标','m'],
@@ -625,7 +849,7 @@ function SpatialData({engine,settings,onSettings}:{engine:SpatialPhysics;setting
     ['speedSecondary','第二天体系速率','m/s','派生'])
   return <ExperimentData title={engine.scene.title} variables={variables}
     settings={settings} onSettings={onSettings}
-    markers={engine.interventions.map(event=>event.tick*SPATIAL_DT)}
+    markers={engine.interventions.map(event=>event.tick*engine.stepSeconds)}
     mode={engine.interventions.some(event=>event.control.kind==='velocity')?'含人工速度覆盖':'严格物理'}
     subjects={engine.bodies.map(item=>({id:item.id,name:item.name,
     rows:(engine.history.get(item.id)??[]).map(sample=>{

@@ -5,6 +5,7 @@ export const SAMPLE_HZ = PHYSICS_HZ / SAMPLE_EVERY
 export class FixedStepClock {
   private remaining=0
   constructor(readonly dt:number) {}
+  get interpolation() {return Math.min(1,this.remaining/this.dt)}
 
   clear() {this.remaining=0}
 
@@ -49,6 +50,7 @@ export interface FixedStepSolver {
 
 export function runFixedSolver(solver:FixedStepSolver,options:{
   speed:number;maxDelta:number;maxSteps:number;updated:(steps:number)=>void;stopped?:()=>void;
+  render?:(interpolation:number)=>void;
   failed?:(error:unknown)=>void
 }) {
   const clock=new FixedStepClock(solver.dt)
@@ -60,6 +62,7 @@ export function runFixedSolver(solver:FixedStepSolver,options:{
         return !ended
       })
       if(count||ended)options.updated(count)
+      if(!ended)options.render?.(clock.interpolation)
       if(ended){options.stopped?.();return false}
     } catch(error) {
       if(!options.failed)throw error

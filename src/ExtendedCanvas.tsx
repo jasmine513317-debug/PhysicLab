@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ExtendedSimulation } from './extended-physics'
+import type { Point } from './model'
 
-function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:ExtendedSimulation,planetFrame:boolean) {
+function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:ExtendedSimulation,planetFrame:boolean,axisMode:string,offset:Point,bodyIndex:number) {
   const {scene,current}=engine
   const accent='#a6bfff',white='#f5f5f2',grid='#303037'
   ctx.fillStyle='#101012';ctx.fillRect(0,0,width,height)
@@ -15,13 +16,22 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
     ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()
   }
   const label=(x:number,y:number,text:string,color=white)=>{ctx.fillStyle=color;ctx.fillText(text,x,y)}
+  function axes(home:[number,number],target:[number,number],spacing?:number) {
+    const [x,y]=axisMode==='body'?target:axisMode==='manual'?[home[0]+offset.x,home[1]+offset.y]:home
+    if(spacing&&Number.isFinite(spacing)&&spacing>=8) {
+      for(let column=(x%spacing+spacing)%spacing;column<width;column+=spacing)line([[column,0],[column,height]],grid)
+      for(let row=(y%spacing+spacing)%spacing;row<height;row+=spacing)line([[0,row],[width,row]],grid)
+    }
+    line([[0,y],[width,y]],'#54545e');line([[x,0],[x,height]],'#54545e')
+    dot(x,y,3,'#c5c8d3')
+  }
   if(current.doublePendulum&&scene.extension==='double-pendulum') {
     const pivot:[number,number]=[width/2,height/2]
     const scale=.43*Math.min(width,height)/(scene.settings.length1+scene.settings.length2)
     const screen=(point:{x:number;y:number}):[number,number]=>[pivot[0]+point.x*scale,pivot[1]-point.y*scale]
     const history=engine.history.slice(-430).concat(current)
-    line([[pivot[0],15],[pivot[0],height-24]],grid)
     const samples=current.doublePendulum
+    axes(pivot,screen(bodyIndex===0?samples.base.first:samples.base.second))
     const runs=[['base',accent],['comparison','#f2c38b']] as const
     for(const [run,color] of runs) {
       if(run==='comparison')ctx.setLineDash([4,4])
@@ -55,7 +65,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
     const colors=['#f2c38b',accent,'#a8e6cf']
     const names=flyby?['恒星','行星','航天器']:['天体 1','天体 2','天体 3']
     const origin:[number,number]=[width/2,height/2]
-    line([[0,origin[1]],[width,origin[1]]],grid);line([[origin[0],0],[origin[0],height]],grid)
+    axes(origin,screen(point(current.gravity,bodyIndex)))
     if(flyby&&scene.extension==='gravity-assist') {
       ctx.beginPath();ctx.arc(...screen(point(current.gravity,1)),scene.settings.measurementRadius*scale,0,Math.PI*2)
       ctx.setLineDash([5,5]);ctx.strokeStyle='#797982';ctx.stroke();ctx.setLineDash([])
@@ -104,6 +114,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
   if(scene.extension==='pendulum') {
     const pivotX=width/2,pivotY=height*.38,pixels=height*.29/scene.settings.length
     const x=pivotX+current.x*pixels,y=pivotY-current.y*pixels
+    axes([pivotX,pivotY],[x,y])
     ctx.setLineDash([4,6]);line([[pivotX,pivotY],[pivotX,pivotY+height*.36]],grid);ctx.setLineDash([])
     line([[pivotX-45,pivotY],[pivotX+45,pivotY]],'#8b8b93',2)
     for(let i=-4;i<=4;i++)line([[pivotX+i*9,pivotY],[pivotX+i*9+5,pivotY-5]],grid)
@@ -142,9 +153,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
   const scale=Math.min(width,height)*.40/extent
   const screen=(x:number,y:number):[number,number]=>[width/2+x*scale,height/2-y*scale]
   const spacing=10**Math.round(Math.log10(55/scale))*scale
-  for(let x=width/2%spacing;x<width;x+=spacing)line([[x,0],[x,height]],grid)
-  for(let y=height/2%spacing;y<height;y+=spacing)line([[0,y],[width,y]],grid)
-  line([[0,height/2],[width,height/2]],'#54545e');line([[width/2,0],[width/2,height]],'#54545e')
+  axes([width/2,height/2],screen(current.x,current.y),spacing)
   line(samples.map(sample=>screen(sample.x,sample.y)),accent,2)
   const [px,py]=screen(current.x,current.y)
   dot(px,py,6,scene.settings.charge<0?'#d5b8f5':'#f2c38b')
@@ -154,7 +163,11 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
 }
 
 export function ExtendedCanvas({engine,revision,planetFrame}:{engine:ExtendedSimulation;revision:number;planetFrame:boolean}) {
-  const element=useRef<HTMLCanvasElement>(null),latest=useRef({engine,planetFrame})
+  const [axisMode,setAxisMode]=useState('world'),[offset,setOffset]=useState<Point>({x:0,y:0})
+  const multi=engine.scene.extension==='double-pendulum'||Boolean(engine.gravity)
+  const [bodyIndex,setBodyIndex]=useState(0)
+  const drag=useRef<{pointer:number;x:number;y:number;offset:Point}>(undefined)
+  const element=useRef<HTMLCanvasElement>(null),latest=useRef({engine,planetFrame,axisMode,offset,bodyIndex})
   function draw() {
     const canvas=element.current,ctx=canvas?.getContext('2d')
     if(!canvas||!ctx||!canvas.clientWidth||!canvas.clientHeight)return
@@ -162,12 +175,33 @@ export function ExtendedCanvas({engine,revision,planetFrame}:{engine:ExtendedSim
     if(canvas.width!==Math.round(width*pixels))canvas.width=Math.round(width*pixels)
     if(canvas.height!==Math.round(height*pixels))canvas.height=Math.round(height*pixels)
     ctx.setTransform(pixels,0,0,pixels,0,0)
-    render(ctx,width,height,latest.current.engine,latest.current.planetFrame)
+    const view=latest.current
+    render(ctx,width,height,view.engine,view.planetFrame,view.axisMode,view.offset,view.bodyIndex)
   }
-  useLayoutEffect(()=>{latest.current={engine,planetFrame};draw()},[engine,revision,planetFrame])
+  useLayoutEffect(()=>{latest.current={engine,planetFrame,axisMode,offset,bodyIndex};draw()},[engine,revision,planetFrame,axisMode,offset,bodyIndex])
   useLayoutEffect(()=>{
     const observer=new ResizeObserver(draw);observer.observe(element.current!)
     return ()=>observer.disconnect()
   },[])
-  return <canvas ref={element} className="astronomy-canvas" aria-label="扩展实验画布"/>
+  const schematic=engine.scene.extension==='rc'||engine.scene.extension==='induction'
+  return <>
+    {!schematic&&<div className="orbit-axis-control observation-controls">
+      <select aria-label="扩展实验坐标参考" value={axisMode} onChange={event=>setAxisMode(event.target.value)}>
+        <option value="world">默认原点</option><option value="manual">拖动坐标原点</option><option value="body">坐标跟随物体</option>
+      </select>
+      {multi&&axisMode==='body'&&<select aria-label="跟随目标" value={bodyIndex} onChange={event=>setBodyIndex(+event.target.value)}>
+        <option value={0}>{engine.gravity?'天体 1':'第一摆球'}</option>
+        <option value={1}>{engine.gravity?'天体 2':'第二摆球'}</option>
+        {engine.gravity&&<option value={2}>天体 3</option>}
+      </select>}
+    </div>}
+    <canvas ref={element} className="astronomy-canvas" aria-label="扩展实验画布" onPointerDown={event=>{
+      if(schematic||axisMode!=='manual'||event.button!==0)return
+      drag.current={pointer:event.pointerId,x:event.clientX,y:event.clientY,offset}
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }} onPointerMove={event=>{
+      const d=drag.current
+      if(d?.pointer===event.pointerId)setOffset({x:d.offset.x+event.clientX-d.x,y:d.offset.y+event.clientY-d.y})
+    }} onLostPointerCapture={()=>{drag.current=undefined}}/>
+  </>
 }

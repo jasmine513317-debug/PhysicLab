@@ -3,12 +3,12 @@ import { initializeSpatialRigid } from './spatialRigid'
 import { SpatialPhysics,type SpatialRun,type SpatialSample,type SpatialScene,type Vec3 } from './spatialPhysics'
 
 type Request={id:number}&(
-  {kind:'prediction';snapshot:SpatialRun}
+  {kind:'prediction';snapshot:SpatialRun;compare?:boolean}
   |{kind:'fields';scene:SpatialScene;center:Vec3;extent:number;lines:boolean;surface:boolean;level:number}
 )
 export type SpatialWorkerRequest=Request extends infer R?R extends {id:number}?Omit<R,'id'>:never:never
 export type SpatialWorkerReply={id:number}&(
-  {kind:'prediction';forecast:Map<string,SpatialSample[]>}
+  {kind:'prediction';forecast:Map<string,SpatialSample[]>;comparison?:Map<string,SpatialSample[]>}
   |{kind:'fields';lines?:Vec3[][];faces?:Vec3[][]}
   |{kind:'error';error:string}
 )
@@ -21,7 +21,8 @@ self.onmessage=async(event:MessageEvent<Request>)=>{
       if(task.snapshot.rigidSnapshot||task.snapshot.initial.rigid||task.snapshot.initial.bodies.some(body=>body.geometry)||task.snapshot.initial.pivots?.length)
         await initializeSpatialRigid()
       engine=SpatialPhysics.restore(task.snapshot)
-      self.postMessage({id:task.id,kind:'prediction',forecast:engine.prediction()} satisfies SpatialWorkerReply)
+      self.postMessage({id:task.id,kind:'prediction',forecast:engine.prediction(),
+        comparison:task.compare?engine.prediction(120,true):undefined} satisfies SpatialWorkerReply)
     } else {
       engine=new SpatialPhysics(task.scene)
       const lines=task.lines?spaceFieldLines(engine,task.center,task.extent):undefined

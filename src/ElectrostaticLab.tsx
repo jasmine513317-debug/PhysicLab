@@ -79,6 +79,9 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
   const [saved,setSaved]=useState(initiallySaved?initial:undefined)
   const [tool,setTool]=useState<ElectricTool>('select')
   const [selected,setSelected]=useState(initial.charges[0]?.id??'')
+  const [axisMode,setAxisMode]=useState<'manual'|'charge'|'probe'>('manual')
+  const [axisOrigin,setAxisOrigin]=useState({x:0,y:0})
+  const [dragAxis,setDragAxis]=useState(false)
   const [saving,setSaving]=useState(false)
   const [error,setError]=useState('')
   const [variables,setVariables]=useState(false)
@@ -153,8 +156,15 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
           {tools.map(({id,label,icon:Icon})=><button className="button compact" key={id} aria-pressed={tool===id}
             disabled={capacity&&(id==='positive'||id==='negative')} onClick={()=>setTool(id)}><Icon size={15} aria-hidden="true"/> {label}</button>)}
         </div>
+        <div className="observation-controls">
+          <button type="button" className="button compact" aria-pressed={dragAxis} onClick={()=>{setAxisMode('manual');setDragAxis(!dragAxis)}}>拖动坐标原点</button>
+          <select aria-label="电场坐标参考" value={axisMode} onChange={e=>{setDragAxis(false);setAxisMode(e.target.value as typeof axisMode)}}>
+            <option value="manual">手动原点</option><option value="charge">跟随选中电荷</option><option value="probe">跟随探针</option>
+          </select>
+        </div>
         <div className="electric-viewport stage-bezel">
           <ElectrostaticCanvas scene={scene} selected={selected} tool={tool} select={setSelected} add={add} probe={moveProbe}
+            axisOrigin={axisMode==='probe'?scene.probe:axisMode==='charge'?charge?.position??axisOrigin:axisOrigin} moveOrigin={dragAxis?setAxisOrigin:undefined}
             moveCharge={(id,point)=>changeCharge(id,{position:bounded(point)})}
             moveCamera={point=>setScene(current=>({...current,camera:{...current.camera,...bounded(point)}}))}/>
           <div className="electric-scale" role="group" aria-label="视图缩放">

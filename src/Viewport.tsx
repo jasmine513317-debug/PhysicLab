@@ -225,8 +225,12 @@ export function Viewport(props:ViewportProps) {
   const [displayMenu,setDisplayMenu]=useState(false)
   const [originEditing,setOriginEditing]=useState(false)
   const [originPreview,setOriginPreview]=useState<Coordinates>()
-  const stageState=useRef({anchor,position,targetMenu,editing,erasePreview,originPreview,inkPreview,forcePreview,selection})
-  stageState.current={anchor,position,targetMenu,editing,erasePreview,originPreview,inkPreview,forcePreview,selection}
+  const [originTarget,setOriginTarget]=useState('')
+  const originBody=originTarget&&physics.bodies.get(originTarget)
+  const liveOrigin=originBody?{...originBody.getPosition()}:scene.coordinates.origin
+  const observedVelocity=originBody?originBody.getLinearVelocity():undefined
+  const stageState=useRef({anchor,position,targetMenu,editing,erasePreview,originPreview,originTarget,inkPreview,forcePreview,selection})
+  stageState.current={anchor,position,targetMenu,editing,erasePreview,originPreview,originTarget,inkPreview,forcePreview,selection}
   useEffect(()=>{
     if(!editing)setEditingId('')
     setCursor('')
@@ -304,7 +308,9 @@ export function Viewport(props:ViewportProps) {
       }:undefined
       try {
         ctx!.setTransform(dpr,0,0,dpr,0,0)
-        drawScene(ctx!,view,camera,originPreview?{...scene,coordinates:originPreview}:scene,display,{physics:replay?undefined:physics,selected,selection:replay?undefined:stage.selection,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0,hidden:erasePreview?.hidden,erase:eraserView,inkPreview:stage.inkPreview,forcePreview:stage.forcePreview})
+        const tracked=stage.originTarget&&!replay?physics.bodies.get(stage.originTarget):undefined
+        const coordinates=originPreview??(tracked?{...scene.coordinates,origin:tracked.getPosition()}:scene.coordinates)
+        drawScene(ctx!,view,camera,{...scene,coordinates},display,{physics:replay?undefined:physics,selected,selection:replay?undefined:stage.selection,overlay,trailSince,baseline,replay,move,snap:d?.snap,editing:stage.editing,edit,rotating:d?.type==='rotate'&&d.moved,highlight,dash:animate?-(now*.034)%14:0,hidden:erasePreview?.hidden,erase:eraserView,inkPreview:stage.inkPreview,forcePreview:stage.forcePreview})
       } catch {
         if(!failed) latest.current.report('无法绘制当前场景。请重置视图或重新加载实验。')
         failed=true
@@ -767,7 +773,7 @@ export function Viewport(props:ViewportProps) {
     const view={width:el.clientWidth,height:el.clientHeight}
     setCamera(zoomAt(camera,view,{x:view.width/2,y:view.height/2},factor))
   }
-  const coordinates=originPreview??scene.coordinates
+  const coordinates=originPreview??{...scene.coordinates,origin:isReplay?scene.coordinates.origin:liveOrigin}
   const displayPosition=displayPoint(position,coordinates.origin)
   const cursorPolar=polarPosition(position,coordinates.origin)
   const coordinateReadout=coordinates.mode==='none'?'无坐标系':coordinates.mode==='polar'
@@ -816,7 +822,9 @@ export function Viewport(props:ViewportProps) {
         <option value="cartesian">直角坐标</option><option value="polar">极坐标</option><option value="none">无坐标系</option>
       </select></label>
       {scene.coordinates.mode!=='none'&&!isReplay&&<button type="button" className={'icon coordinate-origin'+(originEditing?' on':'')} title="移动坐标原点" aria-label="移动坐标原点" aria-pressed={originEditing}
-        onClick={()=>{setOriginEditing(value=>!value);setOriginPreview(undefined);setDisplayMenu(false)}}><LocateFixed size={15}/></button>}
+        onClick={()=>{setOriginTarget('');setOriginEditing(value=>!value);setOriginPreview(undefined);setDisplayMenu(false)}}><LocateFixed size={15}/></button>}
+      {scene.coordinates.mode!=='none'&&!isReplay&&<button type="button" className="icon" aria-label="坐标跟随物体" title="坐标跟随物体" aria-pressed={Boolean(originBody)} disabled={!originBody&&!physics.bodies.has(selected)}
+        onClick={()=>{setOriginEditing(false);setOriginPreview(undefined);setOriginTarget(originBody?'':selected)}}><Magnet size={15}/></button>}
     </div>
       <div className="view-actions">
         {scene.coordinates.mode!=='none'&&<button className={display.grid?'icon on':'icon'} title="切换坐标网格" aria-label="切换坐标网格" aria-pressed={display.grid} onClick={()=>setDisplay({...display,grid:!display.grid})}><Grid2X2 size={16}/></button>}
@@ -855,6 +863,9 @@ export function Viewport(props:ViewportProps) {
       </div>
     </div>
     {!isReplay&&originEditing&&<div className="tool-hint" role="status">移动坐标原点 · 拖动改变测量基准，不移动物体</div>}
+    {!isReplay&&observedVelocity&&<output className="tool-hint" aria-label="跟随状态">
+      {scene.bodies.find(body=>body.id===originTarget)?.name} · X {liveOrigin.x.toFixed(2)} m · Y {liveOrigin.y.toFixed(2)} m · {Math.hypot(observedVelocity.x,observedVelocity.y).toFixed(2)} m/s
+    </output>}
     {!isReplay&&(display.editForce||display.editVelocity)&&tool==='select'&&<div className="tool-hint" role="status">{forcePreview
       ?forcePreview.x.toFixed(2)+', '+forcePreview.y.toFixed(2)+(display.editVelocity?' m/s':' N')
       :physics.samples.has(selected)?display.editVelocity?'拖动蓝色圆点调整速度':'拖动粉色圆点调整持续外力':'选择可运动的物体以调整矢量'}</div>}
