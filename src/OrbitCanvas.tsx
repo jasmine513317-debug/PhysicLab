@@ -201,6 +201,8 @@ export function OrbitCanvas(props:Props) {
   const animation=useRef<number|undefined>(undefined)
   const previousFrame=useRef(0)
   const drag=useRef<Drag|undefined>(undefined)
+  const pan=useRef<{pointer:number;pixel:Point;camera:Camera}>(undefined)
+  const followOffset=useRef<Point>({x:0,y:0})
   const followed=useRef<{id:string;position:Point}|undefined>(undefined)
   const lastView=useRef({zoom:props.zoom,fit:props.fitRevision,width:0,height:0})
 
@@ -228,7 +230,10 @@ export function OrbitCanvas(props:Props) {
     const old=lastView.current
     if(!camera.current)camera.current=frameCamera(view,p.scene,p.selected,p.zoom,p.orbit,bodies,p.viewMode)
     if(!target.current)target.current={...camera.current}
-    if(old.fit!==p.fitRevision)target.current=frameCamera(view,p.scene,p.selected,p.zoom,p.orbit,bodies,p.viewMode)
+    if(old.fit!==p.fitRevision) {
+      followOffset.current={x:0,y:0}
+      target.current=frameCamera(view,p.scene,p.selected,p.zoom,p.orbit,bodies,p.viewMode)
+    }
     else if(old.zoom!==p.zoom) {
       const center=bodies.find(b=>b.id===p.selected)?.position??camera.current
       target.current={x:center.x,y:center.y,scale:target.current.scale*p.zoom/old.zoom}
@@ -236,7 +241,7 @@ export function OrbitCanvas(props:Props) {
     lastView.current={zoom:p.zoom,fit:p.fitRevision,...view}
     const d=drag.current
     const anchor=localAnchor(bodies,p.selected,p.viewMode)
-    if(anchor&&!d) {
+    if(anchor&&!d&&!pan.current) {
       const previous=followed.current
       if(previous?.id===anchor.id) {
         // Carry the camera with the body exactly; smooth only the remaining view offset.
@@ -244,7 +249,7 @@ export function OrbitCanvas(props:Props) {
         camera.current.y+=anchor.position.y-previous.position.y
       }
       followed.current={id:anchor.id,position:{...anchor.position}}
-      target.current={...target.current,x:anchor.position.x,y:anchor.position.y}
+      target.current={...target.current,x:anchor.position.x+followOffset.current.x,y:anchor.position.y+followOffset.current.y}
     } else followed.current=undefined
     if(d) {
       const dx=(d.now.x-d.pixel.x)/d.camera.scale,dy=-(d.now.y-d.pixel.y)/d.camera.scale
@@ -255,9 +260,9 @@ export function OrbitCanvas(props:Props) {
     const amount=window.matchMedia('(prefers-reduced-motion: reduce)').matches?1:1-Math.exp(-Math.min(elapsed,50)/65)
     const c=camera.current,t=target.current
     const scale=c.scale+(t.scale-c.scale)*amount
-    camera.current=anchor&&!d?{
-      x:anchor.position.x-(anchor.position.x-c.x)*c.scale*(1-amount)/scale,
-      y:anchor.position.y-(anchor.position.y-c.y)*c.scale*(1-amount)/scale,scale,
+    camera.current=anchor&&!d&&!pan.current?{
+      x:t.x-(t.x-c.x)*c.scale*(1-amount)/scale,
+      y:t.y-(t.y-c.y)*c.scale*(1-amount)/scale,scale,
     }:{x:c.x+(t.x-c.x)*amount,y:c.y+(t.y-c.y)*amount,scale}
     let drawing=bodies,reference=p.orbit
     if(d) {
@@ -306,6 +311,7 @@ export function OrbitCanvas(props:Props) {
   function cancel() {
     axisDrag.current=undefined
     drag.current=undefined
+    pan.current=undefined
     if(camera.current)target.current={...camera.current}
     schedule()
   }
@@ -317,6 +323,16 @@ export function OrbitCanvas(props:Props) {
     schedule()
     return true
   }
+  function movePan(event:{pointerId:number;clientX:number;clientY:number}) {
+    const d=pan.current
+    if(!d||d.pointer!==event.pointerId)return false
+    const point=pixel(event)
+    const next={...d.camera,x:d.camera.x-(point.x-d.pixel.x)/d.camera.scale,y:d.camera.y+(point.y-d.pixel.y)/d.camera.scale}
+    const p=current.current,anchor=localAnchor(liveBodies(),p.selected,p.viewMode)?.position
+    if(anchor)followOffset.current={x:next.x-anchor.x,y:next.y-anchor.y}
+    camera.current=next;target.current={...next};schedule()
+    return true
+  }
   return <>
     <select className="orbit-axis-control" aria-label="轨道坐标参考" value={axisMode} onChange={event=>setAxisMode(event.target.value as typeof axisMode)}>
       <option value="world">默认原点</option><option value="manual">拖动坐标原点</option><option value="body">坐标跟随选中天体</option>
@@ -324,21 +340,27 @@ export function OrbitCanvas(props:Props) {
     <canvas ref={element} tabIndex={0} aria-label="轨道画布" className="astronomy-canvas"
       onKeyDown={e=>{if(e.key==='Escape')cancel()}}
       onPointerDown={e=>{
-        if(e.button!==0||drag.current||!painted.current)return
+        if(e.button!==0&&e.button!==1||drag.current||pan.current||axisDrag.current||!painted.current)return
+        const forcedPan=e.button===1||e.shiftKey
         const point=pixel(e),frame=painted.current
-        if(axisMode==='manual'){
+        if(axisMode==='manual'&&!forcedPan){
           axisDrag.current={pointer:e.pointerId,pixel:point,origin:axisOrigin.current,scale:frame.camera.scale}
           e.currentTarget.setPointerCapture(e.pointerId)
           return
         }
-        const body=[...frame.points].reverse().find(b=>Math.hypot(point.x-b.point.x,point.y-b.point.y)<=b.radius+9)
-        const onTrack=frame.tracks.some(points=>points.some((b,i)=>{
+        const body=forcedPan?undefined:[...frame.points].reverse().find(b=>Math.hypot(point.x-b.point.x,point.y-b.point.y)<=b.radius+9)
+        const onTrack=!forcedPan&&frame.tracks.some(points=>points.some((b,i)=>{
           if(!i)return false
           const a=points[i-1],dx=b.x-a.x,dy=b.y-a.y
           const fraction=Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/(dx*dx+dy*dy||1)))
           return Math.hypot(point.x-a.x-fraction*dx,point.y-a.y-fraction*dy)<8
         }))
-        if(!body&&!onTrack)return
+        if(!body&&!onTrack){
+          e.preventDefault();e.currentTarget.focus({preventScroll:true})
+          pan.current={pointer:e.pointerId,pixel:point,camera:{...frame.camera}}
+          e.currentTarget.setPointerCapture(e.pointerId)
+          return
+        }
         e.preventDefault();e.currentTarget.focus();props.pause()
         if(body)props.setSelected(body.id)
         const camera={...frame.camera}
@@ -347,9 +369,10 @@ export function OrbitCanvas(props:Props) {
         e.currentTarget.setPointerCapture(e.pointerId)
         schedule()
       }}
-      onPointerMove={e=>{if(!moveAxis(e)&&drag.current?.pointer===e.pointerId){drag.current.now=pixel(e);schedule()}}}
+      onPointerMove={e=>{if(!moveAxis(e)&&!movePan(e)&&drag.current?.pointer===e.pointerId){drag.current.now=pixel(e);schedule()}}}
       onPointerUp={e=>{
         if(moveAxis(e)){axisDrag.current=undefined;return}
+        if(movePan(e)){pan.current=undefined;return}
         const d=drag.current
         if(!d||d.pointer!==e.pointerId)return
         d.now=pixel(e)

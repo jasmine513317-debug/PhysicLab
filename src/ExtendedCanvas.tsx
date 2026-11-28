@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { ExtendedSimulation } from './extended-physics'
 import type { Point } from './model'
 
-function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:ExtendedSimulation,planetFrame:boolean,axisMode:string,offset:Point,bodyIndex:number) {
+function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:ExtendedSimulation,planetFrame:boolean,axisMode:string,offset:Point,bodyIndex:number,view:Point) {
   const {scene,current}=engine
   const accent='#a6bfff',white='#f5f5f2',grid='#303037'
   ctx.fillStyle='#101012';ctx.fillRect(0,0,width,height)
@@ -26,7 +26,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
     dot(x,y,3,'#c5c8d3')
   }
   if(current.doublePendulum&&scene.extension==='double-pendulum') {
-    const pivot:[number,number]=[width/2,height/2]
+    const pivot:[number,number]=[width/2+view.x,height/2+view.y]
     const scale=.43*Math.min(width,height)/(scene.settings.length1+scene.settings.length2)
     const screen=(point:{x:number;y:number}):[number,number]=>[pivot[0]+point.x*scale,pivot[1]-point.y*scale]
     const history=engine.history.slice(-430).concat(current)
@@ -61,10 +61,10 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
         const p=point(sample.gravity!,index);return Math.hypot(p.x,p.y)
       })),current.gravity.comparison?Math.hypot(current.gravity.comparison[2].x-center.x,current.gravity.comparison[2].y-center.y):0)
     const scale=.42*Math.min(width,height)/extent
-    const screen=(p:{x:number;y:number}):[number,number]=>[width/2+p.x*scale,height/2-p.y*scale]
+    const screen=(p:{x:number;y:number}):[number,number]=>[width/2+view.x+p.x*scale,height/2+view.y-p.y*scale]
     const colors=['#f2c38b',accent,'#a8e6cf']
     const names=flyby?['恒星','行星','航天器']:['天体 1','天体 2','天体 3']
-    const origin:[number,number]=[width/2,height/2]
+    const origin:[number,number]=[width/2+view.x,height/2+view.y]
     axes(origin,screen(point(current.gravity,bodyIndex)))
     if(flyby&&scene.extension==='gravity-assist') {
       ctx.beginPath();ctx.arc(...screen(point(current.gravity,1)),scene.settings.measurementRadius*scale,0,Math.PI*2)
@@ -89,7 +89,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
   }
   if(current.induction&&scene.extension==='induction') {
     const {field,emf,current:amps}=current.induction
-    const x=width/2,y=height/2,rx=Math.min(width,height)*.28,ry=rx*.53
+    const x=width/2+view.x,y=height/2+view.y,rx=Math.min(width,height)*.28,ry=rx*.53
     const projected=field*Math.cos(scene.settings.angle*Math.PI/180)
     const marker=projected>1e-12?'⊙':projected< -1e-12?'⊗':'·'
     for(let row=-2;row<=2;row++)for(let col=-2;col<=2;col++)
@@ -112,7 +112,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
     return
   }
   if(scene.extension==='pendulum') {
-    const pivotX=width/2,pivotY=height*.38,pixels=height*.29/scene.settings.length
+    const pivotX=width/2+view.x,pivotY=height*.38+view.y,pixels=height*.29/scene.settings.length
     const x=pivotX+current.x*pixels,y=pivotY-current.y*pixels
     axes([pivotX,pivotY],[x,y])
     ctx.setLineDash([4,6]);line([[pivotX,pivotY],[pivotX,pivotY+height*.36]],grid);ctx.setLineDash([])
@@ -126,7 +126,7 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
     return
   }
   if(scene.extension==='rc') {
-    const mid=width/2,left=width*.16,right=width*.84,top=height*.27,bottom=height*.73,half=(top+bottom)/2
+    const mid=width/2+view.x,left=width*.16+view.x,right=width*.84+view.x,top=height*.27+view.y,bottom=height*.73+view.y,half=(top+bottom)/2
     line([[left,half-8],[left,top],[mid-72,top]],grid,2)
     const resistor:[number,number][]=[[mid-72,top]]
     for(let i=1;i<=9;i++)resistor.push([mid-72+i*5,top+(i%2?7:-7)])
@@ -151,9 +151,9 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
   const expected=frequency&&acceleration===0?2*initialSpeed/frequency:initialSpeed*engine.rate+.5*acceleration*engine.rate**2
   const extent=Math.max(expected||1,1e-20,...samples.map(sample=>Math.max(Math.abs(sample.x),Math.abs(sample.y))))
   const scale=Math.min(width,height)*.40/extent
-  const screen=(x:number,y:number):[number,number]=>[width/2+x*scale,height/2-y*scale]
+  const screen=(x:number,y:number):[number,number]=>[width/2+view.x+x*scale,height/2+view.y-y*scale]
   const spacing=10**Math.round(Math.log10(55/scale))*scale
-  axes([width/2,height/2],screen(current.x,current.y),spacing)
+  axes(screen(0,0),screen(current.x,current.y),spacing)
   line(samples.map(sample=>screen(sample.x,sample.y)),accent,2)
   const [px,py]=screen(current.x,current.y)
   dot(px,py,6,scene.settings.charge<0?'#d5b8f5':'#f2c38b')
@@ -164,10 +164,11 @@ function render(ctx:CanvasRenderingContext2D,width:number,height:number,engine:E
 
 export function ExtendedCanvas({engine,revision,planetFrame}:{engine:ExtendedSimulation;revision:number;planetFrame:boolean}) {
   const [axisMode,setAxisMode]=useState('world'),[offset,setOffset]=useState<Point>({x:0,y:0})
+  const [pan,setPan]=useState<Point>({x:0,y:0})
   const multi=engine.scene.extension==='double-pendulum'||Boolean(engine.gravity)
   const [bodyIndex,setBodyIndex]=useState(0)
-  const drag=useRef<{pointer:number;x:number;y:number;offset:Point}>(undefined)
-  const element=useRef<HTMLCanvasElement>(null),latest=useRef({engine,planetFrame,axisMode,offset,bodyIndex})
+  const drag=useRef<{pointer:number;x:number;y:number;offset:Point;origin:boolean}>(undefined)
+  const element=useRef<HTMLCanvasElement>(null),latest=useRef({engine,planetFrame,axisMode,offset,bodyIndex,pan})
   function draw() {
     const canvas=element.current,ctx=canvas?.getContext('2d')
     if(!canvas||!ctx||!canvas.clientWidth||!canvas.clientHeight)return
@@ -176,32 +177,38 @@ export function ExtendedCanvas({engine,revision,planetFrame}:{engine:ExtendedSim
     if(canvas.height!==Math.round(height*pixels))canvas.height=Math.round(height*pixels)
     ctx.setTransform(pixels,0,0,pixels,0,0)
     const view=latest.current
-    render(ctx,width,height,view.engine,view.planetFrame,view.axisMode,view.offset,view.bodyIndex)
+    render(ctx,width,height,view.engine,view.planetFrame,view.axisMode,view.offset,view.bodyIndex,view.pan)
   }
-  useLayoutEffect(()=>{latest.current={engine,planetFrame,axisMode,offset,bodyIndex};draw()},[engine,revision,planetFrame,axisMode,offset,bodyIndex])
+  useLayoutEffect(()=>{latest.current={engine,planetFrame,axisMode,offset,bodyIndex,pan};draw()},[engine,revision,planetFrame,axisMode,offset,bodyIndex,pan])
   useLayoutEffect(()=>{
     const observer=new ResizeObserver(draw);observer.observe(element.current!)
     return ()=>observer.disconnect()
   },[])
   const schematic=engine.scene.extension==='rc'||engine.scene.extension==='induction'
   return <>
-    {!schematic&&<div className="orbit-axis-control observation-controls">
-      <select aria-label="扩展实验坐标参考" value={axisMode} onChange={event=>setAxisMode(event.target.value)}>
+    <div className="orbit-axis-control observation-controls">
+      {!schematic&&<select aria-label="扩展实验坐标参考" value={axisMode} onChange={event=>setAxisMode(event.target.value)}>
         <option value="world">默认原点</option><option value="manual">拖动坐标原点</option><option value="body">坐标跟随物体</option>
-      </select>
+      </select>}
       {multi&&axisMode==='body'&&<select aria-label="跟随目标" value={bodyIndex} onChange={event=>setBodyIndex(+event.target.value)}>
         <option value={0}>{engine.gravity?'天体 1':'第一摆球'}</option>
         <option value={1}>{engine.gravity?'天体 2':'第二摆球'}</option>
         {engine.gravity&&<option value={2}>天体 3</option>}
       </select>}
-    </div>}
+      <button type="button" className="button compact" onClick={()=>setPan({x:0,y:0})}>重置画布位置</button>
+    </div>
     <canvas ref={element} className="astronomy-canvas" aria-label="扩展实验画布" onPointerDown={event=>{
-      if(schematic||axisMode!=='manual'||event.button!==0)return
-      drag.current={pointer:event.pointerId,x:event.clientX,y:event.clientY,offset}
+      if(drag.current||event.button!==0&&event.button!==1)return
+      event.preventDefault()
+      const origin=!schematic&&axisMode==='manual'&&event.button===0&&!event.shiftKey
+      drag.current={pointer:event.pointerId,x:event.clientX,y:event.clientY,offset:origin?offset:pan,origin}
       event.currentTarget.setPointerCapture(event.pointerId)
     }} onPointerMove={event=>{
       const d=drag.current
-      if(d?.pointer===event.pointerId)setOffset({x:d.offset.x+event.clientX-d.x,y:d.offset.y+event.clientY-d.y})
-    }} onLostPointerCapture={()=>{drag.current=undefined}}/>
+      if(d?.pointer===event.pointerId){
+        const setPosition=d.origin?setOffset:setPan
+        setPosition({x:d.offset.x+event.clientX-d.x,y:d.offset.y+event.clientY-d.y})
+      }
+    }} onLostPointerCapture={event=>{if(drag.current?.pointer===event.pointerId)drag.current=undefined}}/>
   </>
 }

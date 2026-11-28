@@ -14,7 +14,7 @@ import { CelestialPhenomena } from './CelestialPhenomena'
 import { sxsMerger } from './celestialMergerReplay'
 import { readCelestialModels,storeCelestialModel,writeCelestialModels } from './celestialModelLibrary'
 import { liftPlanarExperiment,projectSpatialExperiment,type ProjectionPlane } from './spatialConversion'
-import { changeSpatialView,defaultSpatialCamera,moveFirstPerson,SpatialCanvas,zoomSpatialCamera,type SpatialCamera,type SpatialGizmo,type SpatialEditAxis } from './SpatialCanvas'
+import { changeSpatialView,defaultSpatialCamera,moveFirstPerson,SpatialCanvas,zoomSpatialCamera,type SpatialCamera,type SpatialCameraDrag,type SpatialGizmo,type SpatialEditAxis } from './SpatialCanvas'
 import { meshRadius,spatialGeometrySchema,spatialMesh,spatialRibbon,type SpatialGeometry } from './spatialGeometry'
 import { SpatialModelingPanel } from './SpatialModelingPanel'
 import { ExperimentData,type Variable } from './ExperimentData'
@@ -120,6 +120,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
   const [savedModels,setSavedModels]=useState(()=>astronomy?readCelestialModels():[])
   const [chosenModel,setChosenModel]=useState('')
   const [camera,setCamera]=useState<SpatialCamera>(()=>restoredView?.camera??(astronomy?sceneCamera(engine.scene):defaultSpatialCamera))
+  const [cameraDrag,setCameraDrag]=useState<SpatialCameraDrag>('pan')
   const [paused,setPaused]=useState(true)
   const [revision,redraw]=useState(0)
   const previousPositions=useRef<Map<string,Vec3>>(undefined)
@@ -445,7 +446,10 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
       <SpatialCanvas {...{engine,select,forecast,comparison,vectors,revision,trailWindow,trailCount,fieldLines,potentialFaces,gizmo,vectorView}}
         selected={body?.id??selected}
         displayPositions={displayPositions}
-        camera={observation} setCamera={next=>setCamera(following&&next.mode!=='first'?{...next,focus:add(next.focus,multiply(following,-1))}:next)}
+        camera={observation} cameraDrag={cameraDrag} setCamera={(next,pan)=>{
+          if(pan&&reference==='target'){setReference('world');setCamera(next);return}
+          setCamera(following&&next.mode!=='first'?{...next,focus:subtract(next.focus,following)}:next)
+        }}
         axisOrigin={originMode==='body'?body?.position??axisOrigin:originMode==='manual'?axisOrigin:[0,0,0]}
         showGrid={!astronomy||(gridChoice??paused)} showAxes={!astronomy||(axesChoice??paused)} gridOpacity={astronomy?gridOpacity:1} celestial={astronomy}
         lensRays={lensRays}
@@ -460,6 +464,9 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
         }}:undefined}
         showMagnetic={fields.magnetic} trailColor={trace.color} trailAlpha={trace.alpha} timeMarkers={trace.markers} history={trail==='history'||trail==='both'}/>
       <div className="spatial-camera">
+        <select aria-label="三维画布拖动方式" title="空白处拖动，右键旋转，中键平移" value={cameraDrag} onChange={e=>setCameraDrag(e.target.value as SpatialCameraDrag)}>
+          <option value="pan">拖动平移</option><option value="rotate">拖动旋转</option>
+        </select>
         {astronomy&&<><button className="button compact" aria-pressed={gridChoice??paused} onClick={()=>setGridChoice(!(gridChoice??paused))}>坐标网格</button>
           <button className="button compact" aria-pressed={axesChoice??paused} onClick={()=>setAxesChoice(!(axesChoice??paused))}>坐标轴</button>
           {!replay&&body?.celestial?.kind==='blackHole'&&<button className="button compact" aria-pressed={lensRays}

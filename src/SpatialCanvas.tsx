@@ -9,6 +9,7 @@ import { horizonRadius } from './celestialPhysics'
 const meshes=new WeakMap<SpatialGeometry,ReturnType<typeof spatialMesh>>()
 
 export type SpatialCamera={yaw:number;pitch:number;distance:number;focus:Vec3;mode:'orbit'|'first'|'xy'}
+export type SpatialCameraDrag='pan'|'rotate'
 export type SpatialEditAxis='x'|'y'|'z'|'xy'|'xz'|'yz'
 export type SpatialGizmo={target:'position'|'force'|'velocity';axis:SpatialEditAxis;local:boolean;value?:Vec3;commit:(value:Vec3)=>void}
 export const defaultSpatialCamera:SpatialCamera={yaw:.55,pitch:.32,distance:12,focus:[0,2,0],mode:'orbit'}
@@ -35,6 +36,12 @@ export function zoomSpatialCamera(camera:SpatialCamera,factor:number):SpatialCam
   if(camera.mode!=='first')return {...camera,distance}
   const {backward}=viewAxes(camera)
   return {...camera,distance,focus:add(camera.focus,multiply(backward,distance-camera.distance))}
+}
+
+function panSpatialCamera(camera:SpatialCamera,x:number,y:number,width:number,height:number) {
+  const {axis,up}=camera.mode==='xy'?{axis:[1,0,0] as Vec3,up:[0,1,0] as Vec3}:viewAxes(camera)
+  const scale=camera.distance/Math.max(1,Math.min(width,height)*.8)
+  return {...camera,focus:add(camera.focus,add(multiply(axis,-x*scale),multiply(up,y*scale)))}
 }
 
 export function moveFirstPerson(camera:SpatialCamera,key:string):SpatialCamera {
@@ -70,12 +77,12 @@ function projectOnPlane(camera:SpatialCamera,{width,height}:{width:number;height
   if(distance>.05&&distance<camera.distance*1000)return add(eye,multiply(ray,distance))
 }
 
-type Props={engine:SpatialPhysics;camera:SpatialCamera;setCamera:(camera:SpatialCamera)=>void;selected:string;select:(id:string)=>void;
+type Props={engine:SpatialPhysics;camera:SpatialCamera;setCamera:(camera:SpatialCamera,pan?:boolean)=>void;cameraDrag:SpatialCameraDrag;selected:string;select:(id:string)=>void;
   forecast?:ReadonlyMap<string,SpatialSample[]>;comparison?:ReadonlyMap<string,SpatialSample[]>;displayPositions?:ReadonlyMap<string,Vec3>;history:boolean;vectors:boolean;revision:number;trailWindow:number;
   fieldLines?:Vec3[][];potentialFaces?:Vec3[][];showMagnetic?:boolean;trailColor?:string;
   trailAlpha?:number;timeMarkers?:boolean;gizmo?:SpatialGizmo;drawing?:Drawing;vectorView?:VectorView;trailCount:number;
   axisOrigin:Vec3;moveAxis?:(origin:Vec3)=>void;showGrid?:boolean;showAxes?:boolean;gridOpacity?:number;celestial?:boolean;lensRays?:boolean;focusBody?:(id:string)=>void}
-export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,comparison,displayPositions,history,vectors,revision,trailWindow,
+export function SpatialCanvas({engine,camera,setCamera,cameraDrag,selected,select,forecast,comparison,displayPositions,history,vectors,revision,trailWindow,
   fieldLines,potentialFaces,showMagnetic,trailColor,trailAlpha,timeMarkers,gizmo,drawing,vectorView,trailCount,axisOrigin,moveAxis,
   showGrid=true,showAxes=true,gridOpacity=1,celestial,lensRays,focusBody}:Props) {
   const canvas=useRef<HTMLCanvasElement>(null)
@@ -85,7 +92,7 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
   const stroke=useRef<{id:number;points:Vec3[]}|undefined>(undefined)
   const [draft,setDraft]=useState<Vec3[]>([])
   const fingers=useRef(new Map<number,[number,number]>())
-  const pinch=useRef<{distance:number;camera:SpatialCamera}|undefined>(undefined)
+  const pinch=useRef<{distance:number;center:[number,number];camera:SpatialCamera}|undefined>(undefined)
   const [size,resize]=useState({width:0,height:0})
   const target=engine.bodies.find(body=>body.id===selected)
   const forceUnits=celestial?camera.distance/(6*Math.max(1,length(target?.force??[0,0,0]),(target?.mass??1)*.001)):.15
@@ -381,7 +388,9 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
       if(start&&fingers.current.size>=2) {
         const [a,b]=fingers.current.values()
         const distance=Math.max(5,Math.hypot(a[0]-b[0],a[1]-b[1]))
-        setCamera(zoomSpatialCamera(start.camera,start.distance/distance))
+        const dx=(a[0]+b[0])/2-start.center[0],dy=(a[1]+b[1])/2-start.center[1]
+        const zoomed=zoomSpatialCamera(start.camera,start.distance/distance)
+        setCamera(panSpatialCamera(zoomed,dx,dy,size.width,size.height),Math.hypot(dx,dy)>2)
         return
       }
     }
@@ -403,11 +412,8 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
     if(Math.hypot(dx,dy)<3&&!current.moved)return
     current.moved=true
     const previous=current.camera
-    if(current.pan||previous.mode==='xy') {
-      const k=previous.distance/Math.max(1,size.height)
-      const right:Vec3=previous.mode==='xy'?[1,0,0]:[Math.cos(previous.yaw),0,-Math.sin(previous.yaw)]
-      setCamera({...previous,focus:add(previous.focus,add(multiply(right,-dx*k),[0,dy*k,0]))})
-    } else setCamera({...previous,yaw:previous.yaw-dx*.008,pitch:Math.max(-1.45,Math.min(1.45,previous.pitch+dy*.008))})
+    if(current.pan||previous.mode==='xy')setCamera(panSpatialCamera(previous,dx,dy,size.width,size.height),true)
+    else setCamera({...previous,yaw:previous.yaw-dx*.008,pitch:Math.max(-1.45,Math.min(1.45,previous.pitch+dy*.008))})
   }
 
   function beginEdit(event:PointerEvent<HTMLCanvasElement>) {
@@ -437,28 +443,33 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
   }
 
   return <canvas ref={canvas} className="spatial-canvas" aria-label="三维实验画布" tabIndex={0}
+    onContextMenu={event=>event.preventDefault()}
     onDoubleClick={()=>{if(selected)focusBody?.(selected)}}
     onWheel={event=>setCamera(zoomSpatialCamera(camera,Math.exp(event.deltaY*.001)))}
     onPointerDown={event=>{
       if(!drawing&&event.pointerType==='touch') {
         fingers.current.set(event.pointerId,[event.clientX,event.clientY])
-        if(fingers.current.size>=2) {
+        if(fingers.current.size===2) {
           const [a,b]=fingers.current.values()
           gesture.current=undefined;edit.current=undefined;setPreview(undefined)
-          pinch.current={distance:Math.max(5,Math.hypot(a[0]-b[0],a[1]-b[1])),camera}
+          pinch.current={distance:Math.max(5,Math.hypot(a[0]-b[0],a[1]-b[1])),center:[(a[0]+b[0])/2,(a[1]+b[1])/2],camera}
           event.currentTarget.setPointerCapture(event.pointerId)
           return
         }
+        if(fingers.current.size>2){fingers.current.delete(event.pointerId);return}
       }
-      if(gesture.current||event.button!==0)return
+      if(gesture.current||edit.current||stroke.current||event.button>2)return
+      const forcedPan=event.button===1||event.shiftKey
+      const forceRotate=event.button===2
+      if(event.button!==0)event.preventDefault()
       event.currentTarget.focus()
-      if(drawing) {
+      if(drawing&&!forcedPan&&!forceRotate) {
         const rect=event.currentTarget.getBoundingClientRect()
         const point=projectOnPlane(camera,size,event.clientX-rect.left,event.clientY-rect.top,drawing.plane,drawing.offset)
         if(point){stroke.current={id:event.pointerId,points:[point]};setDraft([point]);event.currentTarget.setPointerCapture(event.pointerId)}
         return
       }
-      if(moveAxis) {
+      if(moveAxis&&!forcedPan&&!forceRotate) {
         const {axis,up}=camera.mode==='xy'?{axis:[1,0,0] as Vec3,up:[0,1,0] as Vec3}:viewAxes(camera)
         const scale=projection(camera,size.width,size.height)(axisOrigin)?.scale??Math.max(1,size.width/camera.distance)
         edit.current={pointer:event.pointerId,x:event.clientX,y:event.clientY,start:axisOrigin,
@@ -466,8 +477,9 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
         event.currentTarget.setPointerCapture(event.pointerId)
         return
       }
-      if(beginEdit(event))return
-      gesture.current={x:event.clientX,y:event.clientY,pointer:event.pointerId,camera,pan:event.shiftKey,moved:false}
+      if(!forcedPan&&!forceRotate&&beginEdit(event))return
+      gesture.current={x:event.clientX,y:event.clientY,pointer:event.pointerId,camera,
+        pan:forcedPan||!forceRotate&&cameraDrag==='pan',moved:false}
       event.currentTarget.setPointerCapture(event.pointerId)
     }} onPointerMove={drag} onPointerCancel={event=>{
       fingers.current.delete(event.pointerId);pinch.current=undefined
@@ -491,7 +503,7 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
       const current=gesture.current
       if(!current||current.pointer!==event.pointerId)return
       gesture.current=undefined
-      if(current.moved)return
+      if(current.moved||event.button!==0||event.shiftKey)return
       const rect=event.currentTarget.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top
       const project=projection(camera,size.width,size.height)
       const hit=engine.bodies.flatMap(body=>{
@@ -501,6 +513,8 @@ export function SpatialCanvas({engine,camera,setCamera,selected,select,forecast,
       }).sort((a,b)=>a.depth-b.depth)[0]
       select(hit?.id??'')
     }} onKeyDown={event=>{
+      const delta=event.key==='ArrowLeft'?[-30,0]:event.key==='ArrowRight'?[30,0]:event.key==='ArrowUp'?[0,-30]:event.key==='ArrowDown'?[0,30]:undefined
+      if(delta){event.preventDefault();setCamera(panSpatialCamera(camera,delta[0],delta[1],size.width,size.height),true);return}
       if(camera.mode!=='first')return
       const next=moveFirstPerson(camera,event.key.toLowerCase())
       if(next!==camera){event.preventDefault();setCamera(next)}

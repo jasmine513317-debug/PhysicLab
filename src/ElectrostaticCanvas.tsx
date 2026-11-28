@@ -137,7 +137,7 @@ export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCh
   const canvas=useRef<HTMLCanvasElement>(null)
   const latest=useRef({scene,selected,axisOrigin})
   const frame=useRef(0)
-  const drag=useRef<{pointer:number;start:Point;origin:Point;scale:number;charge?:string;axis?:boolean}|null>(null)
+  const drag=useRef<{pointer:number;start:Point;origin:Point;scale:number;charge?:string;axis?:boolean;clickProbe?:Point;moved?:boolean}|null>(null)
   function schedulePaint() {
     if(frame.current)return
     frame.current=requestAnimationFrame(()=>{
@@ -164,36 +164,43 @@ export function ElectrostaticCanvas({scene,selected,tool,select,add,probe,moveCh
     return {view,pixel:{x:event.clientX-view.left,y:event.clientY-view.top}}
   }
   function down(event:PointerEvent<HTMLCanvasElement>) {
-    if(event.button!==0||drag.current)return
+    if(event.button!==0&&event.button!==1||drag.current)return
+    const pan=event.shiftKey||event.button===1
+    if(pan)event.preventDefault()
     event.currentTarget.focus({preventScroll:true})
     const {view,pixel}=position(event),camera=cameraFor(scene,view),world=worldPoint(pixel,camera,view)
-    if(moveOrigin) {
+    if(moveOrigin&&!pan) {
       drag.current={pointer:event.pointerId,start:pixel,origin:axisOrigin,scale:camera.scale,axis:true}
       event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
-    if(tool==='positive'||tool==='negative') {add(tool==='positive'?1:-1,world);return}
-    if(tool==='probe') {probe(world);return}
-    const charge=tool==='select'?[...scene.charges].reverse().find(candidate=>{
+    if(!pan&&(tool==='positive'||tool==='negative')) {add(tool==='positive'?1:-1,world);return}
+    if(!pan&&tool==='probe') {probe(world);return}
+    const charge=!pan&&tool==='select'?[...scene.charges].reverse().find(candidate=>{
       const point=screenPoint(candidate.position,camera,view)
       return Math.hypot(point.x-pixel.x,point.y-pixel.y)<=17
     }):undefined
-    if(!charge&&tool==='select') {probe(world);return}
     if(charge)select(charge.id)
-    drag.current={pointer:event.pointerId,start:pixel,origin:charge?.position??camera,scale:camera.scale,charge:charge?.id}
+    drag.current={pointer:event.pointerId,start:pixel,origin:charge?.position??camera,scale:camera.scale,charge:charge?.id,
+      clickProbe:!pan&&!charge&&tool==='select'?world:undefined}
     event.currentTarget.setPointerCapture(event.pointerId)
   }
   function move(event:PointerEvent<HTMLCanvasElement>) {
     const active=drag.current
     if(!active||active.pointer!==event.pointerId)return
     const {pixel}=position(event)
+    if(!active.moved&&Math.hypot(pixel.x-active.start.x,pixel.y-active.start.y)<4)return
+    active.moved=true
     const dx=(pixel.x-active.start.x)/active.scale,dy=(active.start.y-pixel.y)/active.scale
     if(active.axis)moveOrigin?.({x:active.origin.x+dx,y:active.origin.y+dy})
     else if(active.charge)moveCharge(active.charge,{x:active.origin.x+dx,y:active.origin.y+dy})
     else moveCamera({x:active.origin.x-dx,y:active.origin.y-dy})
   }
   function end(event:PointerEvent<HTMLCanvasElement>) {
-    if(drag.current?.pointer===event.pointerId)drag.current=null
+    const active=drag.current
+    if(active?.pointer!==event.pointerId)return
+    drag.current=null
+    if(event.type==='pointerup'&&!active.moved&&active.clickProbe)probe(active.clickProbe)
   }
   return <canvas ref={canvas} className={'electric-canvas'+(tool==='pan'?' electric-pan':'')} tabIndex={0} aria-label="电场画布"
     onPointerDown={down} onPointerMove={move} onPointerUp={end} onLostPointerCapture={end} onPointerCancel={end}/>

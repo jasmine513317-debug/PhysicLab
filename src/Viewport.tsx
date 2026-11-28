@@ -514,8 +514,8 @@ export function Viewport(props:ViewportProps) {
     e.preventDefault()
     e.currentTarget.focus()
     const {pixel,world}=points(e)
-    const forcedPan=e.button===1||space.current||isReplay
-    const type=originEditing&&!isReplay&&e.button===0?'origin':forcedPan?'pan':drawPointer?'draw':erasePointer?'erase':tool
+    const forcedPan=e.button===1||e.shiftKey||space.current||isReplay
+    const type=forcedPan?'pan':originEditing?'origin':drawPointer?'draw':erasePointer?'erase':tool
     const forceBody=type==='select'&&(display.editForce||display.editVelocity)&&physics.samples.has(selected)?physics.bodies.get(selected):undefined
     if(forceBody) {
       const at=forceBody.getPosition()
