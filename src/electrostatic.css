@@ -1,57 +1,109 @@
-.electric-lab {padding:26px 0 40px}
-.electric-heading {display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:16px}
-.electric-heading h1 {font-size:clamp(30px,4vw,47px);line-height:1.15;font-weight:720;letter-spacing:-.04em}
-.electric-name {display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--dim);font-size:12px}
-.electric-name input,.electric-field input {min-width:0;height:var(--control-height-sm);padding:5px 8px;color:var(--text);background:var(--canvas);border:1px solid var(--line);border-radius:var(--radius-sm)}
-.electric-name input {width:min(32vw,280px)}
-.electric-actions,.electric-presets {display:flex;gap:6px;flex-wrap:wrap}
-.electric-presets {margin-bottom:12px}
-.electric-lab>.error-banner {margin:0 0 12px}
-.electric-workbench {display:grid;grid-template-columns:minmax(0,1fr) 282px;gap:12px;align-items:start}
-.electric-stage,.electric-sidebar {min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.electric-toolbar {display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line)}
-.electric-toolbar [aria-pressed=true] {background:var(--selected-bg);color:var(--selected-ink);border-color:var(--selected-border)}
-.electric-toolbar [aria-pressed=true]:hover {background:var(--selected-bg);color:var(--selected-ink);border-color:var(--selected-border)}
-.electric-viewport {position:relative;height:clamp(315px,45vh,640px);background:var(--canvas)}
-.electric-canvas {display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
-.electric-canvas.electric-pan {cursor:grab}
-.electric-canvas:focus-visible {outline-offset:-3px}
-.electric-scale {display:flex;gap:5px;position:absolute;right:10px;bottom:10px}
-.electric-legend {display:flex;gap:7px 16px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--line);color:var(--dim);font-size:11px}
-.electric-legend:empty {display:none}
-.electric-legend span {display:flex;align-items:center;gap:6px}
-.electric-legend span::before {content:'';width:12px;border-top:2px solid currentColor}
-.electric-field-legend {color:var(--field)}
-.electric-negative {color:var(--trajectory)}
-.electric-positive {color:var(--energy)}
-.electric-legend .electric-zero::before {border-top-style:dashed}
-.electric-readout {border-top:1px solid var(--line);padding:12px}
-.electric-readout h2,.electric-sidebar h2 {display:flex;align-items:center;gap:7px;font-size:14px;font-weight:680}
-.electric-readout dl {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:10px 0 0}
-.electric-readout dl div {padding:7px 9px;border-left:1px solid var(--line);min-width:0}
-.electric-readout dt {color:var(--dim);font-size:11px}
-.electric-readout dd {margin:4px 0 0;font:12px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.electric-readout p {margin-top:5px}
-.electric-sidebar section {display:grid;gap:10px;padding:14px}
-.electric-sidebar section+section {border-top:1px solid var(--line)}
-.electric-sidebar p {font-size:11px;line-height:1.55}
-.electric-sidebar h2 small {margin-left:auto;font:11px var(--mono)}
-.electric-sidebar button {justify-self:start}
-.electric-field {display:grid;gap:4px;min-width:0;font-size:12px}
-.electric-field input {width:100%;font-family:var(--numeric-font);font-variant-numeric:var(--numeric-variant)}
-.electric-field input[aria-invalid=true] {border-color:var(--warning)}
-.electric-input-error {color:var(--warning);font-size:11px}
-.electric-field select {width:100%;min-width:0}
-.electric-pair,.electric-toggles {display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.electric-toggles label {display:flex;align-items:center;gap:6px;font-size:12px;min-height:29px}
-@media (max-width:820px) {
-  .electric-workbench {grid-template-columns:minmax(0,1fr)}
-  .electric-heading {align-items:start;flex-direction:column}
-  .electric-name input {width:min(68vw,280px)}
+.electric-lab { padding: 26px 0 48px }
+.electric-name { display: flex; align-items: center; gap: 8px; margin-top: 13px; color: var(--dim); font-size: 11px }
+.electric-name input,.electric-field input {
+  min-width: 0;
+  height: var(--control-height-sm);
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
 }
-@media (max-width:450px) {
-  .electric-viewport {height:clamp(290px,39vh,400px)}
-  .electric-toolbar {gap:4px;padding:7px}
-  .electric-toolbar .button {padding:0 6px;font-size:11px;gap:4px}
-  .electric-readout dl {grid-template-columns:1fr 1fr}
+.electric-name input { width: min(34vw, 300px); height: 32px; font-size: 12px }
+.electric-actions { display: flex; gap: 6px; flex-wrap: wrap }
+.electric-presets { margin: 0 }
+.electric-lab>.error-banner { margin: 0 0 12px }
+
+.electric-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 294px; gap: 14px; align-items: start }
+.electric-stage,.electric-sidebar {
+  min-width: 0;
+  background: linear-gradient(180deg, var(--plate-top), var(--plate-bottom));
+  border: 1px solid var(--plate-line);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 #ffffff08;
+  overflow: hidden;
+}
+.electric-toolbar { display: flex; gap: 5px; flex-wrap: wrap; padding: 7px 9px; border-bottom: 1px solid var(--line); background: #141417 }
+.electric-toolbar [aria-pressed=true] { background: var(--selected-bg); color: var(--selected-ink); border-color: var(--selected-border) }
+.electric-toolbar [aria-pressed=true]:hover { background: var(--selected-bg); color: var(--selected-ink); border-color: var(--selected-border) }
+.electric-toolbar .button.compact { border-color: transparent; background: transparent; color: var(--dim) }
+.electric-toolbar .button.compact:hover { background: var(--hover); border-color: var(--line); color: var(--text) }
+.electric-toolbar .button.compact[aria-pressed=true],.electric-toolbar .button.compact[aria-pressed=true]:hover { background: var(--selected-bg); color: var(--selected-ink); border-color: var(--selected-border) }
+.electric-viewport { position: relative; height: clamp(320px, 46vh, 660px); background: var(--canvas) }
+.electric-canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair }
+.electric-canvas.electric-pan { cursor: grab }
+.electric-canvas:focus-visible { outline-offset: -3px }
+.electric-scale { display: flex; gap: 5px; position: absolute; right: 10px; bottom: 10px }
+.electric-legend {
+  display: flex;
+  gap: 7px 16px;
+  flex-wrap: wrap;
+  padding: 8px 13px;
+  border-top: 1px solid var(--line);
+  background: #121215;
+  color: var(--dim);
+  font: 10px var(--mono);
+  letter-spacing: .03em;
+}
+.electric-legend:empty { display: none }
+.electric-legend span { display: flex; align-items: center; gap: 6px }
+.electric-legend span::before { content: ''; width: 12px; border-top: 2px solid currentColor }
+.electric-field-legend { color: var(--field) }
+.electric-negative { color: var(--trajectory) }
+.electric-positive { color: var(--energy) }
+.electric-legend .electric-zero::before { border-top-style: dashed }
+
+.electric-readout { border-top: 1px solid var(--line); padding: 13px 13px 14px; background: #121215 }
+.electric-readout h2,.electric-sidebar h2 { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: .01em; color: var(--soft) }
+.electric-readout h2 svg { color: var(--domain) }
+.electric-readout dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin: 11px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101012;
+  overflow: hidden;
+}
+.electric-readout dl div { padding: 8px 10px; border-left: 1px solid var(--line); min-width: 0 }
+.electric-readout dl div:first-child { border-left: 0 }
+.electric-readout dt { color: var(--dim); font: 500 8.5px var(--mono); letter-spacing: .1em }
+.electric-readout dd { margin: 6px 0 0; font: 500 12.5px var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; color: var(--text) }
+.electric-readout p { margin-top: 7px }
+.electric-readout>.button { margin-top: 12px }
+
+.electric-sidebar { counter-reset: elec }
+.electric-sidebar section { display: grid; gap: 10px; padding: 14px 15px }
+.electric-sidebar section+section { border-top: 1px solid var(--line) }
+.electric-sidebar h2::before { counter-increment: elec; content: counter(elec, decimal-leading-zero); color: #8a8a91; font: 500 9px var(--mono); letter-spacing: .04em }
+.electric-sidebar h2::after { content: ""; flex: 1; height: 1px; background: var(--line) }
+.electric-sidebar p { font-size: 10.5px; line-height: 1.6 }
+.electric-sidebar h2 small { margin-left: 0; color: var(--dim); font: 500 9px var(--mono); letter-spacing: .06em }
+.electric-sidebar button { justify-self: start }
+.electric-field { display: grid; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--dim) }
+.electric-field input { width: 100%; font-family: var(--numeric-font); font-variant-numeric: var(--numeric-variant); transition: border-color var(--motion-fast) }
+.electric-field input:hover { border-color: var(--line-strong) }
+.electric-field input[aria-invalid=true] { border-color: var(--warning) }
+.electric-input-error { color: var(--warning); font-size: 10.5px }
+.electric-field select { width: 100%; min-width: 0 }
+.electric-pair,.electric-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+.electric-toggles label { display: flex; align-items: center; gap: 6px; font-size: 11.5px; min-height: 28px; color: var(--dim) }
+
+@media (max-width: 900px) {
+  .electric-workbench { grid-template-columns: minmax(0, 1fr) 258px }
+}
+@media (max-width: 820px) {
+  .electric-workbench { grid-template-columns: minmax(0, 1fr) }
+  .electric-name input { width: min(68vw, 300px) }
+  .lab-command .electric-actions { width: 100% }
+  .lab-command .electric-actions .button { flex: 1; justify-content: center }
+}
+@media (max-width: 450px) {
+  .electric-viewport { height: clamp(290px, 39vh, 400px) }
+  .electric-toolbar { gap: 4px; padding: 7px }
+  .electric-toolbar .button { padding: 0 6px; font-size: 11px; gap: 4px }
+  .electric-readout dl { grid-template-columns: 1fr 1fr }
+  .electric-readout dl div:nth-child(3) { border-left: 0 }
+  .electric-readout dl div:nth-child(n+3) { border-top: 1px solid var(--line) }
 }

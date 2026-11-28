@@ -1,6 +1,6 @@
-import { Box,Magnet,Orbit,ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, Box, Magnet, Orbit } from 'lucide-react'
 import { appUrl } from './routes'
-import type { Domain } from './domains'
+import { domains, type Domain } from './domains'
 import './experimentChooser.css'
 
 const toolsByDomain={
@@ -10,34 +10,62 @@ const toolsByDomain={
 }
 const spatialModels=[['orbit','倾斜双体轨道'],['three','空间三体'],['escape','空间逃逸'],['assist','空间引力飞掠']] as const
 
+const directions:{domain:Domain;href:string;index:string;note:string;label:string}[]=[
+  {domain:domains[0],href:appUrl('/lab?new=1&domain=mechanics'),index:'01',note:'刚体 · 斜面 · 弹簧 · 绳杆',label:'力学'},
+  {domain:domains[1],href:appUrl('/lab?new=1&domain=electromagnetism'),index:'02',note:'点电荷 · 场线 · 等势线',label:'电磁学'},
+  {domain:domains[2],href:appUrl('/lab?new=1&domain=astrophysics'),index:'03',note:'轨道 · 双体 · 多体系统',label:'天体物理'},
+]
+
 export function ExperimentChooser({groups}:{groups:readonly {domain:Domain;items:readonly {title:string;url:string}[]}[]}) {
+  const templateCount=groups.reduce((sum,group)=>sum+group.items.length,0)+spatialModels.length
   return <section className="experiment-chooser page-width" aria-labelledby="experiment-chooser-title">
-    <h1 id="experiment-chooser-title">选择实验方向</h1>
-    <div className="experiment-chooser-grid">
-      <section aria-labelledby="simple-experiments">
-        <h2 id="simple-experiments">简单物体实验</h2>
-        <a href={appUrl('/lab?new=1&domain=mechanics')}><Box aria-hidden="true"/><strong>力学</strong><ArrowUpRight aria-hidden="true"/></a>
-        <p>用刚体、斜面、曲线轨道、弹簧、绳和杆搭建场景。可调整质量、摩擦、碰撞和重力。</p>
-        <a href={appUrl('/lab?new=1&domain=electromagnetism')}><Magnet aria-hidden="true"/><strong>电磁学</strong><ArrowUpRight aria-hidden="true"/></a>
-        <p>放置正负点电荷，查看场线和等势线，也可打开带电粒子、电磁感应和 RC 电路模型。</p>
-      </section>
-      <section aria-labelledby="space-experiments">
-        <h2 id="space-experiments">天体物理实验</h2>
-        <a href={appUrl('/lab?new=1&space=astronomy')}><Orbit aria-hidden="true"/><strong>三维天体物理</strong><ArrowUpRight aria-hidden="true"/></a>
-        <p>添加恒星、行星和卫星，调整三维初始位置与速度，观察相互引力、轨迹和质心。</p>
-        <a href={appUrl('/lab?new=1&domain=astrophysics')}><Orbit aria-hidden="true"/><strong>二维天体物理</strong><ArrowUpRight aria-hidden="true"/></a>
-        <p>在平面中比较轨道、周期、逃逸速度和多天体运动。</p>
-      </section>
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>新建实验</span></p>
+        <h1 id="experiment-chooser-title">选择实验方向</h1>
+        <p className="page-deck">先确定学科方向，再从空白场景、基础模型或三维模板开始搭建。</p>
+      </div>
+      <dl className="page-meta">
+        <div><dt>方向</dt><dd>03</dd></div>
+        <div><dt>模板</dt><dd>{String(templateCount).padStart(2,'0')}</dd></div>
+      </dl>
+    </header>
+
+    <div className="chooser-grid">
+      {directions.map(({domain,href,index,note,label})=>{
+        const Icon=domain.icon
+        return <a className="chooser-card" key={domain.id} data-domain={domain.id} href={href} aria-label={label}>
+          <span className="chooser-index" aria-hidden="true">{index}</span>
+          <span className="chooser-icon" aria-hidden="true"><Icon size={20}/></span>
+          <strong>{domain.name}</strong>
+          <p>{domain.description}</p>
+          <span className="chooser-note" aria-hidden="true">{note}</span>
+          <span className="chooser-enter" aria-hidden="true">进入方向 <ArrowUpRight size={14}/></span>
+        </a>
+      })}
+      <a className="chooser-card chooser-wide" data-domain="astrophysics" href={appUrl('/lab?new=1&space=astronomy')} aria-label="三维天体物理">
+        <span className="chooser-index" aria-hidden="true">3D</span>
+        <span className="chooser-icon" aria-hidden="true"><Box size={20}/></span>
+        <span className="chooser-wide-copy">
+          <strong>三维天体物理</strong>
+          <p>在空间坐标系里放置恒星、行星和卫星，观察相互引力、倾斜轨道与飞掠。可在三维面板中直接建模。</p>
+        </span>
+        <span className="chooser-note" aria-hidden="true">{spatialModels.map(([,title])=>title).join(' · ')}</span>
+        <span className="chooser-enter" aria-hidden="true">打开三维工作台 <ArrowUpRight size={14}/></span>
+      </a>
     </div>
-    <h2 className="experiment-models-title">基础模型与实验模板</h2>
-    <div className="experiment-models">
-      {groups.map(({domain,items})=><details key={domain.id}>
-        <summary>{domain.name}</summary>
-        <p>{toolsByDomain[domain.id]}</p>
-        <ul>{domain.id==='astrophysics'&&spatialModels.map(([id,title])=><li key={id}>
-          <a href={appUrl('/lab?new=1&space=astronomy&spaceModel='+id)}>{title}</a>
-        </li>)}{items.map(item=><li key={item.url}><a href={item.url}>{item.title}</a></li>)}</ul>
-      </details>)}
-    </div>
+
+    <section className="chooser-models" aria-labelledby="experiment-models-title">
+      <h2 className="section-label" id="experiment-models-title">基础模型与实验模板</h2>
+      <div className="chooser-details">
+        {groups.map(({domain,items},index)=><details key={domain.id} data-domain={domain.id}>
+          <summary><span className="chooser-detail-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>{domain.name}<span className="chooser-detail-count" aria-hidden="true">{items.length}</span></summary>
+          <p>{toolsByDomain[domain.id]}</p>
+          <ul>{domain.id==='astrophysics'&&spatialModels.map(([id,title])=><li key={id}>
+            <a href={appUrl('/lab?new=1&space=astronomy&spaceModel='+id)}>{title}</a>
+          </li>)}{items.map(item=><li key={item.url}><a href={item.url}>{item.title}</a></li>)}</ul>
+        </details>)}
+      </div>
+    </section>
   </section>
 }

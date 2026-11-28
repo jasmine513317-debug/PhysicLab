@@ -288,24 +288,37 @@ function AstronomyEditor({initial,initiallySaved,active,updateSavedAddress}:{ini
     :initial.title==='逃逸速度'?'双体相对速度小于逃逸速度时总能量为负；达到阈值为临界轨道，超过阈值则可逃逸。这里的阈值取决于当前质量和起始间距。'
     :scene.bodies.length>3?'在主恒星质量占优时，离恒星越远，绕转周期通常越长。全景使用相同的距离比例；内侧行星在全景里靠得很近，可以选中后放大。'
     :'引力持续改变速度，轨道由位置和初速度共同决定。只把行星拖远而保留速度，通常会改变轨道形状；「重置为圆轨道初速度」才会重新配速。'
-  return <main className="astronomy-lab page-width">
-    <header className="astronomy-heading"><div><h1>天体物理</h1><label className="astronomy-name">实验名称
-      <input aria-label="天体实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
-        onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
-          const value=event.currentTarget.value.trim()
-          event.currentTarget.value=value||scene.title
-          if(value&&value!==scene.title)commitScene({...scene,title:value})
-        }}/></label></div>
-      <div className="astronomy-actions">
-        <button className="button" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={16}/> 导出场景 JSON</button>
-        <button className="button primary" disabled={saving} onClick={()=>void save()}><Save size={16}/> {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+  return <main className="astronomy-lab page-width" data-domain="astrophysics">
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>天体物理</span></p>
+        <h1>天体物理</h1>
+        <p className="page-deck">用位置、速度和引力搭建轨道系统，对照理论椭圆与实时积分轨迹。</p>
+        <label className="astronomy-name">实验名称
+          <input aria-label="天体实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
+            onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
+              const value=event.currentTarget.value.trim()
+              event.currentTarget.value=value||scene.title
+              if(value&&value!==scene.title)commitScene({...scene,title:value})
+            }}/></label>
       </div>
+      <dl className="page-meta">
+        <div><dt>天体</dt><dd>{String(scene.bodies.length).padStart(2,'0')}</dd></div>
+        <div><dt>视角</dt><dd className="meta-text">{viewMode==='follow'?'跟随':viewMode==='earth-moon'?'地月近景':'系统全景'}</dd></div>
+      </dl>
     </header>
-    <nav className="astronomy-presets" aria-label="天体实验模板">
-      {astronomyTemplates.map(template=><a key={template.id} className="button compact" href={appUrl('/lab?domain=astrophysics&preset='+template.id)}>{template.title}</a>)}
-      {extendedTemplates.filter(template=>template.domain==='astrophysics').map(template=><a key={template.id} className="button compact" href={extensionUrl(template.id)}>{template.title}</a>)}
-      <a className="button compact" href={appUrl('/lab?domain=astrophysics&new=1')}><Plus size={14}/> 空白天体实验</a>
-    </nav>
+    <div className="lab-command">
+      <nav className="astronomy-presets rail" aria-label="天体实验模板">
+        <span className="rail-label" aria-hidden="true">模板</span>
+        {astronomyTemplates.map(template=><a key={template.id} className="button compact" href={appUrl('/lab?domain=astrophysics&preset='+template.id)}>{template.title}</a>)}
+        {extendedTemplates.filter(template=>template.domain==='astrophysics').map(template=><a key={template.id} className="button compact" href={extensionUrl(template.id)}>{template.title}</a>)}
+        <a className="button compact" href={appUrl('/lab?domain=astrophysics&new=1')}><Plus size={14}/> 空白天体实验</a>
+      </nav>
+      <div className="astronomy-actions">
+        <button className="button compact" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={15}/> 导出场景 JSON</button>
+        <button className="button compact primary" disabled={saving} onClick={()=>void save()}><Save size={15}/> {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+      </div>
+    </div>
     <section className="astronomy-guide" aria-label="观察任务">
       <div><strong>观察任务</strong><p>{lesson}</p><details><summary>理解这个现象</summary><p>{explanation}</p></details></div>
       {earthMoon&&<button className="button compact" onClick={()=>{setSelected(scene.bodies.find(b=>b.name==='月球')!.id);fitView('earth-moon')}}>观察地月近景</button>}
@@ -313,7 +326,7 @@ function AstronomyEditor({initial,initiallySaved,active,updateSavedAddress}:{ini
     {saveError&&<p role="alert" className="error-banner">{saveError}</p>}
     <div className="astronomy-workbench">
       <div className="astronomy-main">
-        <section className="astronomy-stage" aria-label="天体轨道视图">
+        <section className="astronomy-stage plate" aria-label="天体轨道视图">
           <div className="astronomy-model-strip" aria-label="模型与实时数据">
             <div className="astronomy-model-badges"><strong>{modelLabel}</strong><span>平面 · 牛顿引力</span><span>天体图标非真实比例</span></div>
             <dl className="astronomy-live-metrics">
@@ -340,7 +353,7 @@ function AstronomyEditor({initial,initiallySaved,active,updateSavedAddress}:{ini
             </select></label>
             <span>{running?'运行中 · 拖动天体会自动暂停':'已暂停 · 拖动天体改变位置；虚线可调整双体轨道'}</span>
           </div>
-          <div className="astronomy-viewport">
+          <div className="astronomy-viewport stage-bezel">
             <OrbitCanvas scene={scene} orbit={orbit} selected={selected} setSelected={setSelected} zoom={zoom} revision={revision} liveBodies={liveBodies} system={system} editBodies={editBodies} scaleOrbit={scaleOrbit} pause={()=>setRunning(false)} followBackground={followBackground} running={running} active={active} fitRevision={fitRevision} viewMode={viewMode}/>
             {!simulation&&<p className="astronomy-canvas-note">{result.error||systemResult.error||'添加至少两个天体以运行轨道。'}</p>}
             <div className="astronomy-zoom" role="group" aria-label="轨道视图缩放">

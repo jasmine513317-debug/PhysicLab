@@ -234,24 +234,38 @@ function Editor({initial,initiallySaved,active,updateSavedAddress}:{initial:Exte
     astrophysics:['/lab?domain=astrophysics','双体轨道'],
   }[scene.domain]
   const timeUnit=engine.gravity?' 年':' s'
+  const domainLabel={mechanics:'经典力学',electromagnetism:'电磁学',astrophysics:'天体物理'}[scene.domain]
 
-  return <main className="astronomy-lab extended-lab page-width">
-    <header className="astronomy-heading"><div><h1>{template.title}</h1><label className="astronomy-name">实验名称
-      <input aria-label="扩展实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
-        onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
-          const title=event.currentTarget.value.trim()
-          event.currentTarget.value=title||scene.title
-          if(title&&title!==scene.title)setScene(current=>({...current,title}))
-        }}/></label></div>
-      <div className="astronomy-actions">
-        <button className="button" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={16}/> 导出场景 JSON</button>
-        <button className="button primary" disabled={saving} onClick={()=>void save()}><Save size={16}/> {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+  return <main className="astronomy-lab extended-lab page-width" data-domain={scene.domain}>
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>{domainLabel}</span></p>
+        <h1>{template.title}</h1>
+        <p className="page-deck">{descriptions[scene.extension]}</p>
+        <label className="astronomy-name">实验名称
+          <input aria-label="扩展实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
+            onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
+              const title=event.currentTarget.value.trim()
+              event.currentTarget.value=title||scene.title
+              if(title&&title!==scene.title)setScene(current=>({...current,title}))
+            }}/></label>
       </div>
+      <dl className="page-meta">
+        <div><dt>模型</dt><dd className="meta-text">{template.title}</dd></div>
+        <div><dt>步长</dt><dd>{engine.gravity?'自适应':'固定'}</dd></div>
+      </dl>
     </header>
-    <nav className="astronomy-presets" aria-label="同领域实验">
-      <a className="button compact" href={appUrl(domainHome[0])}>{domainHome[1]}</a>
-      {extendedTemplates.filter(item=>item.domain===scene.domain&&item.id!==scene.extension).map(item=><a key={item.id} className="button compact" href={extensionUrl(item.id)}>{item.title}</a>)}
-    </nav>
+    <div className="lab-command">
+      <nav className="astronomy-presets rail" aria-label="同领域实验">
+        <span className="rail-label" aria-hidden="true">同领域</span>
+        <a className="button compact" href={appUrl(domainHome[0])}>{domainHome[1]}</a>
+        {extendedTemplates.filter(item=>item.domain===scene.domain&&item.id!==scene.extension).map(item=><a key={item.id} className="button compact" href={extensionUrl(item.id)}>{item.title}</a>)}
+      </nav>
+      <div className="astronomy-actions">
+        <button className="button compact" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={15}/> 导出场景 JSON</button>
+        <button className="button compact primary" disabled={saving} onClick={()=>void save()}><Save size={15}/> {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+      </div>
+    </div>
     {error&&<p className="error-banner" role="alert">{error}</p>}
     <div className="astronomy-workbench">
       <div className="astronomy-main">

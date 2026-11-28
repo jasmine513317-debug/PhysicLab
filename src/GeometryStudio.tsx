@@ -144,23 +144,37 @@ export function GeometryStudio() {
     } catch(e) {setError(e instanceof Error?e.message:'无法保存轨道实验。');setSaving(false)}
   }
 
-  return <main className="geometry-studio page-width" onKeyDown={e=>{
+  const modeLabel=geometryModes.find(([mode])=>mode===project.mode)?.[1]??'几何'
+  const measure=isSurface?(mesh?.value?`${mesh.value.faces.length}`:'—'):isBezier?String(project.nodes.length):String(path.value?.length??0)
+  const measureLabel=isSurface?'面':isBezier?'节点':'曲线'
+
+  return <main className="geometry-studio page-width" data-domain="mechanics" onKeyDown={e=>{
     if(!(e.ctrlKey||e.metaKey)||e.altKey||e.target instanceof HTMLElement&&e.target.closest('input,textarea,select,[contenteditable]'))return
     if(e.key.toLowerCase()==='z') {e.preventDefault();if(e.shiftKey)redo();else undo()}
   }}>
-    <header className="geometry-heading">
-      <div><h1>几何工作室</h1><p>绘制曲线、生成曲面，或把二维曲线转成力学碰撞轨道。</p></div>
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>几何工作室</span></p>
+        <h1>几何工作室</h1>
+        <p className="page-deck">绘制曲线、生成曲面，或把二维曲线转成力学碰撞轨道。</p>
+      </div>
+      <dl className="page-meta">
+        <div><dt>模式</dt><dd className="meta-text">{modeLabel}</dd></div>
+        <div><dt>{measureLabel}</dt><dd>{measure}</dd></div>
+      </dl>
+    </header>
+    <div className="geometry-command">
+      <nav className="geometry-modes" aria-label="几何模式">
+        {geometryModes.map(([mode,label])=><button key={mode} aria-pressed={project.mode===mode} onClick={()=>{if(project.mode!==mode)patch({mode})}}>{label}</button>)}
+      </nav>
       <div className="geometry-file-actions" role="group" aria-label="几何文件">
         <input type="file" ref={filePick} hidden accept=".json,application/json" onChange={e=>{
           const file=e.target.files?.[0];e.currentTarget.value='';if(file)void readFile(file)
         }}/>
-        <button className="button" onClick={()=>filePick.current?.click()}><Upload size={16}/> 导入 JSON</button>
-        <button className="button" onClick={()=>downloadText(project.title,'json','application/json',JSON.stringify(project,null,2))}><Download size={16}/> 导出 JSON</button>
+        <button className="button compact" onClick={()=>filePick.current?.click()}><Upload size={15}/> 导入 JSON</button>
+        <button className="button compact" onClick={()=>downloadText(project.title,'json','application/json',JSON.stringify(project,null,2))}><Download size={15}/> 导出 JSON</button>
       </div>
-    </header>
-    <nav className="geometry-modes" aria-label="几何模式">
-      {geometryModes.map(([mode,label])=><button key={mode} aria-pressed={project.mode===mode} onClick={()=>{if(project.mode!==mode)patch({mode})}}>{label}</button>)}
-    </nav>
+    </div>
     {(error||storageError)&&<p className="error-banner geometry-message" role="alert">{error||'浏览器暂时无法保存草稿。可以导出 JSON 保留几何。'}</p>}
     <div className="geometry-workarea">
       <section className="geometry-preview" aria-label="几何预览">
@@ -180,7 +194,7 @@ export function GeometryStudio() {
             <button className="icon" onClick={redo} disabled={!future.length} aria-label="重做几何编辑" title="重做"><Redo2 size={17}/></button>
           </div>
         </div>
-        <div className="geometry-stage">
+        <div className="geometry-stage stage-bezel">
           {isSurface?<SurfaceCanvas mesh={mesh?.value} {...surface}/>:<CurveCanvas paths={path.value??[]} nodes={isBezier?project.nodes:undefined}
             closed={project.closed} selected={index} tool={tool} dashed={project.dashed} select={select} edit={(nodes,closed)=>patch({nodes,closed})}/>}
           {previewError&&<div className="geometry-preview-error" role="status">{previewError}</div>}

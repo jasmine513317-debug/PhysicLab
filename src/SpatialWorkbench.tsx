@@ -366,7 +366,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     ].join(','))
     downloadText(engine.scene.title,'csv','text/csv;charset=utf-8',rows.join('\r\n'))
   }
-  return <section className="spatial-workbench" aria-label="三维实验工作台">
+  return <section className="spatial-workbench" aria-label="三维实验工作台" data-domain="astrophysics">
     <header className="spatial-controls">
       {astronomy?<a className="button compact" href={appUrl('/lab?new=1&choose=1')}><ArrowLeft size={16}/> 实验方向</a>:
         <button className="button compact" onClick={()=>{setPaused(true);exit()}}><ArrowLeft size={16}/> 返回 2D</button>}
@@ -386,7 +386,7 @@ export default function SpatialWorkbench({source,physics,active,astronomy=false,
     {message&&<p className="spatial-message" role="status">{message}</p>}
     {lifted.unsupported.length>0&&engine.bodies.length===0&&<p className="spatial-message">二维场景已保留。以下对象需要其他三维模型，当前空间从空白开始：{lifted.unsupported.join('、')}</p>}
     {engine.scene.source&&<p className="spatial-message">从二维 {engine.scene.source.time.toFixed(3)} s 的状态创建空间分支，各自计时。</p>}
-    <div className="spatial-view">
+    <div className="spatial-view stage-bezel">
       <SpatialCanvas {...{engine,selected,select,forecast,vectors,revision,trailWindow,trailCount,fieldLines,potentialFaces,gizmo,vectorView}}
         camera={observation} setCamera={next=>setCamera(following&&next.mode!=='first'?{...next,focus:add(next.focus,multiply(following,-1))}:next)}
         drawing={drawing?{plane:drawingPlane,offset:drawingOffset,commit:points=>{

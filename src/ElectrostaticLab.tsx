@@ -113,35 +113,47 @@ function ElectrostaticEditor({initial,initiallySaved,updateSavedAddress}:{initia
     finally {setSaving(false)}
   }
 
-  return <main className="electric-lab page-width">
-    <header className="electric-heading">
-      <div><h1>电磁学</h1><label className="electric-name">
-        <span>实验名称</span><input aria-label="静电实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
-          onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
-            const title=event.currentTarget.value.trim()
-            event.currentTarget.value=title||scene.title
-            if(title&&title!==scene.title)setScene(current=>({...current,title}))
-          }}/>
-      </label></div>
-      <div className="electric-actions">
-        <button className="button" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={16}/> 导出场景 JSON</button>
-        <button className="button primary" disabled={saving} onClick={()=>void save()}>{saved===scene?<Check size={16}/>:<Save size={16}/>} {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+  return <main className="electric-lab page-width" data-domain="electromagnetism">
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>电磁学</span></p>
+        <h1>电磁学</h1>
+        <p className="page-deck">放置正负点电荷，用场线、等势线与探针观察电场的叠加。</p>
+        <label className="electric-name">
+          <span>实验名称</span><input aria-label="静电实验名称" key={scene.title} defaultValue={scene.title} maxLength={100}
+            onKeyDown={event=>{if(event.key==='Enter')event.currentTarget.blur()}} onBlur={event=>{
+              const title=event.currentTarget.value.trim()
+              event.currentTarget.value=title||scene.title
+              if(title&&title!==scene.title)setScene(current=>({...current,title}))
+            }}/>
+        </label>
       </div>
+      <dl className="page-meta">
+        <div><dt>电荷</dt><dd>{String(scene.charges.length).padStart(2,'0')}</dd></div>
+        <div><dt>上限</dt><dd>{MAX_CHARGES}</dd></div>
+      </dl>
     </header>
-    <nav className="electric-presets" aria-label="静电实验模板">
-      {electrostaticTemplates.map(template=><a className="button compact" key={template.id} href={appUrl('/lab?domain=electromagnetism&preset='+template.id)}>{template.title}</a>)}
-      {extendedTemplates.filter(template=>template.domain==='electromagnetism').map(template=><a className="button compact" key={template.id} href={extensionUrl(template.id)}>{template.title}</a>)}
-      <a className="button compact" href={appUrl('/lab?domain=electromagnetism&new=1')}><Plus size={14}/> 空白静电实验</a>
-    </nav>
+    <div className="lab-command">
+      <nav className="electric-presets rail" aria-label="静电实验模板">
+        <span className="rail-label" aria-hidden="true">模板</span>
+        {electrostaticTemplates.map(template=><a className="button compact" key={template.id} href={appUrl('/lab?domain=electromagnetism&preset='+template.id)}>{template.title}</a>)}
+        {extendedTemplates.filter(template=>template.domain==='electromagnetism').map(template=><a className="button compact" key={template.id} href={extensionUrl(template.id)}>{template.title}</a>)}
+        <a className="button compact" href={appUrl('/lab?domain=electromagnetism&new=1')}><Plus size={14}/> 空白静电实验</a>
+      </nav>
+      <div className="electric-actions">
+        <button className="button compact" onClick={()=>downloadText(scene.title,'json','application/json',JSON.stringify(scene,null,2))}><Download size={15}/> 导出场景 JSON</button>
+        <button className="button compact primary" disabled={saving} onClick={()=>void save()}>{saved===scene?<Check size={15}/>:<Save size={15}/>} {saving?'保存中…':saved===scene?'已保存':'保存实验'}</button>
+      </div>
+    </div>
     {error&&<p role="alert" className="error-banner">{error}</p>}
 
     <div className="electric-workbench">
-      <section className="electric-stage" aria-label="静电场视图">
+      <section className="electric-stage plate" aria-label="静电场视图">
         <div className="electric-toolbar" role="group" aria-label="静电工具">
           {tools.map(({id,label,icon:Icon})=><button className="button compact" key={id} aria-pressed={tool===id}
             disabled={capacity&&(id==='positive'||id==='negative')} onClick={()=>setTool(id)}><Icon size={15} aria-hidden="true"/> {label}</button>)}
         </div>
-        <div className="electric-viewport">
+        <div className="electric-viewport stage-bezel">
           <ElectrostaticCanvas scene={scene} selected={selected} tool={tool} select={setSelected} add={add} probe={moveProbe}
             moveCharge={(id,point)=>changeCharge(id,{position:bounded(point)})}
             moveCamera={point=>setScene(current=>({...current,camera:{...current.camera,...bounded(point)}}))}/>

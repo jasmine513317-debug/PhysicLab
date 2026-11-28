@@ -773,7 +773,7 @@ export function Viewport(props:ViewportProps) {
   const coordinateReadout=coordinates.mode==='none'?'无坐标系':coordinates.mode==='polar'
     ?<>θ {cursorPolar.theta===undefined?'—':(cursorPolar.theta*180/Math.PI).toFixed(1)+'°'} &nbsp; r {cursorPolar.r.toFixed(2)} m</>
     :<>X {displayPosition.x.toFixed(2)} &nbsp; Y {displayPosition.y.toFixed(2)} m</>
-  return <section className="viewport" aria-label="模拟视图">
+  return <section className="viewport stage-bezel" aria-label="模拟视图">
     <canvas ref={canvas} tabIndex={0} aria-label="物理场景" data-tool={isReplay?'pan':originEditing?'origin':tool}
       style={tool==='draw'?{cursor:'crosshair'}:tool==='eraser'?{cursor:'none'}:originEditing||editing&&cursor?{cursor:originEditing?'crosshair':cursor}:undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={e=>{

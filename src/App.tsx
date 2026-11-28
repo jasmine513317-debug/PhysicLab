@@ -43,6 +43,18 @@ function savedUrl(scene:SavedExperiment) {
   if('extension' in scene)return extensionUrl(scene.extension,scene.id)
   return appUrl('/lab?'+('domain' in scene?'domain='+scene.domain+'&':'')+'id='+encodeURIComponent(scene.id))
 }
+function sceneDomain(scene:SavedExperiment):Domain['id'] {
+  if('extension' in scene)return extendedTemplates.find(item=>item.id===scene.extension)?.domain??'mechanics'
+  if(isElectrostatic(scene))return 'electromagnetism'
+  return 'domain' in scene?'astrophysics':'mechanics'
+}
+function SceneKind({scene}:{scene:SavedExperiment}) {
+  if('extension' in scene)return <span className="preview-glyph" aria-hidden="true"><Activity size={26}/><small>{extendedTemplates.find(item=>item.id===scene.extension)?.title??'扩展实验'}</small></span>
+  if(isElectrostatic(scene))return <span className="preview-glyph" aria-hidden="true"><Zap size={26}/><small>静电场</small></span>
+  if('domain' in scene)return <span className="preview-glyph" aria-hidden="true"><Orbit size={26}/><small>双体轨道</small></span>
+  return scene.bodies.length?<SceneDiagram scene={scene}/>:<span className="preview-empty" aria-hidden="true"><CircleDot size={22}/></span>
+}
+const kindLabels:{[key in Domain['id']]:string}={mechanics:'经典力学',electromagnetism:'电磁学',astrophysics:'天体物理'}
 
 type Page='lab'|'geometry'|'library'
 const sidebarTemplateGroups:readonly {domain:Domain;items:readonly {title:string;url:string}[]}[]=[
@@ -91,8 +103,10 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
         <a className="brand" href={appUrl('/')} aria-label="PhysicLab Studio 首页"><span className="brand-mark"><Atom size={23} strokeWidth={1.5} aria-hidden="true"/></span><span className="sidebar-brand-text">PhysicLab <span className="brand-studio">Studio</span></span></a>
         <button className="icon sidebar-close" aria-label="关闭侧边栏" title="关闭侧边栏" onClick={()=>setOpen(false)}><X size={18}/></button>
       </div>
+      <p className="sidebar-kicker">物理沙盒 · 本地实验库</p>
       <a className="button primary sidebar-new" href={newLab} aria-label="新建实验"><Plus size={17}/><span>新建实验</span></a>
       <nav className="sidebar-nav" aria-label="主导航">
+        <span className="sidebar-nav-label" aria-hidden="true">工作区</span>
         <a href={appUrl('/')} title="首页"><HomeIcon size={18}/><span>首页</span></a>
         <a className={page==='lab'?'current':''} href={appUrl('/lab')} aria-current={page==='lab'?'page':undefined} title="实验台"><Activity size={18}/><span>实验台</span></a>
         <a className={page==='geometry'?'current':''} href={appUrl('/geometry')} aria-current={page==='geometry'?'page':undefined} title="几何工作室"><Shapes size={18}/><span>几何工作室</span></a>
@@ -102,7 +116,7 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
         {error&&<p className="sidebar-message">{error}</p>}
         <section className="sidebar-section" aria-label="最近实验">
           <div className="sidebar-section-title"><span>最近实验</span>{entries.length>0&&<span className="nav-count" aria-hidden="true">{entries.length}</span>}</div>
-          {loading?<p className="sidebar-empty">正在读取实验库…</p>:entries.length?<div className="sidebar-recent">{entries.slice(0,5).map(scene=><a key={scene.id} href={savedUrl(scene)} title={scene.title}>
+          {loading?<p className="sidebar-empty">正在读取实验库…</p>:entries.length?<div className="sidebar-recent">{entries.slice(0,5).map(scene=><a key={scene.id} href={savedUrl(scene)} title={scene.title} data-domain={sceneDomain(scene)}>
             <span className="sidebar-recent-icon">{'extension' in scene?<Activity size={15}/>:isElectrostatic(scene)?<Zap size={15}/>:'domain' in scene?<Orbit size={15}/>:<FolderOpen size={15}/>}</span>
             <span className="sidebar-recent-copy"><strong>{scene.title}</strong><small>{dates.format(new Date(scene.updatedAt))}</small></span>
             <ArrowUpRight size={13} aria-hidden="true"/>
@@ -110,8 +124,8 @@ function AppShell({page,entries,error,loading,children}:{page:Page;entries:Saved
         </section>
         <section className="sidebar-section sidebar-templates" aria-label="实验模板">
           <div className="sidebar-section-title"><span>实验模板</span><span className="nav-count" aria-hidden="true">{sidebarTemplateGroups.reduce((sum,group)=>sum+group.items.length,0)}</span></div>
-          {sidebarTemplateGroups.map(group=><div className="sidebar-template-group" key={group.domain.id}>
-            <div className="sidebar-template-heading"><group.domain.icon size={13} aria-hidden="true"/>{group.domain.name}</div>
+          {sidebarTemplateGroups.map(group=><div className="sidebar-template-group" key={group.domain.id} data-domain={group.domain.id}>
+            <div className="sidebar-template-heading"><i aria-hidden="true"/><group.domain.icon size={13} aria-hidden="true"/>{group.domain.name}</div>
             {group.items.map(item=>{const Icon=quickTemplateIcon(item.title);return <a key={group.domain.id+item.title} href={item.url} title={item.title}><Icon size={14} aria-hidden="true"/><span>{item.title}</span></a>})}
           </div>)}
         </section>
@@ -151,23 +165,45 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
     catch {setError('无法导出这些记录。原始记录仍保存在实验库中。')}
   }
   return <><main className="page-width library">
-    <a href={appUrl('/')} className="text-button"><ArrowLeft size={15}/> 首页</a>
-    <div className="section-title library-title"><div><h1>实验库</h1><p>打开和管理保存在当前浏览器中的实验。</p></div><div className="library-command">
-      <label className="button import-button"><Upload size={15}/> 导入实验<input type="file" accept=".json,application/json" aria-label="导入实验 JSON" disabled={busy} onChange={e=>{
-        const file=e.currentTarget.files?.[0]
-        e.currentTarget.value=''
-        if(file)void importScene(file)
-      }}/></label>
-      <a href={newLab} className="button primary"><Plus size={17}/> 创建实验</a></div></div>
+    <a href={appUrl('/')} className="text-button library-back"><ArrowLeft size={15}/> 首页</a>
+    <header className="page-mast">
+      <div>
+        <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>本地实验库</span></p>
+        <h1>实验库</h1>
+        <p className="page-deck">打开和管理保存在当前浏览器中的实验。</p>
+      </div>
+      <dl className="page-meta">
+        <div><dt>记录</dt><dd>{String(entries.length).padStart(2,'0')}</dd></div>
+        <div><dt>存储</dt><dd className="meta-text">当前浏览器</dd></div>
+      </dl>
+    </header>
+    <div className="library-bar">
+      <div className="library-bar-title"><h2>全部实验</h2><span>{loading?'读取中':entries.length+' 条'}</span></div>
+      <div className="library-command">
+        <label className="button import-button"><Upload size={15}/> 导入实验<input type="file" accept=".json,application/json" aria-label="导入实验 JSON" disabled={busy} onChange={e=>{
+          const file=e.currentTarget.files?.[0]
+          e.currentTarget.value=''
+          if(file)void importScene(file)
+        }}/></label>
+        <a href={newLab} className="button primary"><Plus size={17}/> 创建实验</a>
+      </div>
+    </div>
     {error&&<div className="error-banner" role="alert">{error}</div>}
     {incomplete&&<p className="library-warning error-banner" role="status">部分实验存储暂时无法读取。可以继续使用已加载的实验。</p>}
     {unreadable.length>0&&<div className="library-warning error-banner" role="status"><span>{unreadable.length} 条记录无法打开，原始记录仍保留在此浏览器中。</span><button className="text-button" onClick={exportUnreadable}>导出原始记录</button></div>}
-    {loading?<p className="muted">正在加载实验…</p>:entries.length===0?<div className="empty-library"><FolderOpen size={28}/><strong>暂无保存的实验</strong><p>在实验台保存后，实验会显示在这里。</p><a className="button" href={newLab}>打开实验台 <ArrowRight size={15}/></a></div>:
-      <div className="library-grid">{entries.map(scene=><article className="library-card" key={scene.id}>
-        <a className="library-preview" href={savedUrl(scene)} aria-label={'预览：'+scene.title}>{'extension' in scene?<span className="library-orbit-preview"><Activity size={23}/> {extendedTemplates.find(item=>item.id===scene.extension)?.title}</span>:isElectrostatic(scene)?<span className="library-electric-preview"><Zap size={23}/> 静电实验</span>:'domain' in scene?<span className="library-orbit-preview"><Orbit size={23}/> 双体实验</span>:<SceneDiagram scene={scene}/>}</a>
+    {loading?<p className="muted">正在加载实验…</p>:entries.length===0?<div className="empty-library"><FolderOpen size={26}/><strong>暂无保存的实验</strong><p>在实验台保存后，实验会显示在这里。</p><a className="button" href={newLab}>打开实验台 <ArrowRight size={15}/></a></div>:
+      <div className="library-grid">{entries.map((scene,index)=>{
+        const domain=sceneDomain(scene)
+        const DomainIcon=domains.find(item=>item.id===domain)?.icon??CircleDot
+        return <article className="library-card" key={scene.id} data-domain={domain}>
+        <a className="library-preview" href={savedUrl(scene)} aria-label={'预览：'+scene.title}>
+          <span className="preview-chip" aria-hidden="true"><DomainIcon size={11}/>{kindLabels[domain]}</span>
+          <span className="preview-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>
+          <SceneKind scene={scene}/>
+        </a>
         <div className="library-content">
           {editing===scene.id?<form className="rename-form" onSubmit={e=>{e.preventDefault();void action(()=>renameExperiment(scene.id,title,storageFor(scene)))}}><input autoFocus aria-label="实验名称" maxLength={100} value={title} onChange={e=>setTitle(e.target.value)}/><button className="icon" aria-label="确认重命名" disabled={busy}><Check size={16}/></button><button className="text-button" type="button" onClick={()=>setEditing('')}>取消</button></form>:<h2>{scene.title}</h2>}
-          <p><Clock3 size={13}/> 创建于 {dates.format(new Date(scene.createdAt))} <span>· {'extension' in scene?extendedTemplates.find(item=>item.id===scene.extension)?.title:isElectrostatic(scene)?`${scene.charges.length} 个电荷`:`${scene.bodies.length} 个${'domain' in scene?'天体':'物体'}`}</span></p>
+          <p className="library-meta"><Clock3 size={12}/> 创建于 {dates.format(new Date(scene.createdAt))} <span>·</span> {'extension' in scene?extendedTemplates.find(item=>item.id===scene.extension)?.title:isElectrostatic(scene)?`${scene.charges.length} 个电荷`:`${scene.bodies.length} 个${'domain' in scene?'天体':'物体'}`}</p>
           {pending===scene.id?<div className="library-actions"><span>删除此实验？</span><button className="text-button danger" disabled={busy} onClick={()=>void action(()=>deleteExperiment(scene.id,storageFor(scene)))}>删除</button><button className="text-button" onClick={()=>setPending('')}>取消</button></div>:
           <div className="library-actions"><a className="button compact" href={savedUrl(scene)}>打开 <ArrowUpRight size={14}/></a>
             <button className="icon" aria-label={'重命名：'+scene.title} title="重命名" disabled={busy} onClick={()=>{setTitle(scene.title);setEditing(scene.id)}}><Pencil size={15}/></button>
@@ -175,7 +211,7 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
             <button className="icon" aria-label={'删除：'+scene.title} title="删除" disabled={busy} onClick={()=>setPending(scene.id)}><Trash2 size={15}/></button>
           </div>}
         </div>
-      </article>)}</div>}
+      </article>})}</div>}
   </main></>
 }
 function currentDomain() {
