@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowLeft, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, History, Maximize2, Minimize2, MoreHorizontal, Pause, Play, Plus, Redo2, RotateCcw, Save, SlidersHorizontal, StepForward, Undo2, X } from 'lucide-react'
+import { Activity, ArrowLeft, Box, Check, ChevronDown, CircleHelp, Clock3, Download, FolderOpen, Gauge, Globe2, History, Maximize2, Minimize2, MoreHorizontal, Pause, Play, Plus, Redo2, RotateCcw, Save, StepForward, Undo2, X } from 'lucide-react'
 import { body, decodeExperiment, type Camera, type Experiment, type Point } from './model'
 import { Physics } from './physics'
 import { Tools, Viewport, type Primitive, type Tool } from './Viewport'
@@ -361,8 +361,8 @@ export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSa
     <button className="button compact" aria-label="切换到三维工作台" title="三维工作台预览" disabled={isReplay} onClick={enterSpatial}>3D</button>
     <button className="icon" aria-label="撤销" title="撤销编辑（Ctrl / ⌘ + Z）" disabled={isReplay||!editHistory.current.undo.length} onClick={()=>restoreEdit('undo')}><Undo2 size={17}/></button>
     <button className="icon" aria-label="重做" title="重做编辑（Ctrl + Y 或 Ctrl / ⌘ + Shift + Z）" disabled={isReplay||!editHistory.current.redo.length} onClick={()=>restoreEdit('redo')}><Redo2 size={17}/></button>
-    <button className="button compact" aria-label="属性" title="物体属性" onClick={()=>{setPropertyTab('object');setPanel('properties');setMoreOpen(false)}}>属性</button>
-    <button className="icon" aria-label="环境" title="环境设置" onClick={()=>{setPropertyTab('world');setPanel('properties');setMoreOpen(false)}}><SlidersHorizontal size={17}/></button>
+    <button className="button compact" aria-label="属性" title="物体属性" onClick={()=>{setPropertyTab('object');setPanel('properties');setMoreOpen(false)}}><Box size={14}/>属性</button>
+    <button className="icon" aria-label="环境" title="环境设置" onClick={()=>{setPropertyTab('world');setPanel('properties');setMoreOpen(false)}}><Globe2 size={17}/></button>
     <button className="button compact" aria-label="分析" title="数据分析" aria-expanded={analysisOpen} aria-controls="analysis-panel" onClick={()=>{setAnalysisOpen(true);setMoreOpen(false)}}><Activity size={15}/>分析</button>
     <button className="icon" aria-label={immersive?'退出沉浸模式':'进入沉浸模式'} title={immersive?'退出沉浸模式':'进入沉浸模式'} aria-pressed={immersive} onClick={()=>setImmersive(value=>!value)}>{immersive?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button>
     <button className="icon" aria-label="实验台帮助" title="实验台帮助" onClick={()=>{setHelp(!help);setMoreOpen(false)}}><CircleHelp size={19}/></button>
@@ -426,7 +426,7 @@ export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSa
         {replay&&<ReplayControls replay={replay} index={replayIndex} seek={setReplayIndex} close={closeReplay} save={()=>saveRecording(replay)} active={active}/>}
         <div className="status-bar">
           <span className={running?'sim-status running':'sim-status'}><i/>{status}</span>
-          <span><Clock3 size={13}/><time aria-label="模拟时间">{(replayTime??time).toFixed(3)} s</time></span>
+          <span className="status-time"><Clock3 size={13}/><time aria-label="模拟时间">{(replayTime??time).toFixed(3)} s</time></span>
           <span className="status-steps">固定步长 · 60 Hz</span>
           {scene.physicalMode==='free'&&!isReplay&&<span>自由干预</span>}
           {velocity&&!isReplay&&<span className="live-speed">|v| {Math.hypot(velocity.x,velocity.y).toFixed(2)} m/s</span>}

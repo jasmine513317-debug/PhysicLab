@@ -92,7 +92,7 @@ export function Inspector({scene,selected,select,change,applyAngle,livePosition,
   const role:EditableRole=b?.role==='constraint'?'body':b?.role??'body'
   const collisionFree=role==='marker'||role==='field',specialRole=role!=='body'
   return <aside className="inspector" aria-label="参数面板">
-    <div className="panel-title"><SlidersHorizontal size={15}/> 参数{onClose&&<button className="icon" aria-label="关闭参数面板" title="关闭参数面板" onClick={onClose}><X size={16}/></button>}</div>
+    <div className="panel-title"><span className="panel-title-icon"><SlidersHorizontal size={14}/></span> <span>参数</span>{onClose&&<button className="icon" aria-label="关闭参数面板" title="关闭参数面板" onClick={onClose}><X size={16}/></button>}</div>
     <div className="tabs inspector-tabs">
       <button className={tab==='object'?'chosen':''} onClick={()=>setTab('object')}>物体</button>
       <button className={tab==='world'?'chosen':''} onClick={()=>setTab('world')}>环境</button>

@@ -232,6 +232,17 @@ function DomainWorkspace() {
   </>
 }
 
+function LabFallback() {
+  return <main className="lab lab-loading" aria-busy="true">
+    <div className="lab-top" aria-hidden="true">
+      <div className="lab-identity"><span className="skeleton skeleton-icon"/><span className="skeleton skeleton-title"/></div>
+      <span className="skeleton skeleton-run"/>
+      <div className="lab-actions"><span className="skeleton skeleton-actions"/></div>
+    </div>
+    <div className="lab-loading-stage"><Activity size={18} aria-hidden="true"/><p>正在打开实验台…</p><i aria-hidden="true"/></div>
+  </main>
+}
+
 function MechanicsWorkspace({search,active,updateSavedAddress}:{search:string;active:boolean;updateSavedAddress:(id:string)=>void}) {
   const params=useRef(new URLSearchParams(search)).current
   const id=params.get('id')
@@ -247,7 +258,7 @@ function MechanicsWorkspace({search,active,updateSavedAddress}:{search:string;ac
     }
     return ()=>{mounted=false}
   },[id,params])
-  return scene?<Suspense fallback={<main className="page-width library"><p className="muted">正在打开实验台…</p></main>}><Lab initial={scene} initiallySaved={Boolean(id)} active={active} spaceAstronomy={params.get('space')==='astronomy'} updateSavedAddress={updateSavedAddress}/></Suspense>:<main className="page-width library">
+  return scene?<Suspense fallback={<LabFallback/>}><Lab initial={scene} initiallySaved={Boolean(id)} active={active} spaceAstronomy={params.get('space')==='astronomy'} updateSavedAddress={updateSavedAddress}/></Suspense>:<main className="page-width library">
     {error?<><p className="error-banner" role="alert">{error}</p><a className="button" href={appUrl('/experiments')}><ArrowLeft size={15}/> 返回实验库</a></>:<p className="muted">正在打开实验台…</p>}
   </main>
 }
