@@ -357,6 +357,24 @@ export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSa
     select(next.bodies.find(body=>body.type==='dynamic')?.id??'')
     editHistory.current={undo:[],redo:[]}
   }
+  const benchRef=useRef<HTMLDivElement>(null)
+  useEffect(()=>{
+    const bench=benchRef.current
+    const center=bench?.querySelector('.work-center')
+    if(!bench||!center) return
+    const host=bench.parentElement??bench
+    const status=center.querySelector<HTMLElement>('.status-bar')
+    const tools=center.querySelector<HTMLElement>('.tools')
+    const apply=()=>{
+      const height=(status?.offsetHeight??0)+(tools?.offsetHeight??0)
+      host.style.setProperty('--lab-footer',`${height}px`)
+    }
+    apply()
+    const observer=new ResizeObserver(apply)
+    if(status) observer.observe(status)
+    if(tools) observer.observe(tools)
+    return ()=>{observer.disconnect();host.style.removeProperty('--lab-footer')}
+  },[])
   const secondaryActions=<>
     <button className="button compact" aria-label="切换到三维工作台" title="三维工作台预览" disabled={isReplay} onClick={enterSpatial}>3D</button>
     <button className="icon" aria-label="撤销" title="撤销编辑（Ctrl / ⌘ + Z）" disabled={isReplay||!editHistory.current.undo.length} onClick={()=>restoreEdit('undo')}><Undo2 size={17}/></button>
@@ -417,7 +435,7 @@ export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSa
     </section>}
     {error&&<div className="lab-message error-banner" role="alert">{error}<button className="icon" aria-label="关闭错误提示" title="关闭错误提示" onClick={()=>setError('')}><X size={15}/></button></div>}
     {notice&&<div className="lab-message toast" role="status"><Check size={16}/>{notice}</div>}
-    <div className={'workbench'+(immersive?' immersive':'')}>
+    <div className={'workbench'+(immersive?' immersive':'')} ref={benchRef}>
       <div className="work-center">
         <Viewport scene={replay?.scene??scene} active={active&&!spatial} camera={camera} setCamera={setCamera} physics={engine} resetCamera={()=>setCamera(fit((replay?.scene??scene).camera))} tool={tool} setTool={setTool} selected={selected} running={running} pause={()=>{setRunning(false);showTime(engine.time)}}
           replay={replayTracks?{tracks:replayTracks,index:replayIndex,externalForceApplied:replay?.externalForceApplied}:undefined}

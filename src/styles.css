@@ -440,7 +440,7 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
 .error-banner {background:var(--warning-panel);color:var(--warning);border:1px solid var(--warning-line);border-radius:var(--radius-md);padding:8px 11px;overflow-wrap:anywhere}
 .lab-message {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 10px;font-size:12px}
 .error-banner .icon {height:24px}
-.toast {position:fixed;bottom:13px;right:13px;z-index:10;justify-content:flex-start;padding:10px 13px;background:var(--raised);border:1px solid var(--line-strong);border-radius:var(--radius-md);color:var(--text);box-shadow:var(--shadow-menu)}
+.toast {position:fixed;bottom:calc(var(--lab-footer,1px) + 14px);left:50%;transform:translateX(-50%);z-index:10;justify-content:flex-start;padding:10px 13px;background:var(--raised);border:1px solid var(--line-strong);border-radius:var(--radius-md);color:var(--text);box-shadow:var(--shadow-menu)}
 @media (max-width:1100px) {
   .page-width {width:calc(100% - 60px)}
   .workbench {grid-template-columns:minmax(0,1fr)}
@@ -562,14 +562,14 @@ kbd {font:11px var(--mono);padding:1px 4px;background:var(--panel);border:1px so
   .work-center .analysis-panel .chart-wrap {min-height:110px}
 }
 @media (min-width:901px) {
-  .work-center>#analysis-panel {position:absolute;z-index:8;top:0;right:0;bottom:78px;max-width:65%;border-left:1px solid var(--line)}
+  .work-center>#analysis-panel {position:absolute;z-index:8;top:0;right:0;bottom:var(--lab-footer,96px);max-width:65%;border-left:1px solid var(--line)}
   .work-center>#analysis-panel>.analysis-panel {flex:1;max-width:100%;overflow:auto}
   .analysis-resizer {top:0;bottom:0;left:0;right:auto;height:auto;width:9px;cursor:ew-resize}
   .analysis-resizer::after {width:3px;height:32px;margin:24px auto 0}
   .analysis-collapse {display:none}
 }
 @media (max-width:900px) {
-  .work-center>#analysis-panel {position:absolute;z-index:8;inset:auto 0 78px;max-height:calc(100% - 78px)}
+  .work-center>#analysis-panel {position:absolute;z-index:8;inset:auto 0 var(--lab-footer,134px);max-height:calc(100% - var(--lab-footer,134px) - 4px)}
   .work-center>#analysis-panel>.analysis-panel {flex:0 1 auto;overflow:auto}
   .analysis-resizer {top:0}
   .analysis-actions .button span {display:none}
