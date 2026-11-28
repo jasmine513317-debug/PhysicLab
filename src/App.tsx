@@ -11,6 +11,7 @@ import { downloadText } from './download'
 import { SceneDiagram } from './Viewport'
 import { appPath, appUrl } from './routes'
 import { domains, type Domain } from './domains'
+import { ExperimentChooser } from './ExperimentChooser'
 import { SplashScreen } from './splash/SplashScreen'
 const Lab = lazy(() => import('./Lab').then(module => ({default:module.Lab})))
 const GeometryStudio = lazy(() => import('./GeometryStudio').then(module => ({default:module.GeometryStudio})))
@@ -37,7 +38,7 @@ function useLibrary() {
   return {entries,unreadable,incomplete,error,setError,refresh,loading}
 }
 export function message(e:unknown) { return e instanceof Error?e.message:'操作未完成，请重试。' }
-const newLab=appUrl('/lab?new=1')
+const newLab=appUrl('/lab?new=1&choose=1')
 function savedUrl(scene:SavedExperiment) {
   if('extension' in scene)return extensionUrl(scene.extension,scene.id)
   return appUrl('/lab?'+('domain' in scene?'domain='+scene.domain+'&':'')+'id='+encodeURIComponent(scene.id))
@@ -189,6 +190,11 @@ function readExtension(search:string|undefined) {
 }
 
 function Workspace() {
+  if(new URLSearchParams(location.search).has('choose'))return <ExperimentChooser groups={sidebarTemplateGroups}/>
+  return <DomainWorkspace/>
+}
+
+function DomainWorkspace() {
   const domain=currentDomain()
   const [searches,setSearches]=useState<Partial<Record<Domain['id'],string>>>(()=>({[domain.id]:location.search}))
 
@@ -241,7 +247,7 @@ function MechanicsWorkspace({search,active,updateSavedAddress}:{search:string;ac
     }
     return ()=>{mounted=false}
   },[id,params])
-  return scene?<Suspense fallback={<main className="page-width library"><p className="muted">正在打开实验台…</p></main>}><Lab initial={scene} initiallySaved={Boolean(id)} active={active} updateSavedAddress={updateSavedAddress}/></Suspense>:<main className="page-width library">
+  return scene?<Suspense fallback={<main className="page-width library"><p className="muted">正在打开实验台…</p></main>}><Lab initial={scene} initiallySaved={Boolean(id)} active={active} spaceAstronomy={params.get('space')==='astronomy'} updateSavedAddress={updateSavedAddress}/></Suspense>:<main className="page-width library">
     {error?<><p className="error-banner" role="alert">{error}</p><a className="button" href={appUrl('/experiments')}><ArrowLeft size={15}/> 返回实验库</a></>:<p className="muted">正在打开实验台…</p>}
   </main>
 }

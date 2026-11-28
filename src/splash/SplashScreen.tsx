@@ -34,7 +34,7 @@ export function SplashScreen({ completed=0, leaving=false, storageUnavailable=fa
         <div className="launch-wordmark"><Atom aria-hidden="true" strokeWidth={1.5}/><span>PhysicLab</span></div>
         {ready?<h1>让想法，成为实验。</h1>:<p>让想法，成为实验。</p>}
       </div>
-      {ready?<a className="launch-enter" href={appUrl('/lab?new=1')}>创建实验<ArrowRight size={16} aria-hidden="true"/></a>:
+      {ready?<a className="launch-enter" href={appUrl('/lab?new=1&choose=1')}>创建实验<ArrowRight size={16} aria-hidden="true"/></a>:
       <div className="launch-track" role="progressbar" aria-label="启动进度" aria-valuemin={0} aria-valuemax={startupSteps.length}
         aria-valuenow={completed} aria-valuetext={completed+' / '+startupSteps.length+' 启动阶段结束'+(storageUnavailable?'，实验存储暂不可用':'')}>
         <div className="launch-progress" style={{width: completed / startupSteps.length * 100 + '%'}}/>

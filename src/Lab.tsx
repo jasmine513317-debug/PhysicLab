@@ -38,11 +38,11 @@ type EditSnapshot = {
 const maxUndoSteps = 50
 const errorText=(e:unknown)=>e instanceof Error&&'issues' in e?(e.issues as {message:string}[]).map(x=>x.message).join(' · '):e instanceof Error?e.message:'操作未完成，请重试。'
 
-type Props={initial:Experiment;initiallySaved:boolean;active:boolean;updateSavedAddress:(id:string)=>void}
+type Props={initial:Experiment;initiallySaved:boolean;active:boolean;spaceAstronomy?:boolean;updateSavedAddress:(id:string)=>void}
 
-export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
+export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSavedAddress}:Props) {
   const [scene,setScene]=useState(initial)
-  const [spatial,setSpatial]=useState(false)
+  const [spatial,setSpatial]=useState(spaceAstronomy)
   const [spatialBase,setSpatialBase]=useState<{scene:Experiment;physics:Physics}>()
   const [camera,setCamera]=useState(()=>initiallySaved?initial.camera:fit(initial.camera))
   const [engine,setEngine]=useState(()=>new Physics(initial))
@@ -95,11 +95,11 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
 
   useEffect(()=>{saveInkPrefs(ink)},[ink])
   useEffect(()=>{
-    if(new URLSearchParams(window.location.search).has('spatial')) {
+    if(spaceAstronomy||new URLSearchParams(window.location.search).has('spatial')) {
       setSpatialBase({scene:initial,physics:activeEngine.current})
       setSpatial(true)
     }
-  },[initial])
+  },[initial,spaceAstronomy])
 
   function reset(source=current.current) {
     try {
@@ -450,7 +450,7 @@ export function Lab({initial,initiallySaved,active,updateSavedAddress}:Props) {
     </div>
   </main>
   {spatialBase&&<main className="lab" hidden={!spatial}><Suspense fallback={<p className="muted">正在打开三维工作台…</p>}>
-    <SpatialWorkbench source={spatialBase.scene} physics={spatialBase.physics} active={active&&spatial} exit={()=>setSpatial(false)}
+    <SpatialWorkbench source={spatialBase.scene} physics={spatialBase.physics} active={active&&spatial} astronomy={spaceAstronomy} exit={()=>setSpatial(false)}
       snapshotPlanar={snapshotPlanar} restorePlanar={restorePlanar}/>
   </Suspense></main>}</>
 }

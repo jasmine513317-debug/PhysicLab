@@ -38,6 +38,7 @@ test('reports completed startup tasks before revealing the application and skips
     await page.reload()
     await expect(progress).toHaveCount(0)
     await page.getByRole('link',{name:'创建实验'}).click()
+    await page.getByRole('link',{name:'力学',exact:true}).click()
     await expect(page.getByLabel('物理场景')).toBeVisible()
     await expect(progress).toHaveCount(0)
   } finally {unblock()}

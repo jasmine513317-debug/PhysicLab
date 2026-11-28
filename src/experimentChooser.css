@@ -1,0 +1,19 @@
+.experiment-chooser {max-width:1080px;padding-block:clamp(28px,7vh,76px)}
+.experiment-chooser h1 {font-size:clamp(30px,5vw,58px);margin:0 0 28px}
+.experiment-chooser-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.experiment-chooser-grid section {min-width:0;padding:clamp(16px,3vw,30px);border:1px solid var(--line);background:var(--panel);border-radius:12px}
+.experiment-chooser-grid h2 {font-size:20px;margin:0 0 20px}
+.experiment-chooser-grid a {display:flex;align-items:center;gap:10px;min-height:48px;padding:9px 12px;background:var(--raised);border:1px solid var(--line);border-radius:8px}
+.experiment-chooser-grid a:hover {border-color:var(--text)}
+.experiment-chooser-grid a svg {width:19px;flex:none}
+.experiment-chooser-grid a svg:last-child {margin-left:auto}
+.experiment-chooser-grid p {margin:9px 0 19px;color:var(--dim);line-height:1.65}
+.experiment-chooser-grid p:last-child {margin-bottom:0}
+@media(max-width:680px){.experiment-chooser-grid {grid-template-columns:1fr}}
+.experiment-models-title {font-size:22px;margin:34px 0 14px}
+.experiment-models {display:grid;gap:10px}
+.experiment-models details {border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.experiment-models summary {cursor:pointer;padding-block:6px;font-weight:650}
+.experiment-models p {margin:6px 0 12px;line-height:1.65;color:var(--dim)}
+.experiment-models ul {display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:8px 0 4px}
+.experiment-models a {display:inline-flex;align-items:center;min-height:40px;padding-inline:10px;background:var(--raised);border-radius:6px}

@@ -91,7 +91,8 @@ test('uses shared numeric typography across input domains', async ({ page }) => 
 
   await page.goto('/lab?domain=astrophysics')
   await expect(page.getByLabel('轨道画布')).toBeVisible()
-  await expectNumericStyle(page.getByRole('spinbutton', { name: '质量 M☉' }))
+  await page.getByLabel('选择天体').selectOption({label:'太阳'})
+  await expectNumericStyle(page.getByRole('spinbutton', { name: '质量 太阳质量 M☉' }))
 })
 
 test('formats edited values without silently rewriting stored precision', async ({ page }) => {
@@ -122,7 +123,7 @@ test('formats edited values without silently rewriting stored precision', async 
 
 const scientificNotationInputs = [
   { path: '/geometry', name: '位置 X (m)' },
-  { path: '/lab?domain=astrophysics', name: '质量 M☉' },
+  { path: '/lab?domain=astrophysics', name: '质量 太阳质量 M☉', selectStar:true },
   { path: '/lab?domain=electromagnetism', name: '电荷量 nC' },
   { path: '/lab?domain=electromagnetism&extension=particle', name: '粒子质量 kg' },
 ]
@@ -130,6 +131,7 @@ const scientificNotationInputs = [
 for (const input of scientificNotationInputs) {
   test(`preserves scientific notation in ${input.name}`, async ({ page }) => {
     await page.goto(input.path)
+    if(input.selectStar)await page.getByLabel('选择天体').selectOption({label:'太阳'})
     const field = page.getByRole('spinbutton', { name: input.name, exact: true })
     await field.fill('0.00000123')
     await field.press('Enter')

@@ -1,10 +1,11 @@
-import { orbitInclination,spatialPreset,withOrbitInclination } from './spatialTemplates'
+import { appendCelestial,astronomyScene,celestialUnits,orbitInclination,spatialPreset,withOrbitInclination } from './spatialTemplates'
 import { useCallback,useEffect,useRef,useState } from 'react'
 import { ArrowLeft, Download, Focus, Pause, Play, Plus, Redo2, RotateCcw, Save, StepForward, Undo2, Upload } from 'lucide-react'
 import type { Experiment } from './model'
 import type { Physics } from './physics'
 import { downloadText } from './download'
 import { runFixedSolver } from './simulation'
+import { appUrl } from './routes'
 import { liftPlanarExperiment,projectSpatialExperiment,type ProjectionPlane } from './spatialConversion'
 import { changeSpatialView,defaultSpatialCamera,moveFirstPerson,SpatialCanvas,zoomSpatialCamera,type SpatialCamera,type SpatialGizmo,type SpatialEditAxis } from './SpatialCanvas'
 import { meshRadius,spatialGeometrySchema,spatialMesh,spatialRibbon,type SpatialGeometry } from './spatialGeometry'
@@ -73,9 +74,19 @@ function DimensionField({label,value,commit,min=.002,max}:{label:string;value:nu
     }}/></label>
 }
 
-type Props={source:Experiment;physics:Physics;active:boolean;exit:()=>void;
+type Props={source:Experiment;physics:Physics;active:boolean;astronomy?:boolean;exit:()=>void;
   snapshotPlanar:()=>PlanarBranch;restorePlanar:(branch:PlanarBranch,copy:boolean)=>void}
-export default function SpatialWorkbench({source,physics,active,exit,snapshotPlanar,restorePlanar}:Props) {
+
+function sceneCamera(scene:SpatialScene):SpatialCamera {
+  if(!scene.mutualGravity||!scene.bodies.length)return defaultSpatialCamera
+  const minimum=[0,1,2].map(i=>Math.min(...scene.bodies.map(item=>item.position[i])))
+  const maximum=[0,1,2].map(i=>Math.max(...scene.bodies.map(item=>item.position[i])))
+  const focus=minimum.map((value,i)=>(value+maximum[i])/2) as Vec3
+  const span=Math.max(...maximum.map((value,i)=>value-minimum[i]))
+  return {...defaultSpatialCamera,focus,distance:Math.max(11,span*1.9)}
+}
+
+export default function SpatialWorkbench({source,physics,active,astronomy=false,exit,snapshotPlanar,restorePlanar}:Props) {
   const [lifted]=useState(()=>liftPlanarExperiment(source,physics))
   const [storageId]=useState(()=>new URLSearchParams(window.location.search).get('spatial')||source.id)
   const key='physiclab-spatial-v1:'+storageId
@@ -89,11 +100,13 @@ export default function SpatialWorkbench({source,physics,active,exit,snapshotPla
         return {engine:restoreSpatial(value),workspace:undefined}
       }
     } catch {}
-    return {engine:new SpatialPhysics(lifted.scene??emptySpatialScene()),workspace:undefined}
+    const requested=new URLSearchParams(location.search).get('spaceModel')
+    const initial=astronomy?(requested&&['orbit','three','escape','assist'].includes(requested)?spatialPreset(requested):astronomyScene()):lifted.scene??emptySpatialScene()
+    return {engine:new SpatialPhysics(initial),workspace:undefined}
   })
   const [engine,setEngine]=useState(stored.engine)
   const restoredView=stored.workspace?.view
-  const [camera,setCamera]=useState<SpatialCamera>(restoredView?.camera??defaultSpatialCamera)
+  const [camera,setCamera]=useState<SpatialCamera>(()=>restoredView?.camera??(astronomy?sceneCamera(engine.scene):defaultSpatialCamera))
   const [paused,setPaused]=useState(true)
   const [revision,redraw]=useState(0)
   const [selected,select]=useState(()=>engine.bodies[0]?.id??'')
@@ -295,16 +308,19 @@ export default function SpatialWorkbench({source,physics,active,exit,snapshotPla
     if(kind==='plane'||kind==='ramp')Object.assign(next,{fixed:true,position:[0,0,0],orientation:kind==='ramp'?[0,0,-.16,Math.sqrt(1-.16**2)]:[0,0,0,1]})
     appendObject(next)
   }
+  function addCelestial(kind:string) {
+    try {
+      const next=appendCelestial(engine.state(),kind,selected)
+      keepAndShow(new SpatialPhysics(next))
+      select(next.bodies.at(-1)!.id)
+      setPanel('body')
+      setCamera(sceneCamera(next))
+    } catch(error) {setError(error instanceof Error?error.message:String(error))}
+  }
   function loadTemplate(name:string) {
     const template=spatialPreset(name)
     replace(template)
-    if(template.mutualGravity&&template.bodies.length) {
-      const minimum=[0,1,2].map(i=>Math.min(...template.bodies.map(item=>item.position[i])))
-      const maximum=[0,1,2].map(i=>Math.max(...template.bodies.map(item=>item.position[i])))
-      const focus=minimum.map((value,i)=>(value+maximum[i])/2) as Vec3
-      const span=Math.max(...maximum.map((value,i)=>value-minimum[i]))
-      setCamera({...defaultSpatialCamera,focus,distance:Math.max(11,span*1.6)})
-    } else setCamera(defaultSpatialCamera)
+    setCamera(sceneCamera(template))
     setFields({...fields,electric:name==='electric',magnetic:name==='induction'})
   }
   function save() {
@@ -352,7 +368,8 @@ export default function SpatialWorkbench({source,physics,active,exit,snapshotPla
   }
   return <section className="spatial-workbench" aria-label="三维实验工作台">
     <header className="spatial-controls">
-      <button className="button compact" onClick={()=>{setPaused(true);exit()}}><ArrowLeft size={16}/> 返回 2D</button>
+      {astronomy?<a className="button compact" href={appUrl('/lab?new=1&choose=1')}><ArrowLeft size={16}/> 实验方向</a>:
+        <button className="button compact" onClick={()=>{setPaused(true);exit()}}><ArrowLeft size={16}/> 返回 2D</button>}
       <strong>{engine.scene.title}</strong>
       <button className="button compact primary" onClick={()=>setPaused(!paused)}>{paused?<Play size={15}/>:<Pause size={15}/>} {paused?'运行':'暂停'}</button>
       <button className="icon" title="三维单步" aria-label="三维单步" disabled={!paused} onClick={step}><StepForward size={16}/></button>
@@ -537,20 +554,25 @@ export default function SpatialWorkbench({source,physics,active,exit,snapshotPla
     </div>
     <div className="spatial-status"><time aria-label="三维模拟时间">{engine.time.toFixed(3)} s</time>{body&&<span>{body.name} · {length(body.velocity).toFixed(2)} m/s</span>}<span>三维 · 固定步长 60 Hz · 采样 15 Hz</span></div>
     <footer className="spatial-controls">
+      {astronomy?<select aria-label="添加天体模型" value="" onChange={e=>{if(e.target.value)addCelestial(e.target.value)}}>
+        <option value="">添加天体</option>{celestialUnits.map(unit=><option key={unit.id} value={unit.id}>{unit.name}</option>)}
+      </select>:<>
       <button className="button compact" onClick={()=>create('sphere')}><Plus size={16}/> 球体</button>
       <select aria-label="添加空间几何体" value="" onChange={e=>{if(e.target.value)create(e.target.value)}}>
         <option value="">添加几何体</option><option value="cube">立方体</option><option value="box">长方体</option><option value="cylinder">圆柱体</option>
         <option value="cone">圆锥体</option><option value="plane">平面</option><option value="ramp">斜面</option><option value="charge">点电荷</option><option value="planet">天体</option>
       </select>
       <button className="button compact" onClick={()=>setPanel(panel==='model'?'none':'model')}>建模</button>
+      </>}
       <select aria-label="加载三维模板" value="" onChange={e=>{
         if(e.target.value)loadTemplate(e.target.value)
       }}>
-        <option value="">加载模板</option><option value="fall">空间自由落体</option><option value="throw">空间抛体</option><option value="spring">空间弹簧振子</option>
+        <option value="">加载模板</option>{!astronomy&&<><option value="fall">空间自由落体</option><option value="throw">空间抛体</option><option value="spring">空间弹簧振子</option>
         <option value="rigid">空间刚体接触</option><option value="pendulum">球铰空间摆</option><option value="double">空间双摆</option>
         <option value="incline">空间斜面</option><option value="surface">空间曲线轨道</option>
-        <option value="helix">均匀磁场螺旋</option><option value="orbit">倾斜双体轨道</option>
+        <option value="helix">均匀磁场螺旋</option>
         <option value="electric">空间偶极子</option><option value="induction">空间电磁感应</option>
+        </>}<option value="orbit">倾斜双体轨道</option>
         <option value="three">空间三体</option><option value="escape">空间逃逸</option><option value="assist">空间引力飞掠</option>
       </select>
       <select aria-label="三维轨迹" value={trail} onChange={e=>setTrail(e.target.value as typeof trail)}>

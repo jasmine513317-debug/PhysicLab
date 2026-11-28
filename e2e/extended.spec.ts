@@ -54,6 +54,7 @@ test('runs a magnetic particle and classifies escape speed presets',async({page}
   await expect(page.getByLabel('扩展实验时间')).not.toHaveText('0 s')
   await page.goto('/lab?domain=astrophysics&preset=escape')
   const panel=page.getByRole('region',{name:'逃逸速度'})
+  await panel.getByText('逃逸速度实验',{exact:true}).click()
   await expect(panel).toContainText('束缚轨道')
   await panel.getByRole('button',{name:'1× 逃逸速度',exact:true}).click()
   await expect(panel).toContainText('临界抛物线')

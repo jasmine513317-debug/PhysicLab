@@ -3,6 +3,35 @@ import { add,cross,emptySpatialScene,length,multiply,rotateSpatialVector,spatial
 import { createExtendedExperiment } from './extended-experiments'
 import { SOLAR_GRAVITY } from './astronomy'
 
+export const celestialUnits=[
+  {id:'star',name:'恒星',mass:1e12,radius:.14,display:.55},
+  {id:'planet',name:'行星',mass:1e10,radius:.07,display:.29},
+  {id:'moon',name:'卫星',mass:1e8,radius:.025,display:.13},
+  {id:'probe',name:'探测器',mass:1000,radius:.01,display:.085},
+] as const
+
+export function astronomyScene():SpatialScene {
+  return {...emptySpatialScene('三维天体物理实验'),gravity:[0,0,0],mutualGravity:true,collisions:false}
+}
+
+export function appendCelestial(scene:SpatialScene,kind:string,primaryId:string):SpatialScene {
+  const unit=celestialUnits.find(item=>item.id===kind)
+  if(!unit)throw new Error('请选择天体模型。')
+  const next={...spatialObject(unit.name),mass:unit.mass,radius:unit.radius,visualRadius:unit.display,position:[0,0,0] as Vec3}
+  if(scene.bodies.length===0)return {...scene,bodies:[next]}
+  const primary=scene.bodies.find(body=>body.id===primaryId)??scene.bodies[0]
+  // Set relative circular velocity in XZ and preserve the pair's prior momentum.
+  const distance=4+2*(scene.bodies.length-1)
+  const relativeSpeed=Math.sqrt(6.6743e-11*(primary.mass+next.mass)*distance**2/Math.hypot(distance,.01)**3)
+  const fraction=next.mass/(primary.mass+next.mass)
+  const velocity=primary.velocity
+  next.position=add(primary.position,[distance,0,0])
+  next.velocity=add(velocity,[0,0,relativeSpeed*(1-fraction)])
+  return {...scene,bodies:[...scene.bodies.map(body=>body.id===primary.id&&!body.fixed
+    ?{...body,velocity:add(velocity,[0,0,-relativeSpeed*fraction])}:body),
+    primary.fixed?{...next,velocity:add(velocity,[0,0,Math.sqrt(6.6743e-11*primary.mass*distance**2/Math.hypot(distance,.01)**3)])}:next]}
+}
+
 export function orbitInclination(scene:SpatialScene) {
   if(!scene.mutualGravity||scene.bodies.length!==2||scene.bodies.some(body=>body.fixed))return
   const [a,b]=scene.bodies
