@@ -164,7 +164,7 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
     try {downloadText('无法打开的实验','json','application/json',JSON.stringify(unreadable,null,2))}
     catch {setError('无法导出这些记录。原始记录仍保存在实验库中。')}
   }
-  return <><main className="page-width library">
+  return <><div className="sheet-page"><main className="page-width library paper">
     <a href={appUrl('/')} className="text-button library-back"><ArrowLeft size={15}/> 首页</a>
     <header className="page-mast">
       <div>
@@ -178,7 +178,7 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
       </dl>
     </header>
     <div className="library-bar">
-      <div className="library-bar-title"><h2>全部实验</h2><span>{loading?'读取中':entries.length+' 条'}</span></div>
+      <div className="library-bar-title"><h2>全部实验</h2><span>{loading?'读取中':entries.length?String(entries.length).padStart(2,'0')+' 条':'空'}</span></div>
       <div className="library-command">
         <label className="button import-button"><Upload size={15}/> 导入实验<input type="file" accept=".json,application/json" aria-label="导入实验 JSON" disabled={busy} onChange={e=>{
           const file=e.currentTarget.files?.[0]
@@ -192,27 +192,28 @@ function Library({entries,unreadable,incomplete,error,setError,refresh,loading}:
     {incomplete&&<p className="library-warning error-banner" role="status">部分实验存储暂时无法读取。可以继续使用已加载的实验。</p>}
     {unreadable.length>0&&<div className="library-warning error-banner" role="status"><span>{unreadable.length} 条记录无法打开，原始记录仍保留在此浏览器中。</span><button className="text-button" onClick={exportUnreadable}>导出原始记录</button></div>}
     {loading?<p className="muted">正在加载实验…</p>:entries.length===0?<div className="empty-library"><FolderOpen size={26}/><strong>暂无保存的实验</strong><p>在实验台保存后，实验会显示在这里。</p><a className="button" href={newLab}>打开实验台 <ArrowRight size={15}/></a></div>:
-      <div className="library-grid">{entries.map((scene,index)=>{
+      <ol className="ledger">{entries.map((scene,index)=>{
         const domain=sceneDomain(scene)
         const DomainIcon=domains.find(item=>item.id===domain)?.icon??CircleDot
-        return <article className="library-card" key={scene.id} data-domain={domain}>
-        <a className="library-preview" href={savedUrl(scene)} aria-label={'预览：'+scene.title}>
-          <span className="preview-chip" aria-hidden="true"><DomainIcon size={11}/>{kindLabels[domain]}</span>
-          <span className="preview-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>
+        return <li key={scene.id}><article className="ledger-row" data-domain={domain}>
+        <span className="ledger-num" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>
+        <a className="ledger-plate" href={savedUrl(scene)} aria-label={'预览：'+scene.title}>
+          <span className="preview-chip" aria-hidden="true"><DomainIcon size={10}/>{kindLabels[domain]}</span>
           <SceneKind scene={scene}/>
         </a>
-        <div className="library-content">
-          {editing===scene.id?<form className="rename-form" onSubmit={e=>{e.preventDefault();void action(()=>renameExperiment(scene.id,title,storageFor(scene)))}}><input autoFocus aria-label="实验名称" maxLength={100} value={title} onChange={e=>setTitle(e.target.value)}/><button className="icon" aria-label="确认重命名" disabled={busy}><Check size={16}/></button><button className="text-button" type="button" onClick={()=>setEditing('')}>取消</button></form>:<h2>{scene.title}</h2>}
-          <p className="library-meta"><Clock3 size={12}/> 创建于 {dates.format(new Date(scene.createdAt))} <span>·</span> {'extension' in scene?extendedTemplates.find(item=>item.id===scene.extension)?.title:isElectrostatic(scene)?`${scene.charges.length} 个电荷`:`${scene.bodies.length} 个${'domain' in scene?'天体':'物体'}`}</p>
-          {pending===scene.id?<div className="library-actions"><span>删除此实验？</span><button className="text-button danger" disabled={busy} onClick={()=>void action(()=>deleteExperiment(scene.id,storageFor(scene)))}>删除</button><button className="text-button" onClick={()=>setPending('')}>取消</button></div>:
-          <div className="library-actions"><a className="button compact" href={savedUrl(scene)}>打开 <ArrowUpRight size={14}/></a>
+        <div className="ledger-body">
+          {editing===scene.id?<form className="rename-form" onSubmit={e=>{e.preventDefault();void action(()=>renameExperiment(scene.id,title,storageFor(scene)))}}><input autoFocus aria-label="实验名称" maxLength={100} value={title} onChange={e=>setTitle(e.target.value)}/><button className="icon" aria-label="确认重命名" disabled={busy}><Check size={16}/></button><button className="text-button" type="button" onClick={()=>setEditing('')}>取消</button></form>:<h2 className="ledger-title">{scene.title}</h2>}
+          <p className="library-meta ledger-meta"><Clock3 size={12}/> 创建于 {dates.format(new Date(scene.createdAt))} <span>·</span> <b className="ledger-domain">{kindLabels[domain]}</b> <span>·</span> {'extension' in scene?extendedTemplates.find(item=>item.id===scene.extension)?.title:isElectrostatic(scene)?`${scene.charges.length} 个电荷`:`${scene.bodies.length} 个${'domain' in scene?'天体':'物体'}`}</p>
+          {pending===scene.id?<div className="ledger-actions"><span>删除此实验？</span><button className="text-button danger" disabled={busy} onClick={()=>void action(()=>deleteExperiment(scene.id,storageFor(scene)))}>删除</button><button className="text-button" onClick={()=>setPending('')}>取消</button></div>:
+          <div className="ledger-actions"><a className="text-button" href={savedUrl(scene)}>打开</a>
             <button className="icon" aria-label={'重命名：'+scene.title} title="重命名" disabled={busy} onClick={()=>{setTitle(scene.title);setEditing(scene.id)}}><Pencil size={15}/></button>
             <button className="icon" aria-label={'复制：'+scene.title} title="复制" disabled={busy} onClick={()=>void action(()=>duplicateExperiment(scene))}><Copy size={15}/></button>
             <button className="icon" aria-label={'删除：'+scene.title} title="删除" disabled={busy} onClick={()=>setPending(scene.id)}><Trash2 size={15}/></button>
           </div>}
         </div>
-      </article>})}</div>}
-  </main></>
+        <a className="ledger-open" href={savedUrl(scene)} aria-hidden="true" tabIndex={-1}>进入 <ArrowUpRight size={13}/></a>
+      </article></li>})}</ol>}
+  </main></div></>
 }
 function currentDomain() {
   const params = new URLSearchParams(location.search)

@@ -1,4 +1,4 @@
-import { ArrowUpRight, Box, Magnet, Orbit } from 'lucide-react'
+import { ArrowUpRight, Box } from 'lucide-react'
 import { appUrl } from './routes'
 import { domains, type Domain } from './domains'
 import './experimentChooser.css'
@@ -18,7 +18,7 @@ const directions:{domain:Domain;href:string;index:string;note:string;label:strin
 
 export function ExperimentChooser({groups}:{groups:readonly {domain:Domain;items:readonly {title:string;url:string}[]}[]}) {
   const templateCount=groups.reduce((sum,group)=>sum+group.items.length,0)+spatialModels.length
-  return <section className="experiment-chooser page-width" aria-labelledby="experiment-chooser-title">
+  return <div className="sheet-page"><section className="experiment-chooser page-width paper" aria-labelledby="experiment-chooser-title">
     <header className="page-mast">
       <div>
         <p className="page-kicker"><span>PhysicLab</span><i aria-hidden="true"/><span>新建实验</span></p>
@@ -31,27 +31,27 @@ export function ExperimentChooser({groups}:{groups:readonly {domain:Domain;items
       </dl>
     </header>
 
-    <div className="chooser-grid">
+    <div className="chooser-bands">
       {directions.map(({domain,href,index,note,label})=>{
         const Icon=domain.icon
-        return <a className="chooser-card" key={domain.id} data-domain={domain.id} href={href} aria-label={label}>
-          <span className="chooser-index" aria-hidden="true">{index}</span>
-          <span className="chooser-icon" aria-hidden="true"><Icon size={20}/></span>
-          <strong>{domain.name}</strong>
-          <p>{domain.description}</p>
+        return <a className="chooser-band" key={domain.id} data-domain={domain.id} href={href} aria-label={label}>
+          <span className="chooser-figure" aria-hidden="true">{index}</span>
+          <span className="chooser-band-main">
+            <span className="chooser-title"><span className="chooser-icon" aria-hidden="true"><Icon size={16}/></span>{domain.name}</span>
+            <p>{domain.description}</p>
+          </span>
           <span className="chooser-note" aria-hidden="true">{note}</span>
-          <span className="chooser-enter" aria-hidden="true">进入方向 <ArrowUpRight size={14}/></span>
+          <span className="chooser-enter" aria-hidden="true">进入 <ArrowUpRight size={13}/></span>
         </a>
       })}
-      <a className="chooser-card chooser-wide" data-domain="astrophysics" href={appUrl('/lab?new=1&space=astronomy')} aria-label="三维天体物理">
-        <span className="chooser-index" aria-hidden="true">3D</span>
-        <span className="chooser-icon" aria-hidden="true"><Box size={20}/></span>
-        <span className="chooser-wide-copy">
-          <strong>三维天体物理</strong>
+      <a className="chooser-band chooser-band-dark" href={appUrl('/lab?new=1&space=astronomy')} aria-label="三维天体物理">
+        <span className="chooser-figure" aria-hidden="true">3D</span>
+        <span className="chooser-band-main">
+          <span className="chooser-title"><span className="chooser-icon" aria-hidden="true"><Box size={16}/></span>三维天体物理</span>
           <p>在空间坐标系里放置恒星、行星和卫星，观察相互引力、倾斜轨道与飞掠。可在三维面板中直接建模。</p>
         </span>
         <span className="chooser-note" aria-hidden="true">{spatialModels.map(([,title])=>title).join(' · ')}</span>
-        <span className="chooser-enter" aria-hidden="true">打开三维工作台 <ArrowUpRight size={14}/></span>
+        <span className="chooser-enter" aria-hidden="true">打开 <ArrowUpRight size={13}/></span>
       </a>
     </div>
 
@@ -59,13 +59,15 @@ export function ExperimentChooser({groups}:{groups:readonly {domain:Domain;items
       <h2 className="section-label" id="experiment-models-title">基础模型与实验模板</h2>
       <div className="chooser-details">
         {groups.map(({domain,items},index)=><details key={domain.id} data-domain={domain.id}>
-          <summary><span className="chooser-detail-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>{domain.name}<span className="chooser-detail-count" aria-hidden="true">{items.length}</span></summary>
-          <p>{toolsByDomain[domain.id]}</p>
-          <ul>{domain.id==='astrophysics'&&spatialModels.map(([id,title])=><li key={id}>
-            <a href={appUrl('/lab?new=1&space=astronomy&spaceModel='+id)}>{title}</a>
-          </li>)}{items.map(item=><li key={item.url}><a href={item.url}>{item.title}</a></li>)}</ul>
+          <summary><span className="chooser-detail-index" aria-hidden="true">{String(index+1).padStart(2,'0')}</span>{domain.name}<span className="chooser-detail-count" aria-hidden="true">{String(items.length).padStart(2,'0')}</span></summary>
+          <div className="chooser-detail-body">
+            <p>{toolsByDomain[domain.id]}</p>
+            <ul>{domain.id==='astrophysics'&&spatialModels.map(([id,title])=><li key={id}>
+              <a href={appUrl('/lab?new=1&space=astronomy&spaceModel='+id)}>{title}<ArrowUpRight size={11} aria-hidden="true"/></a>
+            </li>)}{items.map(item=><li key={item.url}><a href={item.url}>{item.title}<ArrowUpRight size={11} aria-hidden="true"/></a></li>)}</ul>
+          </div>
         </details>)}
       </div>
     </section>
-  </section>
+  </section></div>
 }

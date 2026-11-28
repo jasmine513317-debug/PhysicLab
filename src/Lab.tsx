@@ -385,7 +385,7 @@ export function Lab({initial,initiallySaved,active,spaceAstronomy=false,updateSa
     <button className="icon" aria-label={immersive?'退出沉浸模式':'进入沉浸模式'} title={immersive?'退出沉浸模式':'进入沉浸模式'} aria-pressed={immersive} onClick={()=>setImmersive(value=>!value)}>{immersive?<Minimize2 size={17}/>:<Maximize2 size={17}/>}</button>
     <button className="icon" aria-label="实验台帮助" title="实验台帮助" onClick={()=>{setHelp(!help);setMoreOpen(false)}}><CircleHelp size={19}/></button>
   </>
-  return <><main className="lab" hidden={spatial}>
+  return <><main className="lab" data-domain="mechanics" hidden={spatial}>
     <div className="lab-top">
       <div className="lab-identity">
         <a className="icon back" href={appUrl('/')} aria-label="返回首页" title="返回首页"><ArrowLeft size={17}/></a>
